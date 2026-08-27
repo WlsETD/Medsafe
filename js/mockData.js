@@ -91,7 +91,7 @@ window.mockData = {
       gender: '男',
       avatar: 'https://ui-avatars.com/api/?name=王大明&background=24A15D&color=fff',
       healthSummary: '目前用藥狀況穩定，但需注意血壓藥與抗凝血劑的潛在交互作用。',
-      nextAppointment: '2024-06-15'
+      nextAppointment: '2026-09-01'
     },
     stats: {
       safetyScore: 92,

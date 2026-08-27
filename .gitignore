@@ -30,3 +30,6 @@ backend/data/*.json
 !backend/data/ddi_rules.json
 !backend/data/medications.json
 !backend/data/users.json
+
+# Firebase
+.firebase/
