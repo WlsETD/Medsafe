@@ -15,7 +15,14 @@
       "progress-dashboard.html",
       "tests/**",
       "package.json",
-      "package-lock.json"
+      "package-lock.json",
+      "DEPLOY_CHECKLIST.md",
+      "*.bak",
+      "firestore.rules.deployed.bak",
+      "*.log",
+      "firestore-debug.log",
+      "ui-debug.log",
+      "node_modules/**"
     ]
   },
   "emulators": {
