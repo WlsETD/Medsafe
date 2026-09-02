@@ -4,3 +4,7 @@ firebase-debug.log
 
 # 部署前的線上規則備份（見 DEPLOY_CHECKLIST.md 第六節）
 *.bak
+
+# DDInter 原始資料（12.2 MB，僅供本機匯入使用，不進版控也不部署）
+# 授權條款未明訂，公開再散布前須先釐清（見 DEPLOY_CHECKLIST.md）
+DDINTER2/

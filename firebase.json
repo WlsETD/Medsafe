@@ -25,7 +25,9 @@
       "node_modules/**",
       "**/.*/**",
       ".git/**",
-      ".firebase/**"
+      ".firebase/**",
+      "DDINTER2/**",
+      "**/*.csv"
     ],
     "headers": [
       {
