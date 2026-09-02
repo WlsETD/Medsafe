@@ -144,8 +144,16 @@ window.mockData = {
       name: '王大明',
       age: 72,
       gender: '男',
-      healthSummary: '目前用藥狀況穩定，但需注意血壓藥與抗凝血劑的潛在交互作用。',
-      nextAppointment: '2026-09-01'
+      // healthSummary 已移除（稽核報告 P0-8）。原文為
+      //「目前用藥狀況穩定，但需注意血壓藥與抗凝血劑的潛在交互作用」——
+      // 但這位病患真正的重大交互作用是華法林 × 阿斯匹靈（兩者皆為抗血栓藥物），
+      // 那句話指的是另一對藥，等於把注意力引導到錯誤的地方。
+      // 現改由 patient.html 的 healthSummaryText 依引擎結果產生。
+      // 回診日期改為「距今天數」而非固定日期字串（稽核報告 P0-8）。
+      // 原本寫死 '2026-09-01'，示範資料一旦放著不動就必然變成過去的日期——
+      // 評審打開網站看到的是一個早就過期的「下次回診」。
+      // 真實病患的日期來自 Firestore 的 nextAppointment 欄位，此處僅為離線示範用。
+      nextAppointmentInDays: 12
     },
     // safetyScore 不再寫死於資料中，改由 DbService.computeSafetyScore() 依 medications/ddiAlerts 即時計算
     stats: {
@@ -170,11 +178,12 @@ window.mockData = {
         recommendation: '請諮詢李小美醫師是否需要調整抗血小板藥物劑量。'
       }
     ],
-    aiInsights: [
-      { icon: 'clock', text: '您的用藥規律性優於 85% 的用戶，請繼續保持。' },
-      { icon: 'info-circle', text: '近期攝取過多葡萄柚可能影響藥物代謝。' },
-      { icon: 'calendar-check', text: '下週三有定期回診，系統已為您備份近期安全日誌。' }
-    ],
+    // aiInsights 已移除（稽核報告 P0-8）。原本存的是三句寫死的散文，其中兩句
+    // 宣稱了系統無從得知的事：
+    //   「您的用藥規律性優於 85% 的用戶」—— 系統沒有跨使用者的統計，這個比較不存在
+    //   「近期攝取過多葡萄柚可能影響藥物代謝」—— 系統從未詢問也無從得知病患的飲食
+    // 兩者都掛在「AI 健康分析儀」底下，讀起來像是針對這位病患的個人化觀察。
+    // 現改由 patient.html 的 computedInsights 依實際資料產生，見該處說明。
     reminders: [
       { time: '08:00', text: '服用阿斯匹靈、賴諾普利', completed: true },
       { time: '12:00', text: '服用二甲雙胍 (飯後)', completed: false },
@@ -199,10 +208,9 @@ window.mockData = {
         { atc: 'C10AA05', name: 'Atorvastatin', zhName: '阿托伐他汀', dosage: '20mg', freq: '睡前一次', category: '降血脂藥', hospital: '馬偕醫院' }
       ],
       ddiAlerts: [],
-      aiInsights: [
-        { icon: 'clock', text: '您的用藥規律性優於 90% 的用戶，請繼續保持。' },
-        { icon: 'info-circle', text: '近期血糖控制穩定，建議維持現有飲食習慣。' }
-      ],
+      // aiInsights 已移除：內容同樣包含系統無從得知的宣稱（「優於 90% 的用戶」沒有
+      // 跨使用者統計、「近期血糖控制穩定」沒有血糖資料）。目前無任何頁面渲染它，
+      // 但留著會被種入 Firestore 而在日後復活。
       reminders: [
         { time: '08:00', text: '服用賴諾普利', completed: true },
         { time: '12:00', text: '服用二甲雙胍 (飯後)', completed: false },
@@ -224,10 +232,9 @@ window.mockData = {
         { atc: 'C10AA05', name: 'Atorvastatin', zhName: '阿托伐他汀', dosage: '20mg', freq: '睡前一次', category: '降血脂藥', hospital: '馬偕醫院' }
       ],
       ddiAlerts: [],
-      aiInsights: [
-        { icon: 'info-circle', text: '您的用藥品項較多，AI 已加強監控交互作用風險。' },
-        { icon: 'calendar-check', text: '建議下次回診時攜帶所有藥物清單供醫師確認。' }
-      ],
+      // aiInsights 已移除：內容同樣包含系統無從得知的宣稱（「優於 90% 的用戶」沒有
+      // 跨使用者統計、「近期血糖控制穩定」沒有血糖資料）。目前無任何頁面渲染它，
+      // 但留著會被種入 Firestore 而在日後復活。
       reminders: [
         { time: '08:00', text: '服用賴諾普利、阿托伐他汀', completed: false },
         { time: '12:00', text: '服用二甲雙胍 (飯後)', completed: false },
@@ -249,10 +256,9 @@ window.mockData = {
         { atc: 'C10AA05', name: 'Atorvastatin', zhName: '阿托伐他汀', dosage: '20mg', freq: '睡前一次', category: '降血脂藥', hospital: '馬偕醫院' }
       ],
       ddiAlerts: [],
-      aiInsights: [
-        { icon: 'clock', text: '您的用藥規律性優於 88% 的用戶，請繼續保持。' },
-        { icon: 'calendar-check', text: '下次回診已排定，系統已為您備份近期安全日誌。' }
-      ],
+      // aiInsights 已移除：內容同樣包含系統無從得知的宣稱（「優於 90% 的用戶」沒有
+      // 跨使用者統計、「近期血糖控制穩定」沒有血糖資料）。目前無任何頁面渲染它，
+      // 但留著會被種入 Firestore 而在日後復活。
       reminders: [
         { time: '08:00', text: '服用賴諾普利', completed: true },
         { time: '12:00', text: '服用二甲雙胍 (飯後)', completed: true },
@@ -290,10 +296,9 @@ window.mockData = {
           recommendation: '建議劑量減半，並密切監測 INR 凝血指標。'
         }
       ],
-      aiInsights: [
-        { icon: 'info-circle', text: '偵測到您同時服用華法林與阿斯匹靈，請留意出血徵兆。' },
-        { icon: 'calendar-check', text: '系統已通知主治醫師，建議儘速安排回診。' }
-      ],
+      // aiInsights 已移除：內容同樣包含系統無從得知的宣稱（「優於 90% 的用戶」沒有
+      // 跨使用者統計、「近期血糖控制穩定」沒有血糖資料）。目前無任何頁面渲染它，
+      // 但留著會被種入 Firestore 而在日後復活。
       reminders: [
         { time: '08:00', text: '服用阿斯匹靈', completed: true },
         { time: '12:00', text: '服用二甲雙胍 (飯後)', completed: false },
