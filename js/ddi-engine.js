@@ -27,7 +27,17 @@ window.DdiEngine = (function () {
     contraindicated: { rank: 4, zh: '禁忌併用', cls: 'bg-red-100 text-danger border-red-200' },
     major:           { rank: 3, zh: '重大',     cls: 'bg-red-100 text-danger border-red-200' },
     moderate:        { rank: 2, zh: '中度',     cls: 'bg-orange-100 text-warning border-orange-200' },
-    minor:           { rank: 1, zh: '輕微',     cls: 'bg-amber-50 text-amber-700 border-amber-200' }
+    minor:           { rank: 1, zh: '輕微',     cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+    // 【未分級自成一級，排在輕微之下】
+    // 匯入 DDInter 時發現的問題：該資料庫有 4 萬餘筆交互作用的嚴重度標記為 Unknown。
+    // 原本的做法是把它們當成 moderate 再加一個 severityUnknown 旗標——
+    // 但畫面上斗大地寫著「中度」，旁邊一個小標籤寫「未分級」，
+    // 醫師掃過去看到的就是「中度」。那是引擎替原始資料捏造了一個它沒說的分級。
+    //
+    // 更糟的是排序：moderate 的 rank 是 2，會壓過有明確記載的 minor（rank 1）。
+    // 一筆「不知道多嚴重」的交互作用，排在一筆「已確認輕微」的前面——
+    // 六筆這樣的項目塞進畫面，真正重大的那一筆就被稀釋掉了。這是警示疲勞的製造方式。
+    unknown:         { rank: 0, zh: '未分級', cls: 'bg-slate-100 text-slate-600 border-slate-200' }
   };
 
   // 舊資料與雲端規則可能用中文嚴重度字串。一律正規化到上表的鍵，
@@ -115,7 +125,7 @@ window.DdiEngine = (function () {
         out.push({
           atcA: String(atcA).toUpperCase(),
           atcB: String(atcB).toUpperCase(),
-          severity: sev || 'moderate',
+          severity: sev || 'unknown',
           // 分級對不上時明確標記，讓 UI 可以說明「此規則的嚴重度未分級」，
           // 而不是讓醫師以為系統判定它是中度
           severityUnknown: !sev,

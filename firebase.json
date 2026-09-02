@@ -27,7 +27,8 @@
       ".git/**",
       ".firebase/**",
       "DDINTER2/**",
-      "**/*.csv"
+      "**/*.csv",
+      "tools/**"
     ],
     "headers": [
       {
