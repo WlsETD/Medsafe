@@ -23,7 +23,8 @@
 // v16：管理端顯示 ATC 碼，規則管理改讀引擎實際使用的規則
 // v17：藥物目錄擴充為 26 種；新增 DDInter 藥物庫頁面
 // v18：管理端 ATC 欄改顯示引擎實際使用的碼，並標示不會生效的規則
-const CACHE_VERSION = 'medsafe-static-v18';
+// v19：醫師端交互作用檢測改以病患實際用藥為輸入（原本讀寫死的情境藥單）
+const CACHE_VERSION = 'medsafe-static-v19';
 
 const PRECACHE_URLS = [
   './index.html',

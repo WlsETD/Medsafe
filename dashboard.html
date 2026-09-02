@@ -760,12 +760,27 @@
                 totalUnreadMessages() {
                     return this.conversations.reduce((sum, c) => sum + c.unread, 0);
                 },
+                // 【本頁最重要的一個資料來源】
+                //
+                // 交互作用檢測（startAiCheck）與關係圖都以 currentMeds 為輸入。
+                // 修復前它讀的是 mockData.graphData.scenarios——兩組寫死的藥單，
+                // 由 scenarioFor() 依「病患姓名」決定用哪一組：
+                //   A：Warfarin / Aspirin / Metformin / Amiodarone（僅 patient01 或姓名為劉建國者）
+                //   B：Metformin / Lisinopril / Atorvastatin（其餘所有病患）
+                //
+                // 後果是具體且嚴重的：醫師為 P004（實際服用 Warfarin、Aspirin、
+                // Amiodarone、Metformin）開立 Aspirin 時，系統拿情境 B 的藥單去比對，
+                // 回報「未發現已知交互作用」——而以實際用藥檢測會得到兩組重大交互作用，
+                // 包含 Warfarin × Aspirin。
+                //
+                // 這是 P0-3 那一類錯誤的最後一個藏身處：Phase 3 修好了引擎「怎麼比對」，
+                // Phase 4 修好了「不檢測不准開立」，但都沒有檢查餵給引擎的是不是
+                // 病患的真實用藥。修對了工具，餵錯了資料。
                 currentMeds() {
                     if (!this.selectedPatient) return [];
-                    const data = window.mockData.graphData;
-                    const base = data.nodes.filter(n => data.scenarios[this.scenarioFor(this.selectedPatient)].includes(n.id));
+                    const real = this.selectedPatient.medications || [];
                     const extra = this.extraPrescriptions[this.selectedPatient.id] || [];
-                    return [...base, ...extra];
+                    return [...real, ...extra];
                 }
             },
             async created() {
@@ -862,7 +877,10 @@
                                 id: p.username,
                                 name: (p.profile && p.profile.name) || p.username,
                                 status: status,
-                                lastCheck: (p.stats && p.stats.lastSync) || '-'
+                                lastCheck: (p.stats && p.stats.lastSync) || '-',
+                                // 【必須帶上實際用藥】交互作用檢測與關係圖都以此為輸入。
+                                // 修復前這裡把 medications 丟掉了，下游只好去讀寫死的情境藥單。
+                                medications: p.medications || []
                             };
                         });
 
@@ -1035,7 +1053,11 @@
                     };
                     return themes[name] || { card: 'bg-slate-50 border-slate-100', bar: 'bg-slate-400', text: 'text-slate-600', dot: 'bg-slate-300' };
                 },
-                scenarioFor(p) { return (p && (p.name === '劉建國' || p.id === 'patient01')) ? 'A' : 'B'; },
+                // 已不再用於決定要比對哪些藥（見 currentMeds 的說明）。
+                // 原本以病患姓名判斷情境——姓名不是臨床資料，用它決定要檢查哪些藥物，
+                // 等於讓改名這件事影響用藥安全檢測的結果。
+                // 保留此函式僅為相容三處既有呼叫，回傳值不再有實際作用。
+                scenarioFor(p) { return 'A'; },
                 // 交互作用檢測。實際比對邏輯在 js/ddi-engine.js，本函式只負責
                 // 蒐集輸入、處理非同步的競態、以及把結果交給畫面。
                 async startAiCheck() {
@@ -1407,16 +1429,60 @@
                     this.showFullScreenGraph = !this.showFullScreenGraph;
                     setTimeout(() => { this.initD3Container(this.showFullScreenGraph ? "ddi-full-network-container" : "ddi-network-container"); if (this.activeScenario) this.loadScenario(this.activeScenario); }, 300);
                 },
+                // 交互作用關係圖。改為繪製「這位病患實際在用的藥」，
+                // 而不是兩組寫死的情境藥單。連線是否為衝突，由交互作用引擎判定——
+                // 圖上畫的紅線與下方警示清單因此必然一致，不會各說各話。
+                //
+                // 參數保留是為了相容既有的三處呼叫，實際已不使用。
                 loadScenario(type) {
-                    this.activeScenario = type; const data = window.mockData.graphData; const activeIds = data.scenarios[type];
-                    const nodes = data.nodes.filter(n => activeIds.includes(n.id)).map(d => ({ ...d }));
-                    const conflicts = data.links.filter(l => activeIds.includes(l.source) && activeIds.includes(l.target));
-                    this.graphConflicts = conflicts; let links = [];
-                    conflicts.forEach(c => links.push({ source: c.source, target: c.target, conflict: true }));
+                    this.activeScenario = type;
+                    const meds = this.currentMeds;
+                    const rules = (window.mockData.ddiRules || [])
+                        .concat((window.mockData.graphData || {}).links || []);
+                    const result = window.DdiEngine.analyze(meds, rules);
+
+                    // 節點以引擎解析後的身分為準：同一種藥的不同寫法（Warfarin／
+                    // warfarin sodium／可邁丁）會被歸戶為同一個節點，不會重複出現。
+                    const nodes = [];
+                    const seen = new Set();
+                    result.entries.forEach((e, i) => {
+                        const id = e.atc || e.raw || ("unknown-" + i);
+                        if (seen.has(id)) return;
+                        seen.add(id);
+                        nodes.push({
+                            id: id,
+                            // renderGraph 的節點標籤與提示框沿用既有欄位名，此處對齊。
+                            // 標籤優先顯示中文藥名——這張圖是給醫師在診間快速掃視用的。
+                            label: e.name_zh || e.name_en || e.raw,
+                            name_en: e.name_en || e.raw,
+                            name_zh: e.name_zh,
+                            atc: e.atc,
+                            known: e.known,
+                            // 是否參與任何交互作用，稍後依 findings 回填
+                            conflict: false
+                        });
+                    });
+
+                    const idOf = (entry, idx) => entry.atc || entry.raw || ("unknown-" + idx);
+                    const conflicts = result.findings.map(f => ({
+                        source: idOf(f.a, 0), target: idOf(f.b, 0),
+                        conflict: true, severity: f.severity, severityZh: f.severityZh,
+                        effect: f.effect, recommendation: f.recommendation
+                    }));
+                    this.graphConflicts = conflicts;
+                    // 節點的紅色與否，由它是否出現在任何一條衝突連線中決定——
+                    // 而不是由資料自帶的旗標決定。圖上的顏色因此必然與引擎的結論一致。
+                    for (const nd of nodes) {
+                        nd.conflict = conflicts.some(c => c.source === nd.id || c.target === nd.id);
+                    }
+
+                    const links = conflicts.slice();
                     for (let i = 0; i < nodes.length; i++) {
                         for (let j = i + 1; j < nodes.length; j++) {
-                            if (!conflicts.some(c => (c.source === nodes[i].id && c.target === nodes[j].id) || (c.source === nodes[j].id && c.target === nodes[i].id)))
-                                links.push({ source: nodes[i].id, target: nodes[j].id, conflict: false });
+                            const a = nodes[i].id, b = nodes[j].id;
+                            if (!conflicts.some(c => (c.source === a && c.target === b) || (c.source === b && c.target === a))) {
+                                links.push({ source: a, target: b, conflict: false });
+                            }
                         }
                     }
                     this.renderGraph(nodes, links);
@@ -1487,9 +1553,9 @@
                     const lk = this.g.append("g").selectAll("line").data(links).join("line").attr("stroke", d => d.conflict ? "#C0392B" : "#1E8449").attr("stroke-width", d => d.conflict ? 3 : 1).attr("stroke-dasharray", d => d.conflict ? "0" : "4 2");
                     const nd = this.g.append("g").selectAll(".node").data(nodes).join("g").call(d3.drag().on("start", (e, d) => { if (!e.active) this.simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }).on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; }).on("end", (e, d) => { if (!e.active) this.simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
                     nd.append("circle").attr("r", 25).attr("fill", d => d.conflict ? "#C0392B" : "#1E8449").attr("stroke", "#fff");
-                    nd.append("text").attr("text-anchor", "middle").attr("dy", ".3em").attr("fill", "#fff").style("font-size", "7px").text(d => d.id);
+                    nd.append("text").attr("text-anchor", "middle").attr("dy", ".3em").attr("fill", "#fff").style("font-size", "7px").text(d => d.label || d.name_en || d.id);
                     const tt = d3.select("#graph-tooltip");
-                    nd.on("mouseover", (e, d) => tt.style("visibility", "visible").html(`<b>${d.name_en}</b><br>${d.hospital}`)).on("mousemove", (e) => tt.style("top", (e.pageY-10)+"px").style("left", (e.pageX+15)+"px")).on("mouseout", () => tt.style("visibility", "hidden"));
+                    nd.on("mouseover", (e, d) => tt.style("visibility", "visible").html(`<b>${d.name_zh || d.name_en}</b><br>${d.name_en}<br>${d.atc || '本系統目錄未收錄'}`)).on("mousemove", (e) => tt.style("top", (e.pageY-10)+"px").style("left", (e.pageX+15)+"px")).on("mouseout", () => tt.style("visibility", "hidden"));
                     this.simulation.on("tick", () => { lk.attr("x1", d=>d.source.x).attr("y1", d=>d.source.y).attr("x2", d=>d.target.x).attr("y2", d=>d.target.y); nd.attr("transform", d=>`translate(${d.x},${d.y})`); });
                 }
             }
