@@ -35,6 +35,10 @@ window.chatStore = {
   // 這個範圍限制不只是效率考量——安全規則要求查詢自帶 participants 條件，
   // 少了它整個查詢會被拒絕，醫師無法列舉他人的對話。
   init(role, username) {
+    // 可重入：病患端在取得主治醫師帳號後會再呼叫一次（participants 必須在
+    // 建立當下就寫對）。若不先解除前一批監聽，_convUnsub 會被覆寫而洩漏，
+    // 舊的監聽將持續運作到頁面卸載為止，且兩批快照會互相覆蓋快取。
+    this.dispose();
     this._me = { username: username, role: role };
     if (!window.db) return Promise.resolve(false);
     const col = window.db.collection('conversations');

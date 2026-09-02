@@ -513,7 +513,7 @@
                     <div class="p-8 bg-slate-50 border-t border-slate-100 space-y-4 shrink-0">
                         <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left">
                             <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 資料上傳警告</p>
-                            <p class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">上傳目標為 HL7 公開測試伺服器（<span class="font-mono">hapi.fhir.org</span>），供全球開發者共用、任何人皆可讀取。因此本系統<strong>不會送出您的姓名</strong>：改以固定化名代表您，出生日期模糊為 5 年級距的年份，僅用藥品項與劑量會被上傳，用於展示跨院資料交換格式。</p>
+                            <p v-if="fhirIsPublic" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">上傳目標為 HL7 公開測試伺服器（<span class="font-mono">hapi.fhir.org</span>），供全球開發者共用、任何人皆可讀取。因此本系統<strong>不會送出您的姓名</strong>：改以固定化名代表您，出生日期模糊為 5 年級距的年份，僅用藥品項與劑量會被上傳，用於展示跨院資料交換格式。</p>
                             <p class="text-[11px] font-bold text-red-600 mt-1.5 leading-relaxed">但這<strong>不等於去識別化</strong>：化名由帳號名稱以公開演算法推導，任何人讀了本站原始碼都能還原對應關係；藥品組合本身也可能足以指認個人。<strong>請勿以真實個人資料操作本功能。</strong></p>
                         </div>
                         <div class="flex justify-end">
@@ -682,7 +682,7 @@
                     <div class="p-8 md:p-10 bg-slate-50 border-t border-slate-100 space-y-4 shrink-0 text-left">
                         <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
                             <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 資料上傳警告</p>
-                            <p class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">按下確認會以 FHIR Flag 資源，將本次交互作用的藥品名稱上傳至 HL7 公開測試伺服器（<span class="font-mono">hapi.fhir.org</span>）。該伺服器全球任何人皆可讀取。您的身分以固定化名代表，<strong>不會送出姓名或系統帳號</strong>；但化名由公開演算法推導、可被還原，故此非去識別化，請勿以真實資料操作。</p>
+                            <p v-if="fhirIsPublic" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">按下確認會以 FHIR Flag 資源，將本次交互作用的藥品名稱上傳至 HL7 公開測試伺服器（<span class="font-mono">hapi.fhir.org</span>）。該伺服器全球任何人皆可讀取。您的身分以固定化名代表，<strong>不會送出姓名或系統帳號</strong>；但化名由公開演算法推導、可被還原，故此非去識別化，請勿以真實資料操作。</p>
                         </div>
                         <div class="flex justify-end">
                         <button @click="confirmDdiAwareness()" :disabled="confirmingAwareness" class="bg-danger text-white font-black px-12 py-5 rounded-[24px] shadow-2xl shadow-danger/20 hover:scale-[1.03] active:scale-[0.97] transition-all uppercase tracking-widest text-xs flex justify-center items-center gap-3 disabled:opacity-60 disabled:scale-100 disabled:cursor-not-allowed">
@@ -770,6 +770,7 @@
     <script src="js/db-service.js"></script>
     <script src="js/mockData.js"></script>
     <script src="js/drug-catalog.js"></script>
+    <script src="js/fhir-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/chatStore.js"></script>
     <script src="js/notify.js"></script>
@@ -817,6 +818,11 @@
                     reminders: patientData.reminders,
                     showInsightsModal: false,
                     syncing: false,
+                    // FHIR 目標位址供介面顯示。警告文字不可寫死——
+                    // 管理者換成自架伺服器後，畫面仍在恐嚇使用者資料會外流，
+                    // 而一個永遠亮著的警告燈，使用者很快就學會忽略它。
+                    fhirBaseUrl: '',
+                    fhirIsPublic: true,
                     chatMessages: [],
                     chatInput: '',
                     awaitingReply: false,
@@ -898,6 +904,11 @@
                     await this.loadConsents();
                     // 對話改由 Firestore 承載，必須先初始化才能收發（P1-4）
                     this.chatReady = await window.chatStore.init('patient', this._username);
+                    // FHIR Base URL 改為實際讀取管理端設定（Phase 5）。
+                    // 原本三個端點各自硬寫 hapi.fhir.org，管理後台那個欄位從未生效。
+                    const _fhirBase = await window.FhirClient.init();
+                    this.fhirBaseUrl = _fhirBase;
+                    this.fhirIsPublic = window.FhirClient.isPublicSandbox();
                     const data = await DbService.getPatientData(this._username);
                     if (data) {
                         this.profile = data.profile;
@@ -1050,21 +1061,21 @@
                                 })
                             ]
                         };
-                        const res = await fetch('https://hapi.fhir.org/baseR4', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/fhir+json' },
-                            body: JSON.stringify(bundle)
-                        });
-                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        // 送到 base 位址代表這是一筆 Bundle 交易。
+                        // FhirClient 內建 12 秒逾時：原本的 fetch 沒有任何逾時，
+                        // 而目標是全球共用的公開沙箱，尖峰時段時常無回應——
+                        // 使用者會看著「同步中…」轉上好幾分鐘，除了重新整理沒有別的辦法。
+                        const res = await window.FhirClient.send('', bundle);
+                        if (!res.ok) throw new Error(res.reason);
                         this.showInsightsModal = false;
                         this.triggerToast('雲端同步成功', `已將 ${this.medications.length} 筆用藥資料以化名 ${ident.value} 上傳（未送出姓名）`);
 
                         // 讀回驗證：資源 ID 現由伺服器配發，故改以 identifier 搜尋而非猜測 ID
                         try {
                             const q = encodeURIComponent(`${ident.system}|${ident.value}`);
-                            const readBack = await fetch(`https://hapi.fhir.org/baseR4/Patient?identifier=${q}`, { headers: { 'Accept': 'application/fhir+json' } });
+                            const readBack = await window.FhirClient.search(`/Patient?identifier=${q}`);
                             if (readBack.ok) {
-                                const bundleBack = await readBack.json();
+                                const bundleBack = readBack.data || {};
                                 const found = bundleBack.entry && bundleBack.entry[0] && bundleBack.entry[0].resource;
                                 if (found) {
                                     setTimeout(() => this.triggerToast('雲端讀回驗證成功', `已確認化名個案 ${ident.value} 存在於 FHIR 伺服器（Patient/${found.id}）`), 3200);
@@ -1072,7 +1083,8 @@
                             }
                         } catch (e) { /* 讀回驗證失敗不影響主流程 */ }
                     } catch (e) {
-                        this.triggerToast('同步失敗', '無法連線至 FHIR 伺服器，請稍後再試');
+                        console.error('雲端同步失敗：', e);
+                        this.triggerToast('同步失敗', (e && e.message) || '無法連線至 FHIR 伺服器，請稍後再試');
                     } finally {
                         this.syncing = false;
                     }
@@ -1102,15 +1114,15 @@
                             // 以邏輯參照指向去識別化個案，不外送真實 ID，也避免懸空參照
                             subject: { identifier: ident, type: 'Patient', display: deid.displayName(pseudo) }
                         };
-                        const res = await fetch('https://hapi.fhir.org/baseR4/Flag', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/fhir+json' },
-                            body: JSON.stringify(flagResource)
-                        });
-                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        const res = await window.FhirClient.send('Flag', flagResource);
+                        if (!res.ok) throw new Error(res.reason);
                         this.triggerToast('風險確認完成', `已記錄您對 ${allAlerts.length} 項交互風險的知悉（以化名上傳，未送出姓名）`);
                     } catch (e) {
-                        this.triggerToast('上傳失敗', '網路異常，請稍後再試');
+                        // 原本一律顯示「網路異常」——但失敗原因可能是逾時、伺服器 5xx
+                        // 或資源格式問題，各自對應不同的處置。把全部原因壓成同一句話，
+                        // 等於要使用者自己猜。
+                        console.error('知情同意上傳失敗：', e);
+                        this.triggerToast('上傳失敗', (e && e.message) || '請稍後再試');
                     } finally {
                         this.confirmingAwareness = false;
                     }
@@ -1161,8 +1173,6 @@
                         });
                         await DbService.grantConsent(this._username, insurer, this.consentDays);
                         await this.loadConsents();
-                    // 對話改由 Firestore 承載，必須先初始化才能收發（P1-4）
-                    this.chatReady = await window.chatStore.init('patient', this._username);
                         this.consentInsurer = '';
                         this.triggerToast('已授權', insurer + ' 可於期限內查閱您的核保摘要，您隨時可以撤回。');
                     } catch (e) {
@@ -1178,8 +1188,6 @@
                     try {
                         await DbService.revokeConsent(this._username, c.insurer);
                         await this.loadConsents();
-                    // 對話改由 Firestore 承載，必須先初始化才能收發（P1-4）
-                    this.chatReady = await window.chatStore.init('patient', this._username);
                         this.triggerToast('已撤回授權', c.insurer + ' 已無法再查閱您的資料。');
                     } catch (e) {
                         console.error('撤回失敗：', e);

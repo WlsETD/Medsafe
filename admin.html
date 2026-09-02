@@ -556,12 +556,13 @@
                             <h3 class="text-xl font-black text-title italic">FHIR INFRASTRUCTURE</h3>
                         </div>
                         <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 規劃中，尚未生效</p>
-                            <p class="text-[10px] font-bold text-amber-600 mt-1">目前各端點的 FHIR Base URL 仍寫死為 <span class="font-mono">hapi.fhir.org/baseR4</span>（HL7 公開測試伺服器），此處的設定值僅供「測試連線」按鈕使用，尚未套用至實際同步流程。Access Key 亦尚未接上驗證機制。</p>
+                            <p class="text-[10px] font-black text-primary uppercase tracking-widest">FHIR Base URL 已生效</p>
+                            <p class="text-[10px] font-bold text-slate-500 mt-1">此處設定的位址會實際套用至病患端、醫師端與核保端的所有 FHIR 呼叫（僅接受 <span class="font-mono">https://</span> 開頭的位址）。留空則沿用預設的 <span class="font-mono">hapi.fhir.org/baseR4</span>。
+                                <br><span class="text-amber-700 font-black">注意：預設值為 HL7 公開測試伺服器，全球任何人皆可讀寫，且資料無法確保刪除。正式使用前應改為自架或具存取控制的 FHIR Server。</span>
+                                <br><span class="text-amber-700 font-black">Access Key 欄位已移除：純前端應用送出的每個請求都由使用者的瀏覽器發出，任何金鑰都必須先送到瀏覽器，因此對該使用者可見；存進 admin_data 更等於發給每一位登入者。要對受保護的伺服器做認證存取，必須由後端代理持有憑證。</span></p>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div class="space-y-2"><label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">FHIR Base URL<span class="ml-2 text-amber-600 normal-case">(規劃中)</span></label><input v-model="systemSettings.fhirUrl" type="text" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-title focus:border-primary/20 outline-none transition-all"></div>
-                            <div class="space-y-2"><label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Access Key<span class="ml-2 text-amber-600 normal-case">(規劃中)</span></label><input v-model="systemSettings.fhirApiKey" type="password" autocomplete="off" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-title focus:border-primary/20 outline-none transition-all"></div>
+                            <div class="space-y-2"><label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">FHIR Base URL</label><input v-model="systemSettings.fhirUrl" type="text" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-title focus:border-primary/20 outline-none transition-all"></div>
                         </div>
                         <div class="pt-4 flex items-center justify-between bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100">
                             <div class="flex items-center gap-3"><div :class="['w-3 h-3 rounded-full', isTestingConnection ? 'bg-warning animate-ping' : (fhirConnectionOk === false ? 'bg-danger' : 'bg-success')]"></div><span class="text-sm font-black text-slate-600 uppercase">狀態：{{ fhirConnectionOk === false ? '連線失敗' : (fhirConnectionOk === true ? '連線正常' : '尚未測試') }}</span></div>
@@ -576,7 +577,7 @@
                             <h3 class="text-xl font-black text-title italic">AI ANALYSIS GUARD</h3>
                         </div>
                         <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 規劃中，尚未生效</p>
+                            <p class="text-[10px] font-black text-primary uppercase tracking-widest">FHIR Base URL 已生效</p>
                             <p class="text-[10px] font-bold text-amber-600 mt-1">本卡片的設定值目前僅儲存於資料庫，尚未接入處方開立流程。實際的交互作用比對使用固定的規則庫，不受敏感度門檻影響；系統目前<strong>不會</strong>阻擋任何處方提交。</p>
                         </div>
                         <div class="space-y-6">
@@ -829,7 +830,6 @@
                     // 系統設置相關
                     systemSettings: {
                         fhirUrl: 'https://hapi.fhir.org/baseR4',
-                        fhirApiKey: '••••••••••••••••',
                         aiSensitivity: 85,
                         autoBlock: true,
                         isMaintenanceMode: false,

@@ -529,7 +529,7 @@
                     <div class="p-8 bg-slate-50 border-t border-slate-100 space-y-4">
                         <div class="p-3 bg-amber-50 border border-amber-200 rounded-2xl">
                             <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 資料上傳警告</p>
-                            <p class="text-[10px] font-bold text-amber-600 mt-1">處方會上傳至 HL7 公開測試伺服器（<span class="font-mono">hapi.fhir.org</span>），該伺服器全球任何人皆可讀寫且無存取控制。病患身分以化名送出、不含姓名，但<strong>藥品名稱與劑量為明文</strong>，請勿輸入可識別個人的自由文字。</p>
+                            <p v-if="fhirIsPublic" class="text-[10px] font-bold text-amber-600 mt-1">處方會上傳至 HL7 公開測試伺服器（<span class="font-mono">hapi.fhir.org</span>），該伺服器全球任何人皆可讀寫且無存取控制。病患身分以化名送出、不含姓名，但<strong>藥品名稱與劑量為明文</strong>，請勿輸入可識別個人的自由文字。</p>
                         </div>
                         <div class="flex gap-4">
                             <button @click="showPrescriptionModal = false; resetAiCheck()" class="flex-1 py-4 font-black text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest text-[10px]">Cancel</button>
@@ -649,6 +649,7 @@
     <script src="js/mockData.js"></script>
     <script src="js/drug-catalog.js"></script>
     <script src="js/ddi-engine.js"></script>
+    <script src="js/fhir-client.js"></script>
     <script src="js/audit.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/chatStore.js"></script>
@@ -682,6 +683,11 @@
                     ddiRuleSource: 'local',
                     ddiRulesUnavailable: false,
                     ddiResult: null,
+                    // FHIR 目標位址供介面顯示。警告文字不可寫死——
+                    // 管理者換成自架伺服器後，畫面仍在恐嚇使用者資料會外流，
+                    // 而一個永遠亮著的警告燈，使用者很快就學會忽略它。
+                    fhirBaseUrl: '',
+                    fhirIsPublic: true,
                     // 處方安全閘門的狀態（Phase 4）
                     showOverrideModal: false,
                     overrideReasonChoice: '',
@@ -773,6 +779,10 @@
                     console.error('處方攔截政策讀取失敗：', e);
                     this.autoBlockPolicyUnknown = true;
                 }
+                // FHIR Base URL 改為實際讀取管理端設定（Phase 5）
+                const _fhirBase = await window.FhirClient.init();
+                this.fhirBaseUrl = _fhirBase;
+                this.fhirIsPublic = window.FhirClient.isPublicSandbox();
                 this._charts = {};
                 await waitForAuthReady();
                 // 維護模式查詢失敗過去是一個空的 catch（稽核報告 P1-2）：查不到就當作
@@ -1205,10 +1215,7 @@
                         const deid = DbService.fhirDeid;
                         const pseudo = await deid.getOrCreate(pid);
                         const ident = deid.identifier(pseudo);
-                        const res = await fetch('https://hapi.fhir.org/baseR4/MedicationRequest', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/fhir+json' },
-                            body: JSON.stringify({
+                        const res = await window.FhirClient.send('MedicationRequest', {
                                 resourceType: 'MedicationRequest',
                                 status: 'active',
                                 intent: 'order',
@@ -1219,9 +1226,11 @@
                                 requester: { display: '本院醫師（展示用，未帶入真實執業執照號碼）' },
                                 authoredOn: new Date().toISOString().slice(0, 10),
                                 dosageInstruction: [{ text: this.newRx.dosage + '，' + (this.newRx.instruction || '') }]
-                            })
                         });
-                        if (!res.ok) throw new Error('HTTP ' + res.status);
+                        // FhirClient 恆回傳結構化結果、不拋例外，且已內建逾時中止。
+                        // 原本的 fetch 沒有逾時：公開沙箱無回應時，畫面會一直停在
+                        // 處理中好幾分鐘，核心功能看起來就是壞的。
+                        if (!res.ok) throw new Error(res.reason);
                     } catch (e) {
                         console.error('FHIR 同步失敗：', e);
                         this.triggerToast('FHIR 同步失敗',

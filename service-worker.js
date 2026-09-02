@@ -12,7 +12,8 @@
 // v5：Phase 4 處方安全閘門與稽核軌跡（新增 js/audit.js，dashboard/admin 接上稽核）
 // v6：P1-6 病患同意機制（保險端改讀 patient_summaries，patient/insurance 頁面改版）
 // v7：P1-4 醫病對話改由 Firestore 承載（js/chatStore.js 全檔改寫）
-const CACHE_VERSION = 'medsafe-static-v7';
+// v8：Phase 5 FHIR 連線層（新增 js/fhir-client.js，逾時中止與 Base URL 設定生效）
+const CACHE_VERSION = 'medsafe-static-v8';
 
 const PRECACHE_URLS = [
   './index.html',
@@ -30,6 +31,7 @@ const PRECACHE_URLS = [
   './js/drug-catalog.js',
   './js/ddi-engine.js',
   './js/audit.js',
+  './js/fhir-client.js',
   './js/firebase-config.js',
   './js/mockData.js',
   './js/notify.js',

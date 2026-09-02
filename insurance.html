@@ -713,6 +713,7 @@
     <script src="js/db-service.js"></script>
     <script src="js/mockData.js"></script>
     <script src="js/drug-catalog.js"></script>
+    <script src="js/fhir-client.js"></script>
     <script src="js/auth.js"></script>
     <script>
         const { createApp, markRaw } = Vue;
@@ -743,6 +744,15 @@
                     consentLoadFailed: false,
                     activatingCare: false,
                     fhirCheckStatus: 'idle',
+                    // FHIR 目標位址供介面顯示。警告文字不可寫死——
+                    // 管理者換成自架伺服器後，畫面仍在恐嚇使用者資料會外流，
+                    // 而一個永遠亮著的警告燈，使用者很快就學會忽略它。
+                    fhirBaseUrl: '',
+                    fhirIsPublic: true,
+                    // 查核失敗的具體原因（逾時／伺服器錯誤／連線失敗各有不同處置）
+                    fhirCheckError: '',
+                    // 查核失敗的具體原因（逾時／伺服器錯誤／連線失敗各有不同處置）
+                    fhirCheckError: '',
                     fhirCheckResult: null,
                     menuItems: [
                         { name: 'Dashboard', label: '總覽儀表板', icon: Icons.Dashboard },
@@ -927,6 +937,10 @@
                     this.consentedCount = 0;
                     this.consentLoadFailed = true;
                 }
+                // FHIR Base URL 改為實際讀取管理端設定（Phase 5）
+                const _fhirBase = await window.FhirClient.init();
+                this.fhirBaseUrl = _fhirBase;
+                this.fhirIsPublic = window.FhirClient.isPublicSandbox();
                 try {
                     this.careCases = await DbService.getCareCases();
                 } catch (e) {
@@ -1035,17 +1049,18 @@
                         }
                         const ident = DbService.fhirDeid.identifier(pseudo);
                         const q = encodeURIComponent(`${ident.system}|${ident.value}`);
-                        const res = await fetch(`https://hapi.fhir.org/baseR4/Patient?identifier=${q}&_count=5`, {
-                            headers: { 'Accept': 'application/fhir+json' }
-                        });
-                        if (!res.ok) throw new Error('HTTP ' + res.status);
-                        const bundle = await res.json();
+                        const res = await window.FhirClient.search(`/Patient?identifier=${q}&_count=5`);
+                        if (!res.ok) throw new Error(res.reason);
+                        const bundle = res.data || {};
                         this.fhirCheckResult = {
                             total: bundle.total ?? (bundle.entry ? bundle.entry.length : 0),
                             checkedAt: new Date().toLocaleTimeString('zh-TW')
                         };
                         this.fhirCheckStatus = 'done';
                     } catch (e) {
+                        // 失敗原因要留給使用者看：逾時與伺服器錯誤的處置方式不同
+                        console.error('FHIR 查核失敗：', e);
+                        this.fhirCheckError = (e && e.message) || '';
                         this.fhirCheckStatus = 'error';
                     }
                 },
