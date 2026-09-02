@@ -3,6 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1A5276">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="MedSafe">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     <title>醫師整合工作站 | MedSafe</title>
     <link rel="icon" type="image/png" href="images/LOGO.png">
     <!-- CDNs -->
@@ -81,6 +88,29 @@
         </div>
         <!-- Mobile Sidebar Overlay -->
         <transition name="fade">
+            <div v-if="showPasswordModal" role="dialog" aria-modal="true" class="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-md" @click="closePasswordModal()"></div>
+                <div class="bg-white rounded-[32px] w-full max-w-md shadow-2xl relative z-10 overflow-hidden text-left">
+                    <div class="p-8 border-b border-slate-100">
+                        <h3 class="text-xl font-black text-title">變更密碼</h3>
+                        <p class="text-[11px] font-bold text-lightText mt-1">帳號：{{ user.username }}</p>
+                    </div>
+                    <div class="p-8 space-y-4">
+                        <div v-if="passwordError" class="bg-red-50 text-danger text-xs font-bold p-3 rounded-xl border border-red-100">{{ passwordError }}</div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">目前密碼</label><input v-model="passwordForm.current" type="password" autocomplete="current-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">新密碼（至少 8 碼）</label><input v-model="passwordForm.next" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">確認新密碼</label><input v-model="passwordForm.confirm" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <p class="text-[10px] font-bold text-slate-400 leading-relaxed">變更後其他已登入的裝置不會立即失效，其既有工作階段會持續到自然過期為止。</p>
+                    </div>
+                    <div class="p-6 bg-slate-50 flex gap-3 border-t border-slate-100">
+                        <button @click="closePasswordModal()" class="flex-1 py-3 font-black text-slate-400 uppercase text-[10px]">取消</button>
+                        <button @click="submitPasswordChange" :disabled="changingPassword" class="flex-[2] bg-primary text-white font-black rounded-2xl py-3 text-xs uppercase tracking-widest disabled:opacity-50">{{ changingPassword ? '變更中...' : '更新密碼' }}</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <transition name="fade">
             <div v-if="showMobileMenu" @click="showMobileMenu = false" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[60] lg:hidden"></div>
         </transition>
         
@@ -120,11 +150,12 @@
 
             <div class="p-6 border-t border-white/5 mt-auto">
                 <div class="flex items-center gap-4 text-white">
-                    <img src="https://ui-avatars.com/api/?name=Doctor&background=2DD4BF&color=fff" class="w-10 h-10 rounded-xl border border-white/10 shrink-0">
+                    <img :src="avatarUrl('醫', '#2DD4BF')" class="w-10 h-10 rounded-xl border border-white/10 shrink-0">
                     <div class="flex-1 overflow-hidden text-left">
                         <div class="text-xs font-black truncate">{{ user.name }}</div>
                         <div class="text-[9px] font-bold text-slate-500">主治醫師 • 已連線</div>
                     </div>
+                    <button @click="openPasswordModal()" title="變更密碼" aria-label="變更密碼" class="text-slate-500 hover:text-primary shrink-0 mr-2"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg></button>
                     <button @click="logout" class="text-slate-500 hover:text-danger shrink-0"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg></button>
                 </div>
             </div>
@@ -256,7 +287,7 @@
                         <div class="lg:w-80 shrink-0 bg-white p-8 rounded-[40px] shadow-premium border border-slate-200 relative flex flex-col items-center">
                             <div class="absolute top-0 left-0 clinical-gradient h-2 w-full rounded-t-[40px]"></div>
                             <div class="w-32 h-32 rounded-[40px] clinical-gradient p-1.5 shadow-2xl mb-6 mt-4">
-                                <img :src="'https://ui-avatars.com/api/?name=' + selectedPatient.name + '&background=fff&color=1A5276'" class="w-full h-full rounded-[36px] object-cover">
+                                <img :src="avatarUrl(selectedPatient.name, '#ffffff', '#1A5276')" class="w-full h-full rounded-[36px] object-cover">
                             </div>
                             <h2 class="text-2xl font-black text-slate-800">{{ selectedPatient.name }}</h2>
                             <p class="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">{{ selectedPatient.id }}</p>
@@ -272,7 +303,7 @@
                                 </div>
                             </div>
                             
-                            <button @click="showPrescriptionModal = true" class="w-full py-4 clinical-gradient text-white font-black rounded-3xl shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm mt-auto">
+                            <button @click="resetAiCheck(); showPrescriptionModal = true" class="w-full py-4 clinical-gradient text-white font-black rounded-3xl shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm mt-auto">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
                                 開立雲端處方
                             </button>
@@ -390,7 +421,7 @@
         <!-- 4. ADD PRESCRIPTION MODAL -->
         <transition name="fade">
             <div v-if="showPrescriptionModal" role="dialog" aria-modal="true" class="fixed inset-0 z-[250] flex items-center justify-center p-4">
-                <div class="absolute inset-0 bg-slate-950/80 backdrop-blur-md" @click="showPrescriptionModal = false"></div>
+                <div class="absolute inset-0 bg-slate-950/80 backdrop-blur-md" @click="showPrescriptionModal = false; resetAiCheck()"></div>
                 <div class="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl relative z-10 overflow-hidden border border-slate-100 animate-fade-in">
                     <div class="clinical-gradient p-8 text-white relative">
                         <div class="flex justify-between items-center relative z-10">
@@ -398,7 +429,7 @@
                                 <h3 class="text-2xl font-black italic tracking-tighter uppercase">New Prescription</h3>
                                 <p class="text-white/70 text-[10px] font-black uppercase mt-1 tracking-widest">Target: {{ selectedPatient ? selectedPatient.name : 'Unknown' }}</p>
                             </div>
-                            <button @click="showPrescriptionModal = false" aria-label="關閉" class="text-white/50 hover:text-white transition-colors"><svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                            <button @click="showPrescriptionModal = false; resetAiCheck()" aria-label="關閉" class="text-white/50 hover:text-white transition-colors"><svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
                         </div>
                     </div>
                     
@@ -406,11 +437,11 @@
                         <div class="grid grid-cols-2 gap-6">
                             <div>
                                 <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">藥品名稱</label>
-                                <input v-model="newRx.drugName" type="text" placeholder="輸入藥名..." class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-primary/20 focus:bg-white transition-all outline-none">
+                                <input v-model="newRx.drugName" :disabled="aiCheckStatus === 'checking'" type="text" placeholder="輸入藥名..." class="w-full disabled:opacity-60 bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-primary/20 focus:bg-white transition-all outline-none">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">劑量</label>
-                                <input v-model="newRx.dosage" type="text" placeholder="如 500mg" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-primary/20 focus:bg-white transition-all outline-none">
+                                <input v-model="newRx.dosage" :disabled="aiCheckStatus === 'checking'" type="text" placeholder="如 500mg" class="w-full disabled:opacity-60 bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-primary/20 focus:bg-white transition-all outline-none">
                             </div>
                         </div>
                         <div>
@@ -418,7 +449,7 @@
                             <textarea v-model="newRx.instruction" rows="3" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-primary/20 focus:bg-white transition-all outline-none" placeholder="輸入詳細服用方法與警語..."></textarea>
                         </div>
 
-                        <div class="rounded-3xl p-6 transition-all duration-500 border-2" :class="aiCheckStatus === 'idle' ? 'bg-slate-50 border-slate-100' : (aiCheckStatus === 'checking' ? 'bg-primary/5 border-primary/10' : (aiCheckStatus === 'safe' ? 'bg-success/5 border-success/20' : 'bg-danger/5 border-danger/20'))">
+                        <div class="rounded-3xl p-6 transition-all duration-500 border-2" :class="aiCheckStatus === 'idle' ? 'bg-slate-50 border-slate-100' : (aiCheckStatus === 'checking' ? 'bg-primary/5 border-primary/10' : (aiCheckStatus === 'unknown' ? 'bg-slate-50 border-slate-200' : 'bg-danger/5 border-danger/20'))">
                             <div v-if="aiCheckStatus === 'idle'" class="flex flex-col items-center gap-3">
                                 <button @click="startAiCheck" :disabled="!newRx.drugName.trim()" class="px-10 py-3 bg-primary text-white font-black rounded-xl hover:scale-105 transition-all text-xs shadow-lg shadow-primary/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100">啟動 AI 安全檢測</button>
                                 <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">{{ newRx.drugName.trim() ? '比對跨院 FHIR 處方紀錄' : '請先輸入藥品名稱' }}</p>
@@ -427,28 +458,38 @@
                                 <div class="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                                 <p class="text-[10px] font-black text-primary animate-pulse uppercase tracking-widest">Scanning FHIR Records...</p>
                             </div>
-                            <div v-else-if="aiCheckStatus === 'safe'" class="flex items-start gap-4 animate-fade-in">
-                                <div class="w-12 h-12 bg-success rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-success/20"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg></div>
+                            <div v-else-if="aiCheckStatus === 'unknown'" class="flex items-start gap-4 animate-fade-in">
+                                <div class="w-12 h-12 bg-slate-400 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
                                 <div>
-                                    <h4 class="font-black text-success text-sm tracking-tighter uppercase italic">No Conflict Detected</h4>
-                                    <p class="text-[11px] font-bold text-slate-600 mt-1">未與 {{ selectedPatient ? selectedPatient.name : '病患' }} 目前跨院用藥清單偵測到已知交互作用。</p>
+                                    <h4 class="font-black text-slate-600 text-sm tracking-tighter uppercase italic">No Known Interaction Found</h4>
+                                    <p v-if="ddiRulesUnavailable" class="text-[11px] font-black text-white bg-danger rounded-xl px-3 py-2 mt-1">⚠️ 雲端規則庫讀取失敗，本次僅以離線內建規則比對，涵蓋範圍顯著縮小，請勿據此判斷安全性。</p>
+                                    <p class="text-[11px] font-bold text-slate-600 mt-1">本系統知識庫（共 {{ ddiRuleCount }} 組規則{{ ddiRuleSource === 'local' ? '，離線內建' : '' }}）未發現 {{ checkedDrugName }} 與 {{ checkedPatientName }} 現有用藥的已知交互作用。</p>
+                                    <p class="text-[11px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2">⚠️ 本結果不代表用藥安全，不可取代醫師與藥師之專業判斷。知識庫涵蓋範圍有限，且僅以藥品英文名稱比對。</p>
                                 </div>
                             </div>
                             <div v-else class="flex items-start gap-4 animate-fade-in">
                                 <div class="w-12 h-12 bg-danger rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-danger/20"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
                                 <div>
                                     <h4 class="font-black text-danger text-sm tracking-tighter uppercase italic">High Risk Conflict Detected</h4>
-                                    <p class="text-[11px] font-bold text-slate-600 mt-1">{{ newRx.drugName }} 與 {{ selectedPatient ? selectedPatient.name : '病患' }} 現有處方存在嚴重交互作用，請謹慎評估。</p>
+                                    <p class="text-[11px] font-bold text-slate-600 mt-1">{{ checkedDrugName }} 與 {{ checkedPatientName }} 現有處方存在已知交互作用，請謹慎評估。</p>
+                                    <p class="text-[11px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2">⚠️ 本警示為臨床決策輔助資訊，不可取代醫師與藥師之專業判斷。</p>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="p-8 bg-slate-50 flex gap-4 border-t border-slate-100">
-                        <button @click="showPrescriptionModal = false" class="flex-1 py-4 font-black text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest text-[10px]">Cancel</button>
-                        <button @click="submitPrescription" :disabled="aiCheckStatus === 'checking' || !newRx.drugName.trim() || !newRx.dosage.trim()" class="flex-[2] py-4 clinical-gradient text-white font-black rounded-3xl shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-xs disabled:opacity-50">
-                            {{ aiCheckStatus === 'risk' ? '無視 AI 警告並強制同步' : '確認開立並同步 FHIR' }}
-                        </button>
+                    <div class="p-8 bg-slate-50 border-t border-slate-100 space-y-4">
+                        <div class="p-3 bg-amber-50 border border-amber-200 rounded-2xl">
+                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 資料上傳警告</p>
+                            <p class="text-[10px] font-bold text-amber-600 mt-1">處方會上傳至 HL7 公開測試伺服器（<span class="font-mono">hapi.fhir.org</span>），該伺服器全球任何人皆可讀寫且無存取控制。病患身分以化名送出、不含姓名，但<strong>藥品名稱與劑量為明文</strong>，請勿輸入可識別個人的自由文字。</p>
+                        </div>
+                        <div class="flex gap-4">
+                            <button @click="showPrescriptionModal = false; resetAiCheck()" class="flex-1 py-4 font-black text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest text-[10px]">Cancel</button>
+                            <p v-if="aiCheckStatus === 'idle'" class="text-[10px] font-bold text-amber-600 mb-2">本次未執行交互作用檢測。系統不會阻擋開立，也不會記錄此次未檢測的理由。</p>
+                            <button @click="submitPrescription" :disabled="aiCheckStatus === 'checking' || !newRx.drugName.trim() || !newRx.dosage.trim()" class="flex-[2] py-4 clinical-gradient text-white font-black rounded-3xl shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-xs disabled:opacity-50">
+                                {{ aiCheckStatus === 'risk' ? '已知悉風險，仍要開立' : '確認開立並同步 FHIR' }}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -510,11 +551,14 @@
             Chart: markRaw({ template: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>` }),
         };
 
-        createApp({
+        const app = createApp({
             data() {
-                const user = requireRole('doctor') || { name: '訪客醫師' };
+                // 身分已在掛載前由 verifyRole('doctor') 向 Firestore 驗證過
+                const user = getVerifiedUser();
                 const docData = window.mockData.doctor;
                 return {
+                    showPasswordModal: false, changingPassword: false, passwordError: '',
+                    passwordForm: { current: '', next: '', confirm: '' },
                     user, maintenanceMode: false, stats: docData.stats, recentPatients: docData.recentPatients,
                     selectedPatient: null, activeScenario: null, graphConflicts: [],
                     showFullScreenGraph: false, showToast: false, showMobileMenu: false,
@@ -522,6 +566,12 @@
                     showPrescriptionModal: false,
                     newRx: { drugName: '', dosage: '', instruction: '' },
                     aiCheckStatus: 'idle',
+                    ddiRuleCount: 0,
+                    ddiRuleSource: 'local',
+                    ddiRulesUnavailable: false,
+                    checkedPatientName: '',
+                    checkedDrugName: '',
+                    _aiCheckToken: 0,
                     extraPrescriptions: {},
                     showNotifDropdown: false,
                     doctorNotifications: [],
@@ -640,6 +690,7 @@
                 document.addEventListener('click', this._closeDropdownHandler);
                 this._escHandler = (e) => {
                     if (e.key !== 'Escape') return;
+                    if (this.showPrescriptionModal) this.resetAiCheck();
                     this.showPrescriptionModal = this.showChatModal = this.showFullScreenGraph = this.showNotifDropdown = this.showMsgDropdown = false;
                 };
                 document.addEventListener('keydown', this._escHandler);
@@ -652,6 +703,41 @@
                 this.destroyCharts();
             },
             methods: {
+                openPasswordModal() {
+                    this.passwordForm = { current: '', next: '', confirm: '' };
+                    this.passwordError = '';
+                    this.showPasswordModal = true;
+                },
+                closePasswordModal() {
+                    this.showPasswordModal = false;
+                    this.passwordForm = { current: '', next: '', confirm: '' };
+                    this.passwordError = '';
+                },
+                async submitPasswordChange() {
+                    const { current, next, confirm } = this.passwordForm;
+                    this.passwordError = '';
+                    if (!current || !next) { this.passwordError = '請填寫目前密碼與新密碼'; return; }
+                    if (next.length < 8) { this.passwordError = '新密碼至少需 8 碼'; return; }
+                    if (next !== confirm) { this.passwordError = '兩次輸入的新密碼不一致'; return; }
+                    if (next === current) { this.passwordError = '新密碼不可與目前密碼相同'; return; }
+                    this.changingPassword = true;
+                    try {
+                        await DbService.changeOwnPassword(current, next);
+                        this.closePasswordModal();
+                        this.triggerToast('密碼已變更', '下次登入請使用新密碼');
+                    } catch (e) {
+                        const map = {
+                            'auth/wrong-password': '目前密碼不正確',
+                            'auth/invalid-credential': '目前密碼不正確',
+                            'auth/weak-password': '新密碼強度不足，請改用更長或更複雜的密碼',
+                            'auth/requires-recent-login': '登入狀態已過期，請重新登入後再試',
+                            'auth/too-many-requests': '嘗試次數過多，請稍後再試'
+                        };
+                        this.passwordError = map[e && e.code] || ('變更失敗：' + ((e && e.message) || '未知錯誤'));
+                    } finally {
+                        this.changingPassword = false;
+                    }
+                },
                 logout() { logout(); },
                 scrollTo(selector) {
                     this.$nextTick(() => {
@@ -660,6 +746,8 @@
                     });
                 },
                 switchToPatient(p) {
+                    // 換病患後舊的檢測結論即失效，必須清掉，否則會對新病患顯示上一位的比對結果
+                    this.resetAiCheck();
                     this.selectedPatient = p; this.triggerToast('同步成功', `載入 ${p.name} 的雲端資料`);
                     this.$nextTick(() => {
                         const el = document.getElementById('patient-station'); if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -678,18 +766,73 @@
                     return themes[name] || { card: 'bg-slate-50 border-slate-100', bar: 'bg-slate-400', text: 'text-slate-600', dot: 'bg-slate-300' };
                 },
                 scenarioFor(p) { return (p && (p.name === '劉建國' || p.id === 'patient01')) ? 'A' : 'B'; },
-                startAiCheck() {
+                async startAiCheck() {
+                    if (this.aiCheckStatus === 'checking') return;
+                    // 世代標記：重入鎖只擋「狀態仍是 checking」，但 resetAiCheck() 會把狀態改回 idle
+                    // 而無法取消已在飛行中的 Promise。若不作廢舊結果，取消後切換病患再檢測時，
+                    // 先發後至的舊 Promise 會把上一位病患的結論寫到新病患的畫面上。
+                    const token = ++this._aiCheckToken;
                     this.aiCheckStatus = 'checking';
-                    setTimeout(() => {
-                        const drug = this.newRx.drugName.trim().toLowerCase();
-                        const currentNames = this.currentMeds.map(m => (m.name_en || '').toLowerCase());
-                        const conflicts = window.mockData.graphData.links;
-                        const hasConflict = conflicts.some(l => {
-                            const a = l.source.toLowerCase(), b = l.target.toLowerCase();
-                            return (a === drug && currentNames.includes(b)) || (b === drug && currentNames.includes(a));
-                        });
-                        this.aiCheckStatus = hasConflict ? 'risk' : 'safe';
-                    }, 2000);
+                    this.ddiRulesUnavailable = false;
+                    // 在 await 之前固定住受檢對象，避免等待期間醫師切換病患，
+                    // 導致「用 A 病患的用藥算出結論、卻掛上 B 病患的姓名」
+                    const patientAtCheck = this.selectedPatient;
+                    // 受檢的藥名同樣必須在 await 前固定：檢測期間輸入框未鎖定，
+                    // 若等待後才讀 newRx，會出現「用舊藥名比對、卻顯示新藥名」
+                    const drugNameAtCheck = this.newRx.drugName;
+                    const drug = drugNameAtCheck.trim().toLowerCase();
+                    const currentNames = this.currentMeds.map(m => (m.name_en || '').toLowerCase());
+
+                    // 本地內建規則一律納入，雲端 ddi_rules 為「補充」而非「取代」——
+                    // 若讓雲端整批覆蓋，雲端未收錄的組合（如 Warfarin–Amiodarone）會突然不再被偵測，
+                    // 反而比修復前更危險，且會與同頁的交互作用關係圖互相矛盾
+                    const keyOf = (a, b) => [a, b].sort().join('|');
+                    const seen = new Set();
+                    const pairs = [];
+                    const addPair = (a, b) => {
+                        const x = (a || '').trim().toLowerCase(), y = (b || '').trim().toLowerCase();
+                        if (!x || !y) return;
+                        const k = keyOf(x, y);
+                        if (seen.has(k)) return;
+                        seen.add(k);
+                        pairs.push([x, y]);
+                    };
+                    (window.mockData.graphData.links || []).forEach(l => addPair(l.source, l.target));
+                    // 等待期間一律只寫區域變數：對 this 的寫入若發生在世代守衛之前，
+                    // 已被取消的檢測仍會把自己的失敗狀態蓋到後續成功的檢測上
+                    let cloudOk = false, loadFailed = false;
+                    try {
+                        const rules = await DbService.getDdiRules();
+                        (rules || []).forEach(r => addPair(r.drugA, r.drugB));
+                        // 來源以「讀取是否成功」判定，不可用「配對數是否增加」——
+                        // 雲端規則若恰好全與本地重複，讀取其實成功卻會被誤標為離線
+                        cloudOk = true;
+                    } catch (e) {
+                        console.error('DDI rules load error:', e);
+                        loadFailed = true;
+                    }
+                    // 這次檢測已被取消或被更新的檢測取代，整批結果作廢，不得寫回畫面
+                    if (token !== this._aiCheckToken) return;
+
+                    // 知識庫讀取失敗必須讓醫師知道，不可靜默降級後照常顯示結論
+                    this.ddiRulesUnavailable = loadFailed;
+                    this.ddiRuleSource = cloudOk ? 'cloud' : 'local';
+                    this.ddiRuleCount = pairs.length;
+                    this.checkedPatientName = patientAtCheck ? patientAtCheck.name : '病患';
+                    this.checkedDrugName = drugNameAtCheck;
+
+                    const hasConflict = pairs.some(([a, b]) =>
+                        (a === drug && currentNames.includes(b)) || (b === drug && currentNames.includes(a))
+                    );
+                    // 查無衝突只代表「知識庫未收錄」，不等於臨床上安全，故狀態命名為 unknown 而非 safe
+                    this.aiCheckStatus = hasConflict ? 'risk' : 'unknown';
+                },
+                resetAiCheck() {
+                    // 推進世代，讓任何飛行中的檢測結果失效
+                    this._aiCheckToken++;
+                    this.aiCheckStatus = 'idle';
+                    this.newRx = { drugName: '', dosage: '', instruction: '' };
+                    this.ddiRulesUnavailable = false;
                 },
                 async submitPrescription() {
                     const pid = this.selectedPatient.id;
@@ -709,6 +852,9 @@
                     try { await DbService.addMedicationToPatient(pid, newMed); } catch (e) { /* 非既有 Firestore 病患文件，略過雲端寫入 */ }
 
                     try {
+                        const deid = DbService.fhirDeid;
+                        const pseudo = await deid.getOrCreate(pid);
+                        const ident = deid.identifier(pseudo);
                         const res = await fetch('https://hapi.fhir.org/baseR4/MedicationRequest', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/fhir+json' },
@@ -716,17 +862,21 @@
                                 resourceType: 'MedicationRequest',
                                 status: 'active',
                                 intent: 'order',
-                                subject: { reference: `Patient/${pid}` },
+                                // 以邏輯參照指向去識別化個案，避免真實 ID 外傳與懸空參照
+                                subject: { identifier: ident, type: 'Patient', display: deid.displayName(pseudo) },
                                 medicationCodeableConcept: { text: this.newRx.drugName },
+                                // 沒有開立者與開立時間的處方，在臨床與法律上皆不成立
+                                requester: { display: '本院醫師（展示用，未帶入真實執業執照號碼）' },
+                                authoredOn: new Date().toISOString().slice(0, 10),
                                 dosageInstruction: [{ text: `${this.newRx.dosage}，${this.newRx.instruction || ''}` }]
                             })
                         });
                         if (!res.ok) throw new Error('HTTP ' + res.status);
-                        this.triggerToast('開立成功', '處方已成功同步至 HAPI FHIR 伺服器 (MedicationRequest)');
+                        this.triggerToast('開立成功', '處方已以化名同步至 HAPI FHIR 伺服器 (MedicationRequest)');
                     } catch (e) {
                         this.triggerToast('本地已保留', '處方已加入清單，但同步 FHIR 伺服器失敗，請稍後重試');
                     }
-                    this.newRx = { drugName: '', dosage: '', instruction: '' }; this.aiCheckStatus = 'idle';
+                    this.resetAiCheck();
                 },
                 loadDoctorNotifications() {
                     this.doctorNotifications = window.chatStore.getNotifications('doctor');
@@ -890,7 +1040,9 @@
                     this.simulation.on("tick", () => { lk.attr("x1", d=>d.source.x).attr("y1", d=>d.source.y).attr("x2", d=>d.target.x).attr("y2", d=>d.target.y); nd.attr("transform", d=>`translate(${d.x},${d.y})`); });
                 }
             }
-        }).mount('#app');
+        });
+        mountWhenAuthorized(app, 'doctor');
     </script>
+    <script src="js/pwa-register.js" defer></script>
 </body>
 </html>

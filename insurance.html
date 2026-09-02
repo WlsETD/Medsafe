@@ -3,6 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1A5276">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="MedSafe">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     <title>InsurTech 管理中心 | MedSafe</title>
     <link rel="icon" type="image/png" href="images/LOGO.png">
     <!-- CDNs -->
@@ -76,6 +83,29 @@
         </div>
         <!-- Mobile Sidebar Overlay -->
         <transition name="fade">
+            <div v-if="showPasswordModal" role="dialog" aria-modal="true" class="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-md" @click="closePasswordModal()"></div>
+                <div class="bg-white rounded-[32px] w-full max-w-md shadow-2xl relative z-10 overflow-hidden text-left">
+                    <div class="p-8 border-b border-slate-100">
+                        <h3 class="text-xl font-black text-title">變更密碼</h3>
+                        <p class="text-[11px] font-bold text-lightText mt-1">帳號：{{ user.username }}</p>
+                    </div>
+                    <div class="p-8 space-y-4">
+                        <div v-if="passwordError" class="bg-red-50 text-danger text-xs font-bold p-3 rounded-xl border border-red-100">{{ passwordError }}</div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">目前密碼</label><input v-model="passwordForm.current" type="password" autocomplete="current-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">新密碼（至少 8 碼）</label><input v-model="passwordForm.next" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">確認新密碼</label><input v-model="passwordForm.confirm" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <p class="text-[10px] font-bold text-slate-400 leading-relaxed">變更後其他已登入的裝置不會立即失效，其既有工作階段會持續到自然過期為止。</p>
+                    </div>
+                    <div class="p-6 bg-slate-50 flex gap-3 border-t border-slate-100">
+                        <button @click="closePasswordModal()" class="flex-1 py-3 font-black text-slate-400 uppercase text-[10px]">取消</button>
+                        <button @click="submitPasswordChange" :disabled="changingPassword" class="flex-[2] bg-primary text-white font-black rounded-2xl py-3 text-xs uppercase tracking-widest disabled:opacity-50">{{ changingPassword ? '變更中...' : '更新密碼' }}</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <transition name="fade">
             <div v-if="showMobileMenu" @click="showMobileMenu = false" class="fixed inset-0 bg-navy/60 backdrop-blur-sm z-[60] lg:hidden"></div>
         </transition>
 
@@ -100,6 +130,7 @@
                 </nav>
 
                 <div class="mt-auto pt-6 border-t border-white/10">
+                    <button @click="openPasswordModal()" class="flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-slate-300 hover:bg-white/10 w-full transition-all text-left"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg><span>變更密碼</span></button>
                     <button @click="logout" class="flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-danger hover:bg-red-50/10 w-full transition-all text-left">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> 退出系統
                     </button>
@@ -118,7 +149,7 @@
                 <div class="flex items-center gap-3 md:gap-6 bg-white p-2 md:p-2.5 rounded-3xl shadow-premium border border-white">
                     <div class="flex items-center gap-3 border-l-2 border-slate-50 pl-3 md:pl-6 text-left">
                         <div class="text-right hidden md:block"><div class="text-sm font-black text-navy">{{ user.name }}</div><div class="text-[9px] font-black text-turquoise uppercase">Underwriter</div></div>
-                        <img src="https://ui-avatars.com/api/?name=Insurance&background=292E4C&color=fff" class="w-10 h-10 md:w-12 md:h-12 rounded-[20px] shadow-lg border-2 border-white shrink-0">
+                        <img :src="avatarUrl('保', '#292E4C')" class="w-10 h-10 md:w-12 md:h-12 rounded-[20px] shadow-lg border-2 border-white shrink-0">
                     </div>
                 </div>
             </header>
@@ -259,7 +290,7 @@
                                         <div class="w-10 h-10 md:w-12 md:h-12 turquoise-gradient rounded-2xl flex items-center justify-center font-black text-white shrink-0">{{ (c.patientName || '?')[0] }}</div>
                                         <div class="overflow-hidden">
                                             <div class="font-black text-navy truncate">{{ c.patientName }} ({{ c.patientId }})</div>
-                                            <div class="text-[10px] font-bold text-lightText uppercase tracking-widest">{{ c.activatedDate }} · 承辦：{{ c.assignee }} · Safety Score {{ c.riskScore }}</div>
+                                            <div class="text-[10px] font-bold text-lightText uppercase tracking-widest">{{ c.activatedDate }} · 承辦：{{ c.assignee }} · Safety Score {{ (c.riskScore === null || c.riskScore === undefined) ? '資料不足' : c.riskScore }}</div>
                                         </div>
                                     </div>
                                     <div class="flex items-center gap-3 shrink-0">
@@ -438,6 +469,7 @@
                                         <tr class="bg-slate-50"><td class="px-8 py-4 text-sm font-black text-navy">營業毛利 Gross Profit</td><td class="px-8 py-4 text-sm font-black text-navy text-right">NT$ {{ incomeStatement.grossProfit.toLocaleString() }}</td></tr>
                                         <tr><td class="px-8 py-4 text-sm font-bold text-slate-500 pl-12">減：保費折扣</td><td class="px-8 py-4 text-sm font-bold text-golden text-right">NT$ ({{ incomeStatement.discount.toLocaleString() }})</td></tr>
                                         <tr><td class="px-8 py-4 text-sm font-bold text-slate-500 pl-12">減：個案關懷／理賠審核人力成本</td><td class="px-8 py-4 text-sm font-bold text-golden text-right">NT$ ({{ incomeStatement.labor.toLocaleString() }})</td></tr>
+                                        <tr><td class="px-8 py-4 text-sm font-black text-navy pl-8">營業費用合計 Operating Expenses</td><td class="px-8 py-4 text-sm font-black text-golden text-right">NT$ ({{ incomeStatement.opex.toLocaleString() }})</td></tr>
                                         <tr class="bg-slate-50"><td class="px-8 py-4 text-sm font-black text-navy">營業淨利 Operating Income (EBIT)</td><td class="px-8 py-4 text-sm font-black text-navy text-right">NT$ {{ incomeStatement.operatingIncome.toLocaleString() }}</td></tr>
                                         <tr><td class="px-8 py-4 text-sm font-bold text-slate-500 pl-12">減：所得稅費用（模擬稅率 {{ (incomeStatement.taxRate*100).toFixed(0) }}%）</td><td class="px-8 py-4 text-sm font-bold text-red-500 text-right">NT$ ({{ incomeStatement.tax.toLocaleString() }})</td></tr>
                                         <tr class="bg-turquoise/10"><td class="px-8 py-5 text-base font-black text-navy">稅後淨利 Net Income</td><td class="px-8 py-5 text-base font-black text-navy text-right">NT$ {{ incomeStatement.netIncome.toLocaleString() }}</td></tr>
@@ -574,12 +606,14 @@
                             <div class="text-4xl md:text-5xl font-black text-danger shrink-0">{{ selectedRiskPatient.score }}</div>
                         </div>
                         <div class="grid grid-cols-1 gap-6 text-left">
-                            <div class="space-y-2"><h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">風險誘因與診斷</h4><div class="p-5 md:p-6 bg-red-50 text-danger text-sm font-bold rounded-2xl border border-red-100 italic">" {{ selectedRiskPatient.reason }} "</div></div>
+                            <div class="space-y-2"><h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">病患自述健康摘要（未經醫師審核）</h4><div class="p-5 md:p-6 bg-red-50 text-danger text-sm font-bold rounded-2xl border border-red-100 italic">" {{ selectedRiskPatient.reason }} "</div></div>
                             <div class="space-y-2"><h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">核保精算建議</h4><div class="p-5 md:p-6 bg-navy text-turquoise text-sm font-bold rounded-2xl italic leading-relaxed text-white">{{ selectedRiskPatient.recommendation }}</div></div>
                             <div class="space-y-2">
                                 <h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">FHIR Patient 資源查核</h4>
                                 <div class="p-5 md:p-6 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col gap-3">
                                     <p class="text-[11px] font-bold text-slate-500 leading-relaxed">向公用 HAPI FHIR 測試伺服器（hapi.fhir.org/baseR4）即時查詢是否有同名 Patient 資源，用於驗證跨院資料交換介接是否暢通。</p>
+                                    <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2 leading-relaxed">⚠️ 查詢以化名代號進行，<strong>不會將保戶姓名送出</strong>；查得到即代表該個案的跨院資料通道已打通。</p>
+                                    <p v-if="fhirCheckStatus === 'not-synced'" class="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 mt-2 leading-relaxed">該保戶尚未同步任何資料至 FHIR 伺服器，因此查無紀錄。這不是查詢失敗，也不代表其用藥有異常。</p>
                                     <div class="flex items-center justify-between gap-4">
                                         <div class="flex items-center gap-2">
                                             <div :class="['w-2.5 h-2.5 rounded-full', fhirCheckStatus === 'checking' ? 'bg-golden animate-ping' : (fhirCheckStatus === 'error' ? 'bg-danger' : (fhirCheckStatus === 'done' ? 'bg-turquoise' : 'bg-slate-300'))]"></div>
@@ -674,11 +708,14 @@
             CareCase: markRaw({ template: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 10-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>` }),
             Report: markRaw({ template: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6M5 21h14a2 2 0 002-2V7l-5-5H5a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>` }),
         };
-        createApp({
+        const app = createApp({
             data() {
-                const user = requireRole('insurance') || { name: '訪客核保員' };
+                // 身分已在掛載前由 verifyRole('insurance') 向 Firestore 驗證過
+                const user = getVerifiedUser();
                 const insData = window.mockData.insurance;
                 return {
+                    showPasswordModal: false, changingPassword: false, passwordError: '',
+                    passwordForm: { current: '', next: '', confirm: '' },
                     user, activeMenu: 'Dashboard', showRiskDetailModal: false, showToast: false, toastTitle: '', selectedRiskPatient: {},
                     showMobileMenu: false,
                     maintenanceMode: false,
@@ -753,7 +790,12 @@
             computed: {
                 sortedCustomers() {
                     let list = this.topSafeUsers.filter(u => u.name.includes(this.customerSearch) || u.id.includes(this.customerSearch));
-                    if (this.customerSort === 'score') list.sort((a,b) => b.score - a.score);
+                    // 用 scoreValue 排序（score 在資料不足時是顯示用的 '—'），無分數者排最後
+                    if (this.customerSort === 'score') list.sort((a, b) => {
+                        const av = typeof a.scoreValue === 'number' ? a.scoreValue : (typeof a.score === 'number' ? a.score : -1);
+                        const bv = typeof b.scoreValue === 'number' ? b.scoreValue : (typeof b.score === 'number' ? b.score : -1);
+                        return bv - av;
+                    });
                     if (this.customerSort === 'name') list.sort((a,b) => a.name.localeCompare(b.name));
                     return list;
                 },
@@ -872,6 +914,41 @@
                 this.destroyCharts();
             },
             methods: {
+                openPasswordModal() {
+                    this.passwordForm = { current: '', next: '', confirm: '' };
+                    this.passwordError = '';
+                    this.showPasswordModal = true;
+                },
+                closePasswordModal() {
+                    this.showPasswordModal = false;
+                    this.passwordForm = { current: '', next: '', confirm: '' };
+                    this.passwordError = '';
+                },
+                async submitPasswordChange() {
+                    const { current, next, confirm } = this.passwordForm;
+                    this.passwordError = '';
+                    if (!current || !next) { this.passwordError = '請填寫目前密碼與新密碼'; return; }
+                    if (next.length < 8) { this.passwordError = '新密碼至少需 8 碼'; return; }
+                    if (next !== confirm) { this.passwordError = '兩次輸入的新密碼不一致'; return; }
+                    if (next === current) { this.passwordError = '新密碼不可與目前密碼相同'; return; }
+                    this.changingPassword = true;
+                    try {
+                        await DbService.changeOwnPassword(current, next);
+                        this.closePasswordModal();
+                        this.triggerToast('密碼已變更', '下次登入請使用新密碼');
+                    } catch (e) {
+                        const map = {
+                            'auth/wrong-password': '目前密碼不正確',
+                            'auth/invalid-credential': '目前密碼不正確',
+                            'auth/weak-password': '新密碼強度不足，請改用更長或更複雜的密碼',
+                            'auth/requires-recent-login': '登入狀態已過期，請重新登入後再試',
+                            'auth/too-many-requests': '嘗試次數過多，請稍後再試'
+                        };
+                        this.passwordError = map[e && e.code] || ('變更失敗：' + ((e && e.message) || '未知錯誤'));
+                    } finally {
+                        this.changingPassword = false;
+                    }
+                },
                 logout() { logout(); },
                 switchMenu(m) { 
                     const isAlreadyDashboard = this.activeMenu === 'Dashboard' && m === 'Dashboard';
@@ -898,8 +975,20 @@
                 async verifyFhirRecord() {
                     this.fhirCheckStatus = 'checking';
                     try {
-                        const name = encodeURIComponent(this.selectedRiskPatient.name || '');
-                        const res = await fetch(`https://hapi.fhir.org/baseR4/Patient?name=${name}&_count=5`, {
+                        // 不可把保戶真實姓名放進送往公開伺服器的 query string——
+                        // 姓名會留在該服務的存取日誌中。改以去識別化 identifier 查詢，
+                        // 與病患端上傳時使用的化名一致，查得到才代表通道確實打通
+                        // 唯讀：核保端不得在病患文件裡寫入化名
+                        const pseudo = await DbService.fhirDeid.getOrCreate(
+                            this.selectedRiskPatient.id || '', { create: false });
+                        if (!pseudo) {
+                            // 尚未同步過 FHIR 的保戶不是錯誤，不可顯示成「查詢失敗」
+                            this.fhirCheckStatus = 'not-synced';
+                            return;
+                        }
+                        const ident = DbService.fhirDeid.identifier(pseudo);
+                        const q = encodeURIComponent(`${ident.system}|${ident.value}`);
+                        const res = await fetch(`https://hapi.fhir.org/baseR4/Patient?identifier=${q}&_count=5`, {
                             headers: { 'Accept': 'application/fhir+json' }
                         });
                         if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -922,7 +1011,8 @@
                         const record = {
                             patientId: patient.id || '',
                             patientName: patient.name || '未知保戶',
-                            riskScore: patient.score || 0,
+                            riskScore: typeof patient.scoreValue === 'number' ? patient.scoreValue
+                                : (typeof patient.score === 'number' ? patient.score : null),
                             activatedAt: Date.now(),
                             activatedDate: new Date().toLocaleDateString('zh-TW'),
                             status: '處理中',
@@ -940,10 +1030,17 @@
                     }
                 },
                 mapPatientToCustomer(p) {
-                    const score = (p.stats && p.stats.safetyScore) || 0;
+                    // 即時計算，不再信任資料中可能寫死的 safetyScore；無用藥紀錄時為 null
+                    const score = DbService.computeSafetyScore(p.medications, p.ddiAlerts);
+                    const scoreStatus = DbService.safetyScoreStatus(p.medications, p.ddiAlerts);
+                    const medCount = (p.medications || []).length;
                     const alerts = (p.ddiAlerts || []).length;
                     let recommendation;
-                    if (alerts > 0) recommendation = `偵測到 ${alerts} 筆用藥交互作用警示，建議先安排個案關懷再評估續保費率。`;
+                    // null 有兩種成因，必須分開陳述：「沒有用藥」與「有用藥但未評估」
+                    // 對核保而言風險方向相反，混為一談會產生與事實不符的敘述
+                    if (scoreStatus === 'no-medications') recommendation = '尚無用藥紀錄，資料不足以評估風險，不建議據此調整費率。';
+                    else if (scoreStatus === 'not-assessed') recommendation = `已收錄 ${medCount} 筆用藥，但尚未進行交互作用評估，不足以作為核保依據。`;
+                    else if (alerts > 0) recommendation = `偵測到 ${alerts} 筆用藥交互作用警示，建議先安排個案關懷再評估續保費率。`;
                     else if (score >= 95) recommendation = '用藥安全紀錄優異，建議提供續保費率優惠。';
                     else if (score >= 85) recommendation = '整體風險適中，維持現行保費即可。';
                     else recommendation = '建議加強用藥遵從度追蹤，暫緩調整保費。';
@@ -951,9 +1048,10 @@
                         id: p.username,
                         name: (p.profile && p.profile.name) || p.username,
                         age: (p.profile && p.profile.age) || '-',
-                        score,
+                        score: score === null ? '—' : score,
+                        scoreValue: score,
                         policies: 1,
-                        discount: 'NT$ ' + (score * 25).toLocaleString(),
+                        discount: score === null ? '待評估' : 'NT$ ' + (score * 25).toLocaleString(),
                         reason: (p.profile && p.profile.healthSummary) || '尚無健康摘要資料',
                         recommendation
                     };
@@ -1095,7 +1193,9 @@
                     }
                 }
             }
-        }).mount('#app');
+        });
+        mountWhenAuthorized(app, 'insurance');
     </script>
+    <script src="js/pwa-register.js" defer></script>
 </body>
 </html>

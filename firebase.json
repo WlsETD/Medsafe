@@ -9,7 +9,21 @@
       "**/.*",
       "**/node_modules/**",
       "README.md",
-      "DESIGN_SYSTEM.md"
+      "DESIGN_SYSTEM.md",
+      "firestore.rules",
+      "firestore.indexes.json",
+      "progress-dashboard.html",
+      "tests/**",
+      "package.json",
+      "package-lock.json"
     ]
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8080
+    },
+    "ui": {
+      "enabled": false
+    }
   }
 }

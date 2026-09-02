@@ -3,6 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1A5276">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="MedSafe">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     <title>MedSafe | 智慧醫療管理中心</title>
     <link rel="icon" type="image/png" href="images/LOGO.png">
     <!-- CDNs -->
@@ -145,7 +152,7 @@
                     </div>
                     <div class="flex items-center gap-3 pl-4 border-l border-gray-100">
                         <div class="text-right hidden sm:block"><div class="text-sm font-bold text-title">{{ user.name }}</div><div class="text-[9px] font-black uppercase text-primary">ADMIN</div></div>
-                        <img src="https://ui-avatars.com/api/?name=Admin&background=7B61FF&color=fff" class="w-10 h-10 rounded-xl border-2 border-white shadow-premium">
+                        <img :src="avatarUrl('管', '#7B61FF')" class="w-10 h-10 rounded-xl border-2 border-white shadow-premium">
                     </div>
                 </div>
             </header>
@@ -167,10 +174,11 @@
                         <div v-for="kpi in kpis" :key="kpi.label" class="bg-white p-6 rounded-3xl shadow-premium border border-white hover:-translate-y-1 transition-all group">
                             <div class="flex justify-between items-start mb-4">
                                 <div :class="['w-12 h-12 rounded-2xl flex items-center justify-center text-white', kpi.colorClass]"><component :is="kpi.icon" class="h-6 w-6"></component></div>
-                                <span class="text-xs font-black text-success tracking-widest">+{{ kpi.trend }}%</span>
+                                <span v-if="kpi.trend !== null" class="text-xs font-black text-success tracking-widest">+{{ kpi.trend }}%</span>
                             </div>
                             <div class="text-xs font-bold text-lightText uppercase mb-1">{{ kpi.label }}</div>
                             <div class="text-2xl font-black text-title">{{ kpi.value }}</div>
+                            <div v-if="kpi.isDemo" class="mt-1 text-[9px] font-black text-amber-600 uppercase tracking-wider">展示數據，非實際統計</div>
                         </div>
                     </section>
                     <section class="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -226,10 +234,16 @@
                             <h2 class="text-3xl font-black text-title mb-2 italic uppercase">User Privileges</h2>
                             <p class="text-lightText font-bold">管理全網醫療人員、保險核保員及患者之系統權限</p>
                         </div>
+                        <div class="flex items-center gap-3">
+                        <button @click="openPasswordModal()" class="bg-white border-2 border-slate-200 text-slate-600 px-6 py-3.5 rounded-2xl font-black hover:border-primary/30 hover:text-primary transition-all flex items-center gap-2 text-xs uppercase tracking-widest">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                            變更我的密碼
+                        </button>
                         <button @click="showAddUserModal = true" class="purple-gradient text-white px-8 py-3.5 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-105 transition-all flex items-center gap-2 text-xs uppercase tracking-widest">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
                             Add User
                         </button>
+                        </div>
                     </div>
 
                     <div class="bg-white rounded-[40px] shadow-premium border border-white overflow-hidden">
@@ -421,6 +435,7 @@
                                         <tr><td class="px-8 py-4 text-sm font-bold text-slate-500 pl-12">減：保費折扣</td><td class="px-8 py-4 text-sm font-bold text-warning text-right">NT$ ({{ incomeStatement.discount.toLocaleString() }})</td></tr>
                                         <tr><td class="px-8 py-4 text-sm font-bold text-slate-500 pl-12">減：雲端維運成本</td><td class="px-8 py-4 text-sm font-bold text-warning text-right">NT$ ({{ incomeStatement.cloudCost.toLocaleString() }})</td></tr>
                                         <tr><td class="px-8 py-4 text-sm font-bold text-slate-500 pl-12">減：AI 分析運算成本</td><td class="px-8 py-4 text-sm font-bold text-warning text-right">NT$ ({{ incomeStatement.aiCost.toLocaleString() }})</td></tr>
+                                        <tr><td class="px-8 py-4 text-sm font-black text-title pl-8">營業費用合計 Operating Expenses</td><td class="px-8 py-4 text-sm font-black text-warning text-right">NT$ ({{ incomeStatement.opex.toLocaleString() }})</td></tr>
                                         <tr class="bg-slate-50"><td class="px-8 py-4 text-sm font-black text-title">營業淨利 Operating Income (EBIT)</td><td class="px-8 py-4 text-sm font-black text-title text-right">NT$ {{ incomeStatement.operatingIncome.toLocaleString() }}</td></tr>
                                         <tr><td class="px-8 py-4 text-sm font-bold text-slate-500 pl-12">減：所得稅費用（模擬稅率 {{ (incomeStatement.taxRate*100).toFixed(0) }}%）</td><td class="px-8 py-4 text-sm font-bold text-danger text-right">NT$ ({{ incomeStatement.tax.toLocaleString() }})</td></tr>
                                         <tr class="bg-primary/5"><td class="px-8 py-5 text-base font-black text-primary">稅後淨利 Net Income</td><td class="px-8 py-5 text-base font-black text-primary text-right">NT$ {{ incomeStatement.netIncome.toLocaleString() }}</td></tr>
@@ -540,9 +555,13 @@
                             <div class="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-primary shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg></div>
                             <h3 class="text-xl font-black text-title italic">FHIR INFRASTRUCTURE</h3>
                         </div>
+                        <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 規劃中，尚未生效</p>
+                            <p class="text-[10px] font-bold text-amber-600 mt-1">目前各端點的 FHIR Base URL 仍寫死為 <span class="font-mono">hapi.fhir.org/baseR4</span>（HL7 公開測試伺服器），此處的設定值僅供「測試連線」按鈕使用，尚未套用至實際同步流程。Access Key 亦尚未接上驗證機制。</p>
+                        </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div class="space-y-2"><label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">FHIR Base URL</label><input v-model="systemSettings.fhirUrl" type="text" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-title focus:border-primary/20 outline-none transition-all"></div>
-                            <div class="space-y-2"><label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Access Key</label><input v-model="systemSettings.fhirApiKey" type="password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-title focus:border-primary/20 outline-none transition-all"></div>
+                            <div class="space-y-2"><label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">FHIR Base URL<span class="ml-2 text-amber-600 normal-case">(規劃中)</span></label><input v-model="systemSettings.fhirUrl" type="text" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-title focus:border-primary/20 outline-none transition-all"></div>
+                            <div class="space-y-2"><label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Access Key<span class="ml-2 text-amber-600 normal-case">(規劃中)</span></label><input v-model="systemSettings.fhirApiKey" type="password" autocomplete="off" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-title focus:border-primary/20 outline-none transition-all"></div>
                         </div>
                         <div class="pt-4 flex items-center justify-between bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100">
                             <div class="flex items-center gap-3"><div :class="['w-3 h-3 rounded-full', isTestingConnection ? 'bg-warning animate-ping' : (fhirConnectionOk === false ? 'bg-danger' : 'bg-success')]"></div><span class="text-sm font-black text-slate-600 uppercase">狀態：{{ fhirConnectionOk === false ? '連線失敗' : (fhirConnectionOk === true ? '連線正常' : '尚未測試') }}</span></div>
@@ -556,14 +575,21 @@
                             <div class="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center text-primary shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg></div>
                             <h3 class="text-xl font-black text-title italic">AI ANALYSIS GUARD</h3>
                         </div>
+                        <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 規劃中，尚未生效</p>
+                            <p class="text-[10px] font-bold text-amber-600 mt-1">本卡片的設定值目前僅儲存於資料庫，尚未接入處方開立流程。實際的交互作用比對使用固定的規則庫，不受敏感度門檻影響；系統目前<strong>不會</strong>阻擋任何處方提交。</p>
+                        </div>
                         <div class="space-y-6">
                             <div class="space-y-4">
-                                <div class="flex justify-between items-end"><label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">AI 敏感度門檻</label><span class="text-lg font-black text-primary">{{ systemSettings.aiSensitivity }}%</span></div>
-                                <input v-model="systemSettings.aiSensitivity" type="range" class="w-full h-3 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-primary">
+                                <div class="flex justify-between items-end"><label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">AI 敏感度門檻<span class="ml-2 text-amber-600 normal-case">(規劃中)</span></label><span class="text-lg font-black text-slate-400">{{ systemSettings.aiSensitivity }}%</span></div>
+                                <input v-model="systemSettings.aiSensitivity" type="range" class="w-full h-3 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-slate-400">
                             </div>
-                            <div class="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
-                                <div><h4 class="text-sm font-black text-title uppercase">自動攔截極高風險處方</h4><p class="text-[10px] font-bold text-slate-400 mt-1">若偵測到強烈衝突，系統將強制禁止醫師提交 MedicationRequest 資源</p></div>
-                                <label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" v-model="systemSettings.autoBlock" class="sr-only peer"><div class="w-14 h-8 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-primary after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all shadow-inner border border-slate-300"></div></label>
+                            <div class="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border-2 border-dashed border-amber-300">
+                                <div>
+                                    <h4 class="text-sm font-black text-title uppercase">自動攔截極高風險處方<span class="ml-2 text-[9px] font-black text-amber-700 bg-amber-100 px-2 py-1 rounded-lg normal-case tracking-normal">規劃中，尚未生效</span></h4>
+                                    <p class="text-[10px] font-bold text-slate-400 mt-1">預期行為：偵測到極高風險衝突時阻擋 MedicationRequest 提交。<strong class="text-amber-700">目前狀態：此開關尚未接入處方流程，開啟後不會產生任何攔截效果。</strong></p>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" v-model="systemSettings.autoBlock" class="sr-only peer"><div class="w-14 h-8 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-slate-400 after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all shadow-inner border border-slate-300"></div></label>
                             </div>
                         </div>
                     </div>
@@ -583,6 +609,32 @@
         </main>
 
         <!-- ADD USER MODAL -->
+        <transition name="fade">
+            <div v-if="showPasswordModal" role="dialog" aria-modal="true" class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                <div class="absolute inset-0 bg-slate-950/80 backdrop-blur-md" @click="closePasswordModal()"></div>
+                <div class="bg-white rounded-[40px] w-full max-w-lg shadow-2xl relative z-10 overflow-hidden border border-slate-100 animate-fade-in text-left">
+                    <div class="purple-gradient p-10 text-white relative">
+                        <h3 class="text-2xl font-black italic tracking-tighter uppercase relative z-10">Change Password</h3>
+                        <p class="opacity-70 text-[10px] font-black uppercase mt-1 tracking-widest relative z-10">變更 {{ user.name }}（{{ user.username }}）的登入密碼</p>
+                    </div>
+                    <div class="p-10 space-y-5">
+                        <div v-if="passwordError" class="bg-red-50 text-danger text-xs font-bold p-4 rounded-xl border border-red-100">{{ passwordError }}</div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">目前密碼</label><input v-model="passwordForm.current" type="password" autocomplete="current-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">新密碼（至少 8 碼）</label><input v-model="passwordForm.next" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">確認新密碼</label><input v-model="passwordForm.confirm" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">關於替他人重設密碼</p>
+                            <p class="text-[10px] font-bold text-amber-600 mt-1 leading-relaxed">本系統為純前端架構，瀏覽器端的 Firebase SDK <strong>只能變更自己的密碼</strong>。替其他帳號重設密碼必須由後端以 Admin SDK 執行，本版本尚未具備，因此這裡不提供該按鈕——與其做一個按了沒有效果的功能，不如明確說明限制。目前請由管理者於 Firebase Console 代為重設。</p>
+                        </div>
+                    </div>
+                    <div class="p-8 bg-slate-50 flex gap-4 border-t border-slate-100">
+                        <button @click="closePasswordModal()" class="flex-1 py-4 font-black text-slate-400 uppercase text-[10px]">Cancel</button>
+                        <button @click="submitPasswordChange" :disabled="changingPassword" class="flex-[2] purple-gradient text-white font-black rounded-3xl shadow-xl hover:scale-105 transition-all text-xs uppercase tracking-widest disabled:opacity-50">{{ changingPassword ? '變更中...' : 'Update Password' }}</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
         <transition name="fade">
             <div v-if="showAddUserModal" role="dialog" aria-modal="true" class="fixed inset-0 z-[100] flex items-center justify-center p-4">
                 <div class="absolute inset-0 bg-slate-950/80 backdrop-blur-md" @click="showAddUserModal = false"></div>
@@ -669,6 +721,38 @@
             </div>
         </transition>
 
+        <!-- ONE-TIME CREDENTIAL MODAL -->
+        <transition name="fade">
+            <div v-if="showCredentialModal" role="dialog" aria-modal="true" class="fixed inset-0 z-[240] flex items-center justify-center p-4">
+                <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"></div>
+                <div class="bg-white w-full max-w-md rounded-[32px] shadow-2xl relative z-10 overflow-hidden border border-slate-100">
+                    <div class="p-8 border-b border-slate-100">
+                        <h3 class="text-lg font-black text-title uppercase tracking-tighter">帳號已建立</h3>
+                        <p class="text-[10px] font-bold text-slate-400 mt-1">初始密碼僅顯示這一次，請立即記錄並透過安全管道交付使用者</p>
+                    </div>
+                    <div class="p-8 space-y-5">
+                        <div>
+                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest">帳號</label>
+                            <div class="mt-2 bg-slate-50 rounded-2xl py-3 px-5 font-black text-title">{{ createdCredential.username }}</div>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest">初始密碼</label>
+                            <div class="mt-2 flex gap-2">
+                                <div class="flex-1 bg-slate-50 rounded-2xl py-3 px-5 font-mono font-bold text-title break-all select-all">{{ createdCredential.password }}</div>
+                                <button @click="copyCredential" class="px-5 rounded-2xl bg-primary text-white font-black text-[10px] uppercase tracking-widest hover:opacity-90 transition-opacity shrink-0">{{ credentialCopied ? '已複製' : '複製' }}</button>
+                            </div>
+                        </div>
+                        <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                            <p class="text-[10px] font-bold text-amber-700">請提醒使用者首次登入後，於各自的介面右上角「變更密碼」自行更換。管理者無法代改他人密碼（需後端 Admin SDK），必要時請於 Firebase Console 重設。</p>
+                        </div>
+                    </div>
+                    <div class="p-6 bg-slate-50 border-t border-slate-100 flex justify-end">
+                        <button @click="closeCredentialModal" class="px-8 py-3 bg-slate-900 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest hover:opacity-90 transition-opacity">我已記錄，關閉</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
         <!-- GLOBAL TOAST -->
         <transition name="fade">
             <div v-if="showToast" class="fixed bottom-10 right-10 z-[200] bg-slate-900 text-white px-8 py-5 rounded-3xl shadow-2xl border border-white/10 flex items-center gap-4 animate-fade-in text-left">
@@ -685,9 +769,10 @@
     <script src="js/auth.js"></script>
     <script>
         const { createApp, markRaw } = Vue;
-        createApp({
+        const app = createApp({
             data() {
-                const user = requireRole('admin') || { name: '訪客管理員' };
+                // 身分已在掛載前由 verifyRole('admin') 向 Firestore 驗證過
+                const user = getVerifiedUser();
                 const adminData = window.mockData.admin;
                 const Icons = {
                     Dashboard: markRaw({ template: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>` }),
@@ -706,11 +791,12 @@
                         { name: '報表中心', label: '報表中心', icon: Icons.Report },
                         { name: '系統設置', label: '系統設置', icon: Icons.Settings },
                     ],
+                    // isDemo: 無真實資料來源，僅為介面展示用的數字，UI 會標示以免誤導
                     kpis: [
-                        { label: 'DDI 規則總數', value: 12450, icon: Icons.Rules, trend: 12.5, colorClass: 'purple-gradient' },
-                        { label: 'AI 分析次數', value: 8920, icon: Icons.Users, trend: 8.2, colorClass: 'bg-neon' },
-                        { label: '今日 API 請求', value: 15620, icon: Icons.Settings, trend: -1.2, colorClass: 'bg-deep' },
-                        { label: '資料存儲總量', value: '2.4 TB', icon: Icons.Dashboard, trend: 15.0, colorClass: 'purple-gradient' },
+                        { label: 'DDI 規則總數', value: 0, icon: Icons.Rules, trend: null, colorClass: 'purple-gradient', isDemo: false },
+                        { label: 'AI 分析次數', value: 8920, icon: Icons.Users, trend: 8.2, colorClass: 'bg-neon', isDemo: true },
+                        { label: '今日 API 請求', value: 15620, icon: Icons.Settings, trend: -1.2, colorClass: 'bg-deep', isDemo: true },
+                        { label: '資料存儲總量', value: '2.4 TB', icon: Icons.Dashboard, trend: 15.0, colorClass: 'purple-gradient', isDemo: true },
                     ],
                     mockRules: [
                         { id: 1024, drugA: 'Warfarin', drugB: 'Aspirin', severity: '極高風險', severityClass: 'bg-red-100 text-danger border-red-200', effect: '增加出血風險，需監控 INR 指標。' },
@@ -726,8 +812,12 @@
                         { id: 'P004', name: '劉建國', role: 'patient', roleName: '患者', email: 'P004@medsafe.com', hospital: 'N/A', status: 'active', statusName: '正常' },
                     ],
                     ruleSearch: '', ruleSeverityFilter: 'all', userSearch: '', userRoleFilter: 'all',
-                    showNotifications: false, showAddRuleModal: false, showAddUserModal: false, 
+                    showNotifications: false, showAddRuleModal: false, showAddUserModal: false,
+                    showPasswordModal: false, changingPassword: false, passwordError: '',
+                    passwordForm: { current: '', next: '', confirm: '' },
                     showEditUserModal: false, showToast: false,
+                    showCredentialModal: false, createdCredential: { username: '', password: '' },
+                    credentialCopied: false,
                     toastTitle: '', newUser: { name: '', role: 'doctor', email: '', hospital: '' },
                     newUserError: '',
                     newRule: { drugA: '', drugB: '', severity: '高風險', effect: '' },
@@ -847,7 +937,7 @@
                     const data = await DbService.getAdminData();
                     if (data && data.stats) {
                         const s = data.stats;
-                        this.kpis[0].value = s.totalDdiRules;
+                        // kpis[0]（DDI 規則總數）改由實際規則數決定，不採用資料中的統計值
                         this.kpis[1].value = s.aiAnalyticsCount;
                         this.kpis[2].value = s.todayApiCalls;
                         this.kpis[3].value = s.dataStorageAmount;
@@ -875,6 +965,7 @@
                 } catch (e) {
                     console.error('Firestore DDI rules error:', e);
                 }
+                this.kpis[0].value = this.mockRules.length;
                 try {
                     const roleNames = { doctor: '醫師', patient: '患者', insurance: '保險人員', admin: '管理員' };
                     const users = await DbService.getAllUsers();
@@ -910,6 +1001,27 @@
                 this.destroyCharts();
             },
             methods: {
+                // 以 crypto 亂數產生初始密碼，取代原本固定的 '123456'
+                generateInitialPassword() {
+                    const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+                    const bytes = new Uint32Array(14);
+                    crypto.getRandomValues(bytes);
+                    return Array.from(bytes, b => charset[b % charset.length]).join('');
+                },
+                async copyCredential() {
+                    try {
+                        await navigator.clipboard.writeText(this.createdCredential.password);
+                        this.credentialCopied = true;
+                        setTimeout(() => { this.credentialCopied = false; }, 2000);
+                    } catch (e) {
+                        this.credentialCopied = false;
+                    }
+                },
+                closeCredentialModal() {
+                    this.showCredentialModal = false;
+                    this.createdCredential = { username: '', password: '' };
+                    this.credentialCopied = false;
+                },
                 handleOutsideClick(e) {
                     if (!this.$refs.notificationBtn?.contains(e.target) && !this.$refs.notificationBox?.contains(e.target)) this.showNotifications = false;
                 },
@@ -936,6 +1048,7 @@
                     try {
                         await DbService.deleteDdiRule(String(id));
                         this.mockRules = this.mockRules.filter(r => r.id !== id && r.id !== String(id));
+                        this.kpis[0].value = this.mockRules.length;
                         this.triggerToast('已刪除', '規則已從資料庫移除');
                     } catch (e) {
                         this.triggerToast('刪除失敗', '請稍後再試');
@@ -973,8 +1086,60 @@
                     this.showEditUserModal = false;
                     this.triggerToast('資料已更新', `用戶 ${this.editingUser.name} 的權限已修改`);
                 },
+                openPasswordModal() {
+                    this.passwordForm = { current: '', next: '', confirm: '' };
+                    this.passwordError = '';
+                    this.showPasswordModal = true;
+                },
+                closePasswordModal() {
+                    this.showPasswordModal = false;
+                    // 不把使用者輸入的密碼留在記憶體與 Vue devtools 中
+                    this.passwordForm = { current: '', next: '', confirm: '' };
+                    this.passwordError = '';
+                },
+                async submitPasswordChange() {
+                    const { current, next, confirm } = this.passwordForm;
+                    this.passwordError = '';
+                    if (!current || !next) { this.passwordError = '請填寫目前密碼與新密碼'; return; }
+                    // admin 是唯一能停用帳號、改系統設定、刪除規則庫的角色，門檻應高於一般使用者
+                    const minLen = this.user.role === 'admin' ? 12 : 8;
+                    if (next.length < minLen) { this.passwordError = '新密碼至少需 ' + minLen + ' 碼'; return; }
+                    if (next !== confirm) { this.passwordError = '兩次輸入的新密碼不一致'; return; }
+                    if (next === current) { this.passwordError = '新密碼不可與目前密碼相同'; return; }
+                    this.changingPassword = true;
+                    try {
+                        await DbService.changeOwnPassword(current, next);
+                        this.closePasswordModal();
+                        this.triggerToast('密碼已變更', '下次登入請使用新密碼');
+                    } catch (e) {
+                        // 逐一對應 Firebase 的錯誤碼，不要一律顯示「未知錯誤」
+                        const map = {
+                            'auth/wrong-password': '目前密碼不正確',
+                            'auth/invalid-credential': '目前密碼不正確',
+                            'auth/weak-password': '新密碼強度不足，請改用更長或更複雜的密碼',
+                            'auth/requires-recent-login': '登入狀態已過期，請重新登入後再試',
+                            'auth/too-many-requests': '嘗試次數過多，請稍後再試'
+                        };
+                        this.passwordError = map[e && e.code] || ('變更失敗：' + ((e && e.message) || '未知錯誤'));
+                    } finally {
+                        this.changingPassword = false;
+                    }
+                },
                 async toggleUserStatus(user) {
                     const newStatus = user.status === 'active' ? 'disabled' : 'active';
+                    // 停用管理員是不可逆的：安全規則規定只有「啟用中的 admin」能改 user_roles，
+                    // 一旦把自己或最後一位 admin 停用，就沒有人能改回來，只能進 Firebase Console 手動救
+                    if (newStatus === 'disabled') {
+                        if (user.id === this.user.username) {
+                            this.triggerToast('無法停用', '不能停用你自己正在使用的帳號');
+                            return;
+                        }
+                        const activeAdmins = this.mockUsers.filter(u => u.role === 'admin' && u.status === 'active');
+                        if (user.role === 'admin' && activeAdmins.length <= 1) {
+                            this.triggerToast('無法停用', '系統必須保留至少一位啟用中的管理員');
+                            return;
+                        }
+                    }
                     try {
                         await window.db.collection('users').doc(user.id).update({ status: newStatus });
                         if (user.uid) await window.db.collection('user_roles').doc(user.uid).update({ status: newStatus });
@@ -1052,6 +1217,7 @@
                     try {
                         const id = await DbService.addDdiRule(rule);
                         this.mockRules.push({ id, ...rule });
+                        this.kpis[0].value = this.mockRules.length;
                         this.newRule = { drugA: '', drugB: '', severity: '高風險', effect: '' };
                         this.newRuleError = '';
                         this.showAddRuleModal = false;
@@ -1069,8 +1235,8 @@
                     const username = this.newUser.email.split('@')[0].toLowerCase();
                     const roleNames = { doctor: '醫師', patient: '患者', insurance: '保險人員', admin: '管理員' };
                     try {
-                        const defaultPassword = '123456';
-                        const uid = await DbService.createUser(username, defaultPassword, this.newUser.name, this.newUser.role);
+                        const initialPassword = this.generateInitialPassword();
+                        const uid = await DbService.createUser(username, initialPassword, this.newUser.name, this.newUser.role);
                         this.mockUsers.push({
                             id: username, uid, name: this.newUser.name, role: this.newUser.role,
                             roleName: roleNames[this.newUser.role] || this.newUser.role,
@@ -1079,7 +1245,8 @@
                         });
                         this.showAddUserModal = false;
                         this.newUser = { name: '', role: 'doctor', email: '', hospital: '' };
-                        this.triggerToast('帳號已創建', `${username} 已寫入 Firestore，預設密碼 ${defaultPassword}`);
+                        this.createdCredential = { username, password: initialPassword };
+                        this.showCredentialModal = true;
                     } catch (e) {
                         this.newUserError = '創建失敗：' + (e.message || e);
                     }
@@ -1123,7 +1290,9 @@
                     }
                 }
             }
-        }).mount('#app');
+        });
+        mountWhenAuthorized(app, 'admin');
     </script>
+    <script src="js/pwa-register.js" defer></script>
 </body>
 </html>

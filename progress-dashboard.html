@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1A5276">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="MedSafe">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <title>開發進度管理 Dashboard | MedSafe</title>
 <link rel="icon" type="image/png" href="images/LOGO.png">
 <script src="https://cdn.tailwindcss.com"></script>
@@ -255,5 +262,6 @@
 
   <p class="text-center text-xs text-slate-400 py-4">此 Dashboard 為靜態盤點快照（2026-07-08），需重新盤點時可再次要求 Claude Code 更新。</p>
 </main>
+    <script src="js/pwa-register.js" defer></script>
 </body>
 </html>

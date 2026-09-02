@@ -3,6 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1A5276">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="MedSafe">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     <title>個人健康中心 | MedSafe</title>
     <link rel="icon" type="image/png" href="images/LOGO.png">
     <!-- CDNs -->
@@ -81,6 +88,29 @@
         </div>
         <!-- Mobile Sidebar Overlay -->
         <transition name="fade">
+            <div v-if="showPasswordModal" role="dialog" aria-modal="true" class="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-md" @click="closePasswordModal()"></div>
+                <div class="bg-white rounded-[32px] w-full max-w-md shadow-2xl relative z-10 overflow-hidden text-left">
+                    <div class="p-8 border-b border-slate-100">
+                        <h3 class="text-xl font-black text-title">變更密碼</h3>
+                        <p class="text-[11px] font-bold text-lightText mt-1">帳號：{{ user.username }}</p>
+                    </div>
+                    <div class="p-8 space-y-4">
+                        <div v-if="passwordError" class="bg-red-50 text-danger text-xs font-bold p-3 rounded-xl border border-red-100">{{ passwordError }}</div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">目前密碼</label><input v-model="passwordForm.current" type="password" autocomplete="current-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">新密碼（至少 8 碼）</label><input v-model="passwordForm.next" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">確認新密碼</label><input v-model="passwordForm.confirm" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <p class="text-[10px] font-bold text-slate-400 leading-relaxed">變更後其他已登入的裝置不會立即失效，其既有工作階段會持續到自然過期為止。</p>
+                    </div>
+                    <div class="p-6 bg-slate-50 flex gap-3 border-t border-slate-100">
+                        <button @click="closePasswordModal()" class="flex-1 py-3 font-black text-slate-400 uppercase text-[10px]">取消</button>
+                        <button @click="submitPasswordChange" :disabled="changingPassword" class="flex-[2] bg-primary text-white font-black rounded-2xl py-3 text-xs uppercase tracking-widest disabled:opacity-50">{{ changingPassword ? '變更中...' : '更新密碼' }}</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <transition name="fade">
             <div v-if="showMobileMenu" @click="showMobileMenu = false" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] lg:hidden"></div>
         </transition>
 
@@ -100,6 +130,7 @@
                 </nav>
 
                 <div class="mt-auto pt-6 border-t border-slate-100">
+                    <button @click="openPasswordModal()" class="flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-content hover:bg-slate-100 w-full transition-all text-left"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg><span>變更密碼</span></button>
                     <button @click="logout" class="flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-danger hover:bg-red-50 w-full transition-all text-left">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> 退出登入
                     </button>
@@ -153,7 +184,7 @@
                     </div>
                     <div class="flex items-center gap-3 border-l-2 border-slate-50 pl-3 md:pl-6 text-left">
                         <div class="text-right hidden md:block"><div class="text-sm font-black text-title">{{ profile.name }}</div><div class="text-[9px] font-black text-primary uppercase">Patient Account</div></div>
-                        <img :src="'https://ui-avatars.com/api/?name=' + profile.name + '&background=24A15D&color=fff'" class="w-10 h-10 md:w-12 md:h-12 rounded-[20px] shadow-lg border-2 border-white shrink-0">
+                        <img :src="avatarUrl(profile.name, '#24A15D')" class="w-10 h-10 md:w-12 md:h-12 rounded-[20px] shadow-lg border-2 border-white shrink-0">
                     </div>
                 </div>
             </header>
@@ -179,13 +210,24 @@
                             </div>
                         </div>
                     </div>
-                    <div class="flex-shrink-0 flex justify-center">
+                    <div class="flex-shrink-0 flex flex-col items-center gap-3">
                         <div class="w-48 h-48 sm:w-64 sm:h-64 rounded-full border-[12px] border-white/10 flex items-center justify-center relative">
-                            <div class="text-center">
-                                <div class="text-6xl sm:text-7xl font-black mb-1">{{ stats.safetyScore }}</div>
-                                <div class="text-xs sm:text-sm font-bold uppercase tracking-widest opacity-70">健康評分</div>
+                            <div class="text-center px-4">
+                                <template v-if="safetyScore !== null">
+                                    <div class="text-6xl sm:text-7xl font-black mb-1">{{ safetyScore }}</div>
+                                    <div class="text-xs sm:text-sm font-bold uppercase tracking-widest opacity-70">用藥安全參考分數</div>
+                                </template>
+                                <template v-else-if="safetyScoreStatus === 'no-medications'">
+                                    <div class="text-xl sm:text-2xl font-black mb-1 leading-tight">尚無足夠資料</div>
+                                    <div class="text-[10px] sm:text-xs font-bold opacity-70 leading-snug">尚未建立用藥紀錄<br>回診後由醫師建檔</div>
+                                </template>
+                                <template v-else>
+                                    <div class="text-xl sm:text-2xl font-black mb-1 leading-tight">尚未評估</div>
+                                    <div class="text-[10px] sm:text-xs font-bold opacity-70 leading-snug">已有 {{ medications.length }} 筆用藥<br>尚未完成交互作用評估</div>
+                                </template>
                             </div>
                         </div>
+                        <p v-if="safetyScore !== null" class="text-[10px] sm:text-[11px] font-bold opacity-70 max-w-[220px] text-center leading-snug">本分數依現有用藥數量與已知交互作用警示計算，僅供參考，不構成醫療建議。</p>
                     </div>
                 </div>
             </section>
@@ -307,9 +349,13 @@
                     <!-- Safety Score Chart -->
                     <div class="bg-white p-8 rounded-[32px] shadow-premium border border-white animate-fade-in text-left">
                         <h3 class="text-xl font-black text-title mb-6 flex items-center gap-2 text-left">
-                            <span class="w-1.5 h-5 bg-primary rounded-full shrink-0"></span> 安全評分趨勢
+                            <span class="w-1.5 h-5 bg-slate-300 rounded-full shrink-0"></span> 安全評分趨勢
                         </h3>
-                        <div id="safetyTrendChart" class="h-[200px]"></div>
+                        <div class="h-[200px] flex flex-col items-center justify-center text-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200 px-6">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>
+                            <p class="text-sm font-black text-slate-500">尚未累積評分歷史</p>
+                            <p class="text-[11px] font-bold text-slate-400 leading-relaxed">本系統目前不保存每日安全評分紀錄，故無趨勢可呈現。待用藥安全評估機制上線後，此處將顯示您的實際歷史變化。</p>
+                        </div>
                     </div>
 
                     <!-- Med Categories -->
@@ -321,7 +367,7 @@
                         <div class="h-[200px] relative text-left text-left">
                             <div id="categoryChart" class="h-full w-full"></div>
                             <div class="absolute inset-0 flex items-center justify-center flex-col pointer-events-none text-left">
-                                <span class="text-2xl font-black text-title text-left">{{ stats.activeMeds }}</span>
+                                <span class="text-2xl font-black text-title text-left">{{ medications.length }}</span>
                                 <span class="text-[9px] font-black text-lightText uppercase text-left">總項數</span>
                             </div>
                         </div>
@@ -396,7 +442,13 @@
                             </div>
                         </div>
                     </div>
-                    <div class="p-8 bg-slate-50 border-t border-slate-100 flex justify-end shrink-0">
+                    <div class="p-8 bg-slate-50 border-t border-slate-100 space-y-4 shrink-0">
+                        <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left">
+                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 資料上傳警告</p>
+                            <p class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">上傳目標為 HL7 公開測試伺服器（<span class="font-mono">hapi.fhir.org</span>），供全球開發者共用、任何人皆可讀取。因此本系統<strong>不會送出您的姓名</strong>：改以固定化名代表您，出生日期模糊為 5 年級距的年份，僅用藥品項與劑量會被上傳，用於展示跨院資料交換格式。</p>
+                            <p class="text-[11px] font-bold text-red-600 mt-1.5 leading-relaxed">但這<strong>不等於去識別化</strong>：化名由帳號名稱以公開演算法推導，任何人讀了本站原始碼都能還原對應關係；藥品組合本身也可能足以指認個人。<strong>請勿以真實個人資料操作本功能。</strong></p>
+                        </div>
+                        <div class="flex justify-end">
                         <button @click="syncToCloud()" :disabled="syncing" class="hero-gradient text-white font-black px-12 py-4 rounded-2xl shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all text-sm uppercase tracking-widest disabled:opacity-60 disabled:scale-100 disabled:cursor-not-allowed flex items-center gap-3">
                             <svg v-if="syncing" class="animate-spin h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -404,6 +456,7 @@
                             </svg>
                             {{ syncing ? '同步中...' : '確認並同步雲端' }}
                         </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -545,14 +598,20 @@
                                     <div class="w-2 h-2 bg-primary rounded-full shrink-0"></div> FHIR 校驗元數據
                                 </h4>
                                 <div class="bg-bgMain p-6 rounded-[32px] font-mono text-[10px] text-lightText border border-slate-100/50 leading-loose text-left text-left">
-                                    <div class="flex justify-between border-b border-white pb-2 mb-2 text-left"><span>Resource-ID:</span> <span class="text-slate-600 font-black">fhir-rx-warfarin-001</span></div>
-                                    <div class="flex justify-between border-b border-white pb-2 mb-2 text-left text-left"><span>Detection-Engine:</span> <span class="text-slate-600 font-black">MedSafe-AI v2.4</span></div>
-                                    <div class="flex justify-between text-left text-left"><span>Evidence-Base:</span> <span class="text-danger font-black underline italic uppercase">High Probability (p<0.001)</span></div>
+                                    <div class="flex justify-between border-b border-white pb-2 mb-2 text-left"><span>Resource-Type:</span> <span class="text-slate-600 font-black">Flag (FHIR R4)</span></div>
+                                    <div class="flex justify-between border-b border-white pb-2 mb-2 text-left text-left"><span>比對方式:</span> <span class="text-slate-600 font-black">規則庫藥名字串比對</span></div>
+                                    <div class="flex justify-between text-left text-left"><span>證據等級:</span> <span class="text-slate-600 font-black">規則庫收錄，未經統計驗證</span></div>
                                 </div>
+                                <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 leading-relaxed">⚠️ 本警示來自系統內建的交互作用規則庫，以藥品名稱比對產生，非機器學習模型推論，亦未附帶統計顯著性。請以醫師與藥師的專業判斷為準。</p>
                             </div>
                         </div>
                     </div>
-                    <div class="p-8 md:p-10 bg-slate-50 border-t border-slate-100 flex justify-end shrink-0 text-left">
+                    <div class="p-8 md:p-10 bg-slate-50 border-t border-slate-100 space-y-4 shrink-0 text-left">
+                        <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 資料上傳警告</p>
+                            <p class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">按下確認會以 FHIR Flag 資源，將本次交互作用的藥品名稱上傳至 HL7 公開測試伺服器（<span class="font-mono">hapi.fhir.org</span>）。該伺服器全球任何人皆可讀取。您的身分以固定化名代表，<strong>不會送出姓名或系統帳號</strong>；但化名由公開演算法推導、可被還原，故此非去識別化，請勿以真實資料操作。</p>
+                        </div>
+                        <div class="flex justify-end">
                         <button @click="confirmDdiAwareness()" :disabled="confirmingAwareness" class="bg-danger text-white font-black px-12 py-5 rounded-[24px] shadow-2xl shadow-danger/20 hover:scale-[1.03] active:scale-[0.97] transition-all uppercase tracking-widest text-xs flex justify-center items-center gap-3 disabled:opacity-60 disabled:scale-100 disabled:cursor-not-allowed">
                             <svg v-if="confirmingAwareness" class="animate-spin h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -560,6 +619,7 @@
                             </svg>
                             {{ confirmingAwareness ? '處理中...' : 'Confirm Awareness' }}
                         </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -652,12 +712,16 @@
             System: markRaw({ template: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>` })
         };
 
-        createApp({
+        const app = createApp({
             data() {
-                const user = requireRole('patient') || { name: '測試患者' };
+                // 身分已在掛載前由 verifyRole('patient') 向 Firestore 驗證過，
+                // 不再有 `|| { name: '訪客' }` 這種讓驗證失敗仍照常渲染的退路
+                const user = getVerifiedUser();
                 const patientData = (window.mockData.patients && window.mockData.patients[user.username]) || window.mockData.patient;
                 const doctorUser = window.mockData.users.find(u => u.role === 'doctor');
                 return {
+                    showPasswordModal: false, changingPassword: false, passwordError: '',
+                    passwordForm: { current: '', next: '', confirm: '' },
                     _username: user.username || 'patient01',
                     maintenanceMode: false,
                     profile: patientData.profile,
@@ -700,6 +764,22 @@
             computed: {
                 completedCount() {
                     return this.reminders.filter(r => r.completed).length;
+                },
+                // 依目前用藥與交互作用警示即時計算，取代原本寫死於資料中的常數
+                safetyScore() {
+                    return DbService.computeSafetyScore(this.medications, this.ddiAlerts);
+                },
+                safetyScoreStatus() {
+                    return DbService.safetyScoreStatus(this.medications, this.ddiAlerts);
+                }
+            },
+            watch: {
+                // initCharts() 在 mounted 後 50ms 就執行，早於 Firestore 回應，
+                // 當下讀到的仍是 data() 的 fallback（自助註冊者會落到 patient01 的用藥）。
+                // 真實資料抵達後必須重畫，否則空狀態與真實分佈都無法呈現。
+                medications: {
+                    handler() { this.$nextTick(() => this.initCharts()); },
+                    deep: true
                 }
             },
             async created() {
@@ -772,33 +852,85 @@
                 async syncToCloud() {
                     this.syncing = true;
                     try {
-                        const pid = this.profile.id;
-                        const birthYear = new Date().getFullYear() - this.profile.age;
+                        // 文件鍵必須來自已驗證身分，不可用病患自己可寫的 profile.id
+                        const pid = this._username;
+                        const deid = DbService.fhirDeid;
+                        // 化名改為向 Firestore 取得（沒有才隨機建立），不再由帳號名稱推導
+                        const pseudo = await deid.getOrCreate(pid);
+                        const ident = deid.identifier(pseudo);
+                        // 送到公開沙箱的資料一律去識別化：化名取代姓名、出生日期模糊為 5 年級距年份
+                        const patientResource = {
+                            resourceType: 'Patient',
+                            identifier: [ident],
+                            name: [{ text: deid.displayName(pseudo) }],
+                            gender: deid.gender(this.profile.gender)
+                        };
+                        const birthYear = deid.blurredBirthYear(this.profile.age);
+                        // 年齡未填時直接省略欄位，不可送出 "NaN-01-01" 這種非法 FHIR date
+                        if (birthYear) patientResource.birthDate = birthYear;
+
+                        // 以 bundle 內的暫時性 uuid 當參照來源，並用 ifNoneExist 做條件式建立：
+                        // 原本的 PUT Patient/P001 是在共用伺服器上宣告一個通用 ID 的主權，
+                        // 會與其他開發者的測試資料互相覆蓋
+                        const patientUrn = 'urn:uuid:' + (crypto.randomUUID ? crypto.randomUUID()
+                            : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                                const r = Math.random() * 16 | 0;
+                                return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+                            }));
                         const bundle = {
                             resourceType: 'Bundle',
                             type: 'transaction',
                             entry: [
                                 {
-                                    resource: {
-                                        resourceType: 'Patient',
-                                        id: pid,
-                                        name: [{ text: this.profile.name }],
-                                        gender: this.profile.gender === '男' ? 'male' : 'female',
-                                        birthDate: `${birthYear}-01-01`
-                                    },
-                                    request: { method: 'PUT', url: `Patient/${pid}` }
+                                    fullUrl: patientUrn,
+                                    resource: patientResource,
+                                    request: {
+                                        method: 'POST',
+                                        url: 'Patient',
+                                        ifNoneExist: 'identifier=' + encodeURIComponent(ident.system + '|' + ident.value)
+                                    }
                                 },
-                                ...this.medications.map(med => ({
-                                    resource: {
-                                        resourceType: 'MedicationStatement',
-                                        status: 'active',
-                                        subject: { reference: `Patient/${pid}` },
-                                        medicationCodeableConcept: { text: `${med.name} (${med.zhName})` },
-                                        dosage: [{ text: `${med.dosage}，${med.freq}` }],
-                                        note: [{ text: med.category }]
-                                    },
-                                    request: { method: 'POST', url: 'MedicationStatement' }
-                                }))
+                                ...this.medications.map(med => {
+                                    // 每筆用藥給一個穩定 identifier，並以條件式建立避免每次同步都新增，
+                                    // 否則同步 3 次公開伺服器上就會留下 3 份重複資料
+                                    // 去重鍵必須含劑量、頻次與來源機構：
+                                    // 「榮總 Metformin 500mg 每日兩次」與「台大 Metformin 850mg 每日一次」
+                                    // 若共用同一個 identifier，第二筆會被 ifNoneExist 判為重複而靜默丟棄，
+                                    // 而跨院重複用藥正是本系統要呈現的核心情境。
+                                    //
+                                    // 但識別碼本身必須是 ASCII：劑量與院所含中文和括號時，
+                                    // 直接放進 ifNoneExist 的搜尋字串會讓伺服器無法解析（HAPI-0929），
+                                    // 整個 bundle 以 400 失敗。故變異部分以短雜湊表示，僅保留英文藥名供人閱讀。
+                                    const asciiSlug = v => String(v == null ? '' : v).trim().toLowerCase()
+                                        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                                    const shortHash = str => {
+                                        let h = 2166136261;
+                                        for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+                                        return (h >>> 0).toString(36);
+                                    };
+                                    const variant = shortHash([med.dosage, med.freq, med.hospital]
+                                        .map(x => String(x == null ? '' : x)).join('|'));
+                                    const medIdent = {
+                                        system: deid.NAMESPACE + ':medication',
+                                        value: [ident.value, asciiSlug(med.name || med.zhName) || 'med', variant].join('-')
+                                    };
+                                    return {
+                                        resource: {
+                                            resourceType: 'MedicationStatement',
+                                            identifier: [medIdent],
+                                            status: 'active',
+                                            subject: { reference: patientUrn },
+                                            medicationCodeableConcept: { text: `${med.name} (${med.zhName})` },
+                                            dosage: [{ text: `${med.dosage}，${med.freq}` }],
+                                            note: [{ text: med.category }]
+                                        },
+                                        request: {
+                                            method: 'POST',
+                                            url: 'MedicationStatement',
+                                            ifNoneExist: 'identifier=' + encodeURIComponent(medIdent.system + '|' + medIdent.value)
+                                        }
+                                    };
+                                })
                             ]
                         };
                         const res = await fetch('https://hapi.fhir.org/baseR4', {
@@ -808,14 +940,18 @@
                         });
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
                         this.showInsightsModal = false;
-                        this.triggerToast('雲端同步成功', `已將 ${this.medications.length} 筆用藥資料上傳至 FHIR 伺服器`);
+                        this.triggerToast('雲端同步成功', `已將 ${this.medications.length} 筆用藥資料以化名 ${ident.value} 上傳（未送出姓名）`);
 
-                        // 讀回剛寫入的 Patient 資源，驗證資料確實已存在於 FHIR 伺服器上（而非僅信任 POST 回應）
+                        // 讀回驗證：資源 ID 現由伺服器配發，故改以 identifier 搜尋而非猜測 ID
                         try {
-                            const readBack = await fetch(`https://hapi.fhir.org/baseR4/Patient/${pid}`, { headers: { 'Accept': 'application/fhir+json' } });
+                            const q = encodeURIComponent(`${ident.system}|${ident.value}`);
+                            const readBack = await fetch(`https://hapi.fhir.org/baseR4/Patient?identifier=${q}`, { headers: { 'Accept': 'application/fhir+json' } });
                             if (readBack.ok) {
-                                const patientResource = await readBack.json();
-                                setTimeout(() => this.triggerToast('雲端讀回驗證成功', `已確認 Patient/${patientResource.id} 存在於 FHIR 伺服器`), 3200);
+                                const bundleBack = await readBack.json();
+                                const found = bundleBack.entry && bundleBack.entry[0] && bundleBack.entry[0].resource;
+                                if (found) {
+                                    setTimeout(() => this.triggerToast('雲端讀回驗證成功', `已確認化名個案 ${ident.value} 存在於 FHIR 伺服器（Patient/${found.id}）`), 3200);
+                                }
                             }
                         } catch (e) { /* 讀回驗證失敗不影響主流程 */ }
                     } catch (e) {
@@ -828,13 +964,26 @@
                     this.confirmingAwareness = true;
                     this.showDdiDetailModal = false;
                     try {
-                        const drugs = this.ddiAlerts[0]?.drugs || [];
+                        const deid = DbService.fhirDeid;
+                        const pseudo = await deid.getOrCreate(this._username);
+                        const ident = deid.identifier(pseudo);
+                        // 涵蓋當下「全部」警示，而非只記第一筆——UI 宣稱已記錄知悉，就不能只送 ddiAlerts[0]
+                        const allAlerts = this.ddiAlerts || [];
+                        const summary = allAlerts.map(a => (a.drugs || []).join(' + ')).filter(Boolean);
                         const flagResource = {
                             resourceType: 'Flag',
                             status: 'active',
-                            category: [{ coding: [{ code: 'drug-safety' }] }],
-                            code: { text: drugs.join(' + ') + ' DDI Awareness' },
-                            subject: { reference: `Patient/${this.profile.id}` }
+                            // coding 沒有 system 在 FHIR 中無意義，補上標準的 flag-category
+                            category: [{
+                                coding: [{
+                                    system: 'http://terminology.hl7.org/CodeSystem/flag-category',
+                                    code: 'drug',
+                                    display: 'Drug'
+                                }]
+                            }],
+                            code: { text: `病患已知悉 ${allAlerts.length} 項交互作用警示：${summary.join('；')}` },
+                            // 以邏輯參照指向去識別化個案，不外送真實 ID，也避免懸空參照
+                            subject: { identifier: ident, type: 'Patient', display: deid.displayName(pseudo) }
                         };
                         const res = await fetch('https://hapi.fhir.org/baseR4/Flag', {
                             method: 'POST',
@@ -842,7 +991,7 @@
                             body: JSON.stringify(flagResource)
                         });
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                        this.triggerToast('風險確認完成', '已記錄您對此交互風險的知悉，資料已上傳 FHIR 伺服器');
+                        this.triggerToast('風險確認完成', `已記錄您對 ${allAlerts.length} 項交互風險的知悉（以化名上傳，未送出姓名）`);
                     } catch (e) {
                         this.triggerToast('上傳失敗', '網路異常，請稍後再試');
                     } finally {
@@ -856,6 +1005,41 @@
                 async toggleReminder(reminder) {
                     reminder.completed = !reminder.completed;
                     try { await DbService.updateReminders(this._username, this.reminders); } catch (e) { /* 同步失敗不影響本地操作 */ }
+                },
+                openPasswordModal() {
+                    this.passwordForm = { current: '', next: '', confirm: '' };
+                    this.passwordError = '';
+                    this.showPasswordModal = true;
+                },
+                closePasswordModal() {
+                    this.showPasswordModal = false;
+                    this.passwordForm = { current: '', next: '', confirm: '' };
+                    this.passwordError = '';
+                },
+                async submitPasswordChange() {
+                    const { current, next, confirm } = this.passwordForm;
+                    this.passwordError = '';
+                    if (!current || !next) { this.passwordError = '請填寫目前密碼與新密碼'; return; }
+                    if (next.length < 8) { this.passwordError = '新密碼至少需 8 碼'; return; }
+                    if (next !== confirm) { this.passwordError = '兩次輸入的新密碼不一致'; return; }
+                    if (next === current) { this.passwordError = '新密碼不可與目前密碼相同'; return; }
+                    this.changingPassword = true;
+                    try {
+                        await DbService.changeOwnPassword(current, next);
+                        this.closePasswordModal();
+                        this.triggerToast('密碼已變更', '下次登入請使用新密碼');
+                    } catch (e) {
+                        const map = {
+                            'auth/wrong-password': '目前密碼不正確',
+                            'auth/invalid-credential': '目前密碼不正確',
+                            'auth/weak-password': '新密碼強度不足，請改用更長或更複雜的密碼',
+                            'auth/requires-recent-login': '登入狀態已過期，請重新登入後再試',
+                            'auth/too-many-requests': '嘗試次數過多，請稍後再試'
+                        };
+                        this.passwordError = map[e && e.code] || ('變更失敗：' + ((e && e.message) || '未知錯誤'));
+                    } finally {
+                        this.changingPassword = false;
+                    }
                 },
                 logout() { logout(); },
                 scrollChat() {
@@ -916,32 +1100,30 @@
                 destroyCharts() { if (this._charts) { Object.values(this._charts).forEach(c => { if (c) c.dispose(); }); this._charts = {}; } },
                 initCharts() {
                     this.destroyCharts();
-                    const patientData = window.mockData.patient;
-                    
-                    const trendEl = document.getElementById('safetyTrendChart');
-                    if (trendEl) {
-                        this._charts.trend = echarts.init(trendEl);
-                        this._charts.trend.setOption({
-                            tooltip: { trigger: 'axis' },
-                            xAxis: { type: 'category', data: ['週一', '週二', '週三', '週四', '週五', '週六', '週日'] },
-                            yAxis: { type: 'value', min: 70, show: false },
-                            series: [{
-                                name: '安全評分',
-                                data: patientData.safetyTrend,
-                                type: 'line',
-                                smooth: true,
-                                itemStyle: { color: '#24A15D' },
-                                areaStyle: { color: 'rgba(36, 161, 93, 0.1)' },
-                                symbol: 'none'
-                            }],
-                            grid: { left: 20, right: 20, top: 10, bottom: 20 }
-                        });
-                    }
+                    // 安全評分趨勢圖已移除：系統不保存歷史分數，原本渲染的是所有病患共用的
+                    // 寫死數列，會與「尚未評估」的分數顯示互相矛盾
 
+                    // 藥品類別分佈由「登入者實際的用藥清單」即時彙總。
+                    // 原本讀 mockData.patient.medicationCategories，那是 patient01 專屬的寫死分佈，
+                    // 會讓每位病患都看到同一張圖，甚至在總項數為 0 時仍畫出 6 份的餅圖
                     const catEl = document.getElementById('categoryChart');
                     if (catEl) {
+                        const tally = {};
+                        (this.medications || []).forEach(m => {
+                            const key = m.category || '未分類';
+                            tally[key] = (tally[key] || 0) + 1;
+                        });
+                        const palette = ['#24A15D', '#3BB77E', '#175C3A', '#EAF7F0', '#7BD3A6', '#0F3D26'];
+                        const entries = Object.entries(tally);
                         this._charts.category = echarts.init(catEl);
-                        this._charts.category.setOption({
+                        this._charts.category.setOption(entries.length === 0 ? {
+                            title: {
+                                text: '尚無用藥資料',
+                                left: 'center', top: 'center',
+                                textStyle: { fontSize: 13, color: '#94a3b8', fontWeight: 'bold' }
+                            },
+                            series: []
+                        } : {
                             tooltip: { trigger: 'item' },
                             series: [{
                                 name: '藥品類別',
@@ -949,18 +1131,20 @@
                                 radius: ['70%', '85%'],
                                 avoidLabelOverlap: false,
                                 label: { show: false },
-                                data: patientData.medicationCategories.map((c, i) => ({
-                                    value: c.value,
-                                    name: c.label,
-                                    itemStyle: { color: ['#24A15D', '#3BB77E', '#175C3A', '#EAF7F0'][i] }
+                                data: entries.map(([label, value], i) => ({
+                                    value,
+                                    name: label,
+                                    itemStyle: { color: palette[i % palette.length] }
                                 }))
                             }]
                         });
                     }
                 }
             }
-        }).mount('#app');
+        });
+        mountWhenAuthorized(app, 'patient');
     </script>
+    <script src="js/pwa-register.js" defer></script>
 </body>
 </html>
 

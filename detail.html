@@ -3,6 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1A5276">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="MedSafe">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     <title>藥物詳情 | MedSafe</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -98,10 +105,10 @@
     <script src="js/auth.js"></script>
     <script>
         const { createApp } = Vue;
-        createApp({
+        const app = createApp({
             data() {
-                const user = getCurrentUser();
-                if (!user) window.location.href = 'login.html';
+                // 掛載前已驗證為有效且啟用中的帳號，此處必定拿得到身分
+                const user = getVerifiedUser();
                 
                 const urlParams = new URLSearchParams(window.location.search);
                 const id = parseInt(urlParams.get('id'));
@@ -117,7 +124,9 @@
                     window.history.back();
                 }
             }
-        }).mount('#app');
+        });
+        mountWhenAuthorized(app, null);
     </script>
+    <script src="js/pwa-register.js" defer></script>
 </body>
 </html>

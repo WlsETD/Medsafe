@@ -1,14 +1,16 @@
 window.mockData = {
-  // 測試帳號
+  // 展示帳號名冊（僅角色與姓名，供介面顯示用）
+  // 此處刻意不含任何密碼：純前端專案的所有內容皆可被公開下載，
+  // 在此放置憑證等同於對外發佈可用帳密。一鍵登入的憑證只保留低權限帳號，見 login.html。
   users: [
-    { username: 'admin', password: '123456', role: 'admin', name: '王大明主任' },
-    { username: 'doctor', password: '123456', role: 'doctor', name: '李小美醫師' },
-    { username: 'patient01', password: '123456', role: 'patient', name: '王大明' },
-    { username: 'insurance01', password: '123456', role: 'insurance', name: '國泰核保員' },
-    { username: 'P001', password: '123456', role: 'patient', name: '張小泉' },
-    { username: 'P002', password: '123456', role: 'patient', name: '李大維' },
-    { username: 'P003', password: '123456', role: 'patient', name: '陳美花' },
-    { username: 'P004', password: '123456', role: 'patient', name: '劉建國' }
+    { username: 'admin', role: 'admin', name: '王大明主任' },
+    { username: 'doctor', role: 'doctor', name: '李小美醫師' },
+    { username: 'patient01', role: 'patient', name: '王大明' },
+    { username: 'insurance01', role: 'insurance', name: '國泰核保員' },
+    { username: 'P001', role: 'patient', name: '張小泉' },
+    { username: 'P002', role: 'patient', name: '李大維' },
+    { username: 'P003', role: 'patient', name: '陳美花' },
+    { username: 'P004', role: 'patient', name: '劉建國' }
   ],
 
   // DDI 交互規則（供 admin.html 用戶管理頁與 seed.html 使用）
@@ -89,24 +91,15 @@ window.mockData = {
       name: '王大明',
       age: 72,
       gender: '男',
-      avatar: 'https://ui-avatars.com/api/?name=王大明&background=24A15D&color=fff',
       healthSummary: '目前用藥狀況穩定，但需注意血壓藥與抗凝血劑的潛在交互作用。',
       nextAppointment: '2026-09-01'
     },
+    // safetyScore 不再寫死於資料中，改由 DbService.computeSafetyScore() 依 medications/ddiAlerts 即時計算
     stats: {
-      safetyScore: 92,
       activeMeds: 6,
       aiChecksToday: 12,
       lastSync: '5 分鐘前'
     },
-    safetyTrend: [85, 88, 82, 90, 87, 93, 92],
-    medicationCategories: [
-      { label: '心血管用藥', value: 3 },
-      { label: '降血糖藥', value: 1 },
-      { label: '止痛藥', value: 1 },
-      { label: '補充品', value: 1 }
-    ],
-    weeklySafetyRate: [98, 95, 99, 92, 94, 96, 92],
     medications: [
       { id: 1, name: 'Warfarin', zhName: '華法林', dosage: '5mg', freq: '每日一次 (晚)', category: '抗凝血劑', status: '風險', color: 'danger', icon: 'shield-exclamation', hospital: '台大醫院' },
       { id: 2, name: 'Aspirin', zhName: '阿斯匹靈', dosage: '100mg', freq: '每日一次 (早)', category: '非類固醇消炎藥', status: '風險', color: 'danger', icon: 'shield-exclamation', hospital: '長庚醫院' },
@@ -143,11 +136,10 @@ window.mockData = {
       assignedDoctorName: '李小美醫師',
       profile: {
         id: 'P001', name: '張小泉', age: 68, gender: '女',
-        avatar: 'https://ui-avatars.com/api/?name=張小泉&background=24A15D&color=fff',
         healthSummary: '目前用藥狀況穩定，無重大交互作用風險。',
         nextAppointment: '2024-06-20'
       },
-      stats: { safetyScore: 96, activeMeds: 3, aiChecksToday: 8, lastSync: '10 分鐘前' },
+      stats: { activeMeds: 3, aiChecksToday: 8, lastSync: '10 分鐘前' },
       medications: [
         { id: 1, name: 'Metformin', zhName: '二甲雙胍', dosage: '500mg', freq: '每日兩次 (飯後)', category: '降血糖藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '榮總醫院' },
         { id: 2, name: 'Lisinopril', zhName: '賴諾普利', dosage: '10mg', freq: '每日一次 (早)', category: '降血壓藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '台大醫院' },
@@ -169,11 +161,10 @@ window.mockData = {
       assignedDoctorName: '李小美醫師',
       profile: {
         id: 'P002', name: '李大維', age: 75, gender: '男',
-        avatar: 'https://ui-avatars.com/api/?name=李大維&background=24A15D&color=fff',
         healthSummary: '用藥品項較多，AI 已加強監控潛在交互作用風險。',
         nextAppointment: '2024-06-18'
       },
-      stats: { safetyScore: 89, activeMeds: 3, aiChecksToday: 10, lastSync: '25 分鐘前' },
+      stats: { activeMeds: 3, aiChecksToday: 10, lastSync: '25 分鐘前' },
       medications: [
         { id: 1, name: 'Metformin', zhName: '二甲雙胍', dosage: '500mg', freq: '每日兩次 (飯後)', category: '降血糖藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '榮總醫院' },
         { id: 2, name: 'Lisinopril', zhName: '賴諾普利', dosage: '10mg', freq: '每日一次 (早)', category: '降血壓藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '台大醫院' },
@@ -195,11 +186,10 @@ window.mockData = {
       assignedDoctorName: '李小美醫師',
       profile: {
         id: 'P003', name: '陳美花', age: 70, gender: '女',
-        avatar: 'https://ui-avatars.com/api/?name=陳美花&background=24A15D&color=fff',
         healthSummary: '目前用藥狀況穩定，無重大交互作用風險。',
         nextAppointment: '2024-06-22'
       },
-      stats: { safetyScore: 95, activeMeds: 3, aiChecksToday: 9, lastSync: '18 分鐘前' },
+      stats: { activeMeds: 3, aiChecksToday: 9, lastSync: '18 分鐘前' },
       medications: [
         { id: 1, name: 'Metformin', zhName: '二甲雙胍', dosage: '500mg', freq: '每日兩次 (飯後)', category: '降血糖藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '榮總醫院' },
         { id: 2, name: 'Lisinopril', zhName: '賴諾普利', dosage: '10mg', freq: '每日一次 (早)', category: '降血壓藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '台大醫院' },
@@ -221,11 +211,10 @@ window.mockData = {
       assignedDoctorName: '李小美醫師',
       profile: {
         id: 'P004', name: '劉建國', age: 66, gender: '男',
-        avatar: 'https://ui-avatars.com/api/?name=劉建國&background=24A15D&color=fff',
         healthSummary: '目前用藥狀況需注意，血壓藥與抗凝血劑存在潛在交互作用。',
         nextAppointment: '2024-06-16'
       },
-      stats: { safetyScore: 78, activeMeds: 4, aiChecksToday: 14, lastSync: '3 分鐘前' },
+      stats: { activeMeds: 4, aiChecksToday: 14, lastSync: '3 分鐘前' },
       medications: [
         { id: 1, name: 'Warfarin', zhName: '華法林', dosage: '5mg', freq: '每日一次 (晚)', category: '抗凝血劑', status: '風險', color: 'danger', icon: 'shield-exclamation', hospital: '台大醫院' },
         { id: 2, name: 'Aspirin', zhName: '阿斯匹靈', dosage: '100mg', freq: '每日一次 (早)', category: '非類固醇消炎藥', status: '風險', color: 'danger', icon: 'shield-exclamation', hospital: '長庚醫院' },

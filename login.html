@@ -3,6 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1A5276">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="MedSafe">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     <title>登入 | MedSafe 智慧醫療系統</title>
     <link rel="icon" type="image/png" href="images/LOGO.png">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -64,6 +71,23 @@
 
         .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
         .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+        /* 登入面板需完整落在一屏內。內容約需 713px 高，較矮的螢幕（如 1366x768 筆電，
+           扣掉瀏覽器工具列後約 650px）會出現滾輪，故在此逐級收緊間距而非讓它捲動。 */
+        @media (max-height: 730px) {
+            #loginPanel { padding-top: .25rem; padding-bottom: .25rem; }
+            #loginPanel .demo-card { padding: .5rem; }
+            /* 表單間距來自 space-y-* 產生的子元素 margin-top，不是 flex gap */
+            #loginPanel form > * + * { margin-top: .5rem; }
+            #loginPanel input { padding-top: .5rem; padding-bottom: .5rem; }
+            #loginPanel h2 { font-size: 1.25rem; line-height: 1.75rem; }
+        }
+        @media (max-height: 700px) {
+            #loginPanel .demo-card { padding: .375rem; }
+            #loginPanel .demo-card .text-sm { font-size: .75rem; }
+            #loginPanel button[type="submit"] { padding-top: .5rem; padding-bottom: .5rem; }
+            #loginPanel .login-stats { display: none; }
+        }
     </style>
 </head>
 <body class="h-screen overflow-hidden flex">
@@ -99,7 +123,7 @@
                     <!-- Subtitle -->
                     <p class="text-sm text-green-100/70 leading-relaxed mb-6 border-l-2 border-green-500/50 pl-4">透過 FHIR 整合與 AI 即時檢測，跨院用藥不再充滿未知風險。</p>
                     <!-- Features -->
-                    <div class="space-y-4">
+                    <div class="space-y-2.5">
                         <div class="flex items-center gap-4 bg-green-500/10 border border-green-400/20 rounded-2xl px-5 py-3">
                             <div class="w-8 h-8 rounded-full bg-green-500/30 flex items-center justify-center border border-green-400/40 shrink-0">
                                 <svg class="h-4 w-4 text-green-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
@@ -136,9 +160,9 @@
         </div>
 
         <!-- Right: Login Section -->
-        <div class="w-full lg:w-1/2 flex items-center justify-center px-8 sm:px-16 py-6 bg-white overflow-y-auto h-full">
+        <div class="w-full lg:w-1/2 flex items-center justify-center px-8 sm:px-16 py-2.5 bg-white overflow-y-auto h-full" id="loginPanel">
             <div class="w-full max-w-md">
-                <div class="flex gap-2 mb-5 bg-bgMain rounded-2xl p-1">
+                <div class="flex gap-2 mb-3 bg-bgMain rounded-2xl p-1">
                     <button type="button" @click="switchMode('login')"
                             :class="['flex-1 py-2 rounded-xl text-sm font-black transition-all', mode === 'login' ? 'bg-white text-primary shadow-sm' : 'text-lightText']">登入</button>
                     <button type="button" @click="switchMode('register')"
@@ -148,45 +172,45 @@
                 <div class="overflow-hidden">
                 <transition :name="slideDir" mode="out-in">
                 <div :key="mode">
-                <div class="mb-5 text-center lg:text-left">
-                    <h2 class="text-3xl font-black text-title mb-2">{{ mode === 'login' ? '歡迎回來' : '建立病患帳號' }}</h2>
+                <div class="mb-3 text-center lg:text-left">
+                    <h2 class="text-2xl font-black text-title mb-1">{{ mode === 'login' ? '歡迎回來' : '建立病患帳號' }}</h2>
                     <p class="text-sm text-content">{{ mode === 'login' ? '請輸入帳號密碼，或選擇下方快速登入。' : '註冊後將以「患者」身分登入個人健康中心。' }}</p>
                 </div>
 
-                <form v-if="mode === 'login'" @submit.prevent="login" class="space-y-4">
+                <form v-if="mode === 'login'" @submit.prevent="login" class="space-y-2.5">
                     <div>
-                        <label class="block text-sm font-bold text-title mb-1.5">帳號</label>
-                        <input type="text" v-model="username" placeholder="請輸入帳號" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-5 outline-none transition-all font-medium">
+                        <label class="block text-sm font-bold text-title mb-1">帳號</label>
+                        <input type="text" v-model="username" name="username" autocomplete="username" placeholder="請輸入帳號" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-2.5 px-5 outline-none transition-all font-medium">
                     </div>
                     <div>
-                        <label class="block text-sm font-bold text-title mb-1.5">密碼</label>
-                        <input type="password" v-model="password" placeholder="••••••••" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-5 outline-none transition-all font-medium">
+                        <label class="block text-sm font-bold text-title mb-1">密碼</label>
+                        <input type="password" v-model="password" name="password" autocomplete="current-password" placeholder="••••••••" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-2.5 px-5 outline-none transition-all font-medium">
                     </div>
 
                     <div v-if="error" class="bg-red-50 text-danger text-xs font-bold p-3 rounded-xl border border-red-100">{{ error }}</div>
 
-                    <button type="submit" :disabled="loading" class="w-full hero-gradient text-white font-black py-3.5 rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.01] transition-all flex items-center justify-center gap-3">
+                    <button type="submit" :disabled="loading" class="w-full hero-gradient text-white font-black py-3 rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.01] transition-all flex items-center justify-center gap-3">
                         <svg v-if="loading" class="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                         {{ loading ? '驗證中...' : '登入系統' }}
                     </button>
                 </form>
 
-                <form v-else @submit.prevent="register" class="space-y-4">
+                <form v-else @submit.prevent="register" class="space-y-2.5">
                     <div>
-                        <label class="block text-sm font-bold text-title mb-1.5">姓名</label>
-                        <input type="text" v-model="regName" placeholder="請輸入真實姓名" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-5 outline-none transition-all font-medium">
+                        <label class="block text-sm font-bold text-title mb-1">姓名</label>
+                        <input type="text" v-model="regName" name="name" autocomplete="name" placeholder="請輸入真實姓名" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-2.5 px-5 outline-none transition-all font-medium">
                     </div>
                     <div>
-                        <label class="block text-sm font-bold text-title mb-1.5">帳號</label>
-                        <input type="text" v-model="regUsername" placeholder="英數字、底線，3-20 字元" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-5 outline-none transition-all font-medium">
+                        <label class="block text-sm font-bold text-title mb-1">帳號</label>
+                        <input type="text" v-model="regUsername" name="new-username" autocomplete="username" placeholder="英數字、底線，3-20 字元" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-2.5 px-5 outline-none transition-all font-medium">
                     </div>
                     <div>
-                        <label class="block text-sm font-bold text-title mb-1.5">密碼</label>
-                        <input type="password" v-model="regPassword" placeholder="至少 6 碼" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-5 outline-none transition-all font-medium">
+                        <label class="block text-sm font-bold text-title mb-1">密碼</label>
+                        <input type="password" v-model="regPassword" name="new-password" autocomplete="new-password" placeholder="至少 6 碼" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-2.5 px-5 outline-none transition-all font-medium">
                     </div>
                     <div>
-                        <label class="block text-sm font-bold text-title mb-1.5">確認密碼</label>
-                        <input type="password" v-model="regPasswordConfirm" placeholder="再輸入一次密碼" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-5 outline-none transition-all font-medium">
+                        <label class="block text-sm font-bold text-title mb-1">確認密碼</label>
+                        <input type="password" v-model="regPasswordConfirm" name="confirm-password" autocomplete="new-password" placeholder="再輸入一次密碼" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-2.5 px-5 outline-none transition-all font-medium">
                     </div>
 
                     <label class="flex items-start gap-2.5 select-none cursor-pointer">
@@ -199,30 +223,41 @@
 
                     <div v-if="error" class="bg-red-50 text-danger text-xs font-bold p-3 rounded-xl border border-red-100">{{ error }}</div>
 
-                    <button type="submit" :disabled="loading" class="w-full hero-gradient text-white font-black py-3.5 rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.01] transition-all flex items-center justify-center gap-3">
+                    <button type="submit" :disabled="loading" class="w-full hero-gradient text-white font-black py-3 rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.01] transition-all flex items-center justify-center gap-3">
                         <svg v-if="loading" class="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                         {{ loading ? '註冊中...' : '註冊並登入' }}
                     </button>
                 </form>
 
                 <!-- Demo Accounts Section -->
-                <div v-if="mode === 'login'" class="mt-6">
-                    <div class="flex items-center gap-4 mb-4">
+                <div v-if="mode === 'login'" class="mt-3">
+                    <div class="flex items-center gap-4 mb-2">
                         <div class="flex-1 h-px bg-slate-100"></div>
                         <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">演示帳號快速登入</span>
                         <div class="flex-1 h-px bg-slate-100"></div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="mb-2.5 p-2 bg-amber-50 border border-amber-200 rounded-xl">
+                        <p class="text-[9px] font-black text-amber-700 uppercase tracking-widest">⚠️ 帳號說明</p>
+                        <p class="text-[9px] text-amber-600 mt-0.5">
+                          <span class="block">🟢 <strong>展示帳號</strong>（醫師、病患、保險）：一鍵登入，資料皆為展示用途，非真實病歷。</span>
+                          <span class="block mt-0.5">🔴 <strong>管理員</strong>：具備停用帳號與變更系統設定之權限，密碼不隨網頁發佈，請由現場人員手動輸入。</span>
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2.5">
                         <div v-for="u in demoUsers" :key="u.username"
                              @click="autoFill(u)"
-                             class="demo-card p-3 bg-slate-50 rounded-2xl border-2 border-transparent transition-all cursor-pointer group">
-                            <div class="flex justify-between items-start mb-1.5">
+                             class="demo-card p-2.5 rounded-2xl border-2 transition-all cursor-pointer group"
+                             :class="isAutoLoginAccount(u.username) ? 'bg-slate-50 border-transparent hover:border-primary/20 hover:bg-primary/5' : 'bg-slate-100 border-slate-300 hover:border-slate-400 opacity-80'">
+                            <div class="flex justify-between items-start mb-1">
                                 <span :class="getRoleClass(u.role)" class="text-[8px] font-black px-1.5 py-0.5 rounded uppercase">{{ u.role }}</span>
-                                <svg class="h-3 w-3 text-slate-300 group-hover:text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                <svg class="h-3 w-3 text-slate-300 group-hover:text-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
                             </div>
                             <div class="text-sm font-black text-title">{{ u.name }}</div>
-                            <div class="text-[10px] font-bold text-slate-400 mt-0.5">{{ u.username }} / {{ u.password }}</div>
+                            <div class="text-[10px] font-bold text-slate-400 mt-0.5">{{ u.username }}</div>
+                            <div v-if="isAutoLoginAccount(u.username)" class="text-[9px] font-bold text-success mt-0.5 uppercase tracking-wider">✓ 一鍵登入</div>
+                            <div v-else class="text-[9px] font-bold text-slate-500 mt-0.5 uppercase tracking-wider">需輸入密碼</div>
                         </div>
                     </div>
                 </div>
@@ -230,12 +265,13 @@
                 </transition>
                 </div>
 
-                <div class="mt-6 text-center">
-                    <div class="flex justify-center gap-8">
-                        <div class="text-center"><div class="text-lg font-black text-title">4.5k+</div><div class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Users</div></div>
-                        <div class="text-center"><div class="text-lg font-black text-title">12k+</div><div class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">DDI Rules</div></div>
-                        <div class="text-center"><div class="text-lg font-black text-title">100%</div><div class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Secured</div></div>
+                <div class="mt-2.5 text-center">
+                    <div class="flex justify-center gap-8 login-stats">
+                        <div class="text-center"><div class="text-base font-black text-title">4</div><div class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">角色端</div></div>
+                        <div class="text-center"><div class="text-base font-black text-title">FHIR R4</div><div class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">標準介接</div></div>
+                        <div class="text-center"><div class="text-base font-black text-title">PWA</div><div class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">可安裝</div></div>
                     </div>
+                    <p class="mt-2 text-[9px] font-bold text-slate-400">本系統為競賽展示原型，非上市醫療器材軟體</p>
                 </div>
             </div>
         </div>
@@ -245,7 +281,7 @@
         <div v-if="showTermsModal" @click.self="showTermsModal = false" class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
             <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
                 <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-                    <h3 class="text-lg font-black text-title">MedSafe 使用者條款</h3>
+                    <h3 class="text-base font-black text-title">MedSafe 使用者條款</h3>
                     <button type="button" @click="showTermsModal = false" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
                 </div>
                 <div class="px-6 py-4 overflow-y-auto space-y-3 text-xs font-medium text-content leading-relaxed">
@@ -278,7 +314,12 @@
                     slideDir: 'slide-left',
                     username: '', password: '', error: '', loading: false,
                     regName: '', regUsername: '', regPassword: '', regPasswordConfirm: '', agreeTerms: false, showTermsModal: false,
-                    demoUsers: window.mockData.users.filter(u => u.role !== 'patient' || u.username === 'patient01'),
+                    // 全 4 個角色都顯示以完整展示系統功能。
+                    // doctor、patient01、insurance01：展示帳號，一鍵登入，供評審快速走完跨端流程。
+                    // admin：唯一具備停用帳號、改動系統設定、維護模式等破壞性權限的角色，
+                    // 其憑證不隨前端靜態檔案發佈，須由現場人員手動輸入。
+                    demoUsers: window.mockData.users.filter(u => ['admin', 'doctor', 'patient01', 'insurance01'].includes(u.username)),
+                    demoAutoLoginAccounts: ['doctor', 'patient01', 'insurance01'],
                     carouselIndex: 0,
                     carouselDir: 'next',
                     carouselImages: ['images/slide1.png', 'images/slide2.png', 'images/slide3.png'],
@@ -311,9 +352,16 @@
                     this.carouselIndex = i;
                 },
                 autoFill(user) {
+                    // 展示帳號自動填入密碼供一鍵登入；admin 只帶入帳號、密碼留空。
+                    // 純前端專案的所有內容皆可被公開下載，此處寫入的任何憑證等同對外發佈，
+                    // 因此唯獨排除能停用帳號、改系統設定、開關維護模式的最高權限角色。
+                    const DEMO_CREDENTIALS = { doctor: '123456', patient01: '123456', insurance01: '123456' };
                     this.username = user.username;
-                    this.password = user.password;
+                    this.password = DEMO_CREDENTIALS[user.username] || '';
                     this.error = '';
+                },
+                isAutoLoginAccount(username) {
+                    return this.demoAutoLoginAccounts.includes(username);
                 },
                 getRoleClass(role) {
                     const classes = {
@@ -377,6 +425,7 @@
             }
         }).mount('#app');
     </script>
+    <script src="js/pwa-register.js" defer></script>
 </body>
 </html>
 

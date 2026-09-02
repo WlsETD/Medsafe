@@ -24,15 +24,28 @@ service cloud.firestore {
     function isAdmin() { return hasRole('admin'); }
     function isDoctor() { return hasRole('doctor'); }
     function isInsurance() { return hasRole('insurance'); }
+    // 帳號的合成 email 由 Firebase Auth 簽發（username@medsafe.local），前端無法竄改，
+    // 因此以 token.email 作為 username 的唯一可信來源。
+    // 不可改用「檢查 users/{username} 是否存在」——那是 TOCTOU：攻擊者可先寫 user_roles
+    // 佔用某 username 卻不寫 users 文件，日後合法使用者註冊同名時檢查仍會通過，形成雙主。
+    function ownsUsername(username) {
+      return username is string
+        && request.auth.token.email == username.lower() + '@medsafe.local';
+    }
+
+    // 除了比對已儲存的 profile().username，另要求 token.email 也對得上，
+    // 讓「username ↔ Auth 身分」成為每次存取都驗證的不變式，而非註冊當下的一次性快照。
+    // 否則若日後 uid 的 email 被變更，舊的 user_roles 欄位仍會續用於授權。
     function isOwnUsername(username) {
-      return isActive() && profile().username == username;
+      return isActive() && profile().username == username && ownsUsername(username);
     }
 
     // 自助註冊限定只能建立「patient」角色、狀態為 active 的自己身分，防止自我提權
     function isSelfRegisteringPatient(uid) {
       return isAuthed() && request.auth.uid == uid
         && request.resource.data.role == 'patient'
-        && request.resource.data.status == 'active';
+        && request.resource.data.status == 'active'
+        && ownsUsername(request.resource.data.username);
     }
 
     // 身分索引：只有本人能讀自己的 profile；新增只能是 admin，或使用者本人自助註冊為 patient；
@@ -50,7 +63,8 @@ service cloud.firestore {
       allow create: if isAdmin()
         || (isAuthed() && request.resource.data.uid == request.auth.uid
             && request.resource.data.role == 'patient'
-            && request.resource.data.status == 'active');
+            && request.resource.data.status == 'active'
+            && ownsUsername(username));
       allow update, delete: if isAdmin();
     }
 
@@ -64,10 +78,60 @@ service cloud.firestore {
       allow read, write: if isAdmin() || isDoctor();
     }
 
-    // 病患資料：admin/doctor 可讀寫，保險核保員只能讀（核保用途，不得修改病歷），病患本人可讀寫自己的文件
+    // 病患本人只能改屬於自己的生活性欄位，不得自行編輯臨床內容。
+    // 這在 currentMeds 改讀真實 medications 之後尤其重要：屆時病患自寫 medications
+    // 不只是污染核保判斷，而是直接污染交互作用檢測的輸入，屬於臨床安全問題。
+    // ddiAlerts 與 stats 同理——那是系統評估的結果，不是使用者可宣告的事實。
+    function patientWritableFields() {
+      return ['reminders', 'profile', 'fhirPseudonym'];
+    }
+    function patientOnlyTouchesOwnFields() {
+      return request.resource.data.diff(resource.data)
+             .affectedKeys().hasOnly(patientWritableFields());
+    }
+
+    // 只限制 update 是不夠的：Firestore 依「文件是否已存在」區分 create/update，
+    // 而攻擊者完全掌控自己的註冊流程——他可以跳過前端的 registerPatient()，
+    // 直接 create 一份自帶任意 medications / ddiAlerts / assignedDoctor 的文件，
+    // 那樣 update 的欄位限制永遠不會被求值，形同虛設。
+    //
+    // 注意 size() 對不存在的欄位求值會使整條規則出錯而拒絕，
+    // 因此每個欄位都必須先用 in 檢查存在性，否則只寫 fhirPseudonym 的合法建檔會被誤擋。
+    function emptyOrAbsent(field) {
+      return !(field in request.resource.data) || request.resource.data[field].size() == 0;
+    }
+    function patientInitialDocIsClean() {
+      return emptyOrAbsent('medications')
+        && emptyOrAbsent('ddiAlerts')
+        // assignedDoctor 決定這份病歷會出現在哪位醫師的清單裡（getPatientsByDoctor 照此查詢），
+        // 因此不可由自助註冊者自行指定，只能是系統預設值。
+        && (!('assignedDoctor' in request.resource.data)
+            || request.resource.data.assignedDoctor == 'doctor')
+        && request.resource.data.keys().hasOnly(
+             ['profile', 'stats', 'medications', 'ddiAlerts', 'aiInsights', 'reminders',
+              'assignedDoctor', 'assignedDoctorName', 'fhirPseudonym']);
+    }
+
+    // 化名只能從無到有寫入一次。允許反覆更改會讓公開 FHIR 伺服器上
+    // 累積無主的孤兒資源，而那些資源無法回收。
+    function pseudonymNotOverwritten() {
+      return !('fhirPseudonym' in resource.data)
+        || request.resource.data.fhirPseudonym == resource.data.fhirPseudonym;
+    }
+
+    // 病患資料：admin/doctor 可讀寫；保險核保員只能讀（核保用途，不得修改病歷）；
+    // 病患本人可讀，但寫入僅限上列欄位
     match /patient_data/{username} {
       allow read: if isAdmin() || isDoctor() || isInsurance() || isOwnUsername(username);
-      allow write: if isAdmin() || isDoctor() || isOwnUsername(username);
+      allow create: if isAdmin() || isDoctor()
+        || (isOwnUsername(username) && patientInitialDocIsClean());
+      // resource != null 守衛：Security Rules 的布林運算子是容錯的（error || true 會得到 true），
+      // 因此「求值錯誤必然拒絕」並不是保證，只是目前這條 OR 鏈剛好沒有為真的分支。
+      // 少了守衛，日後任何人在此鏈加上一個新條件，都可能讓 resource 為 null 時的求值錯誤
+      // 被 || 吸收而靜默放行，且斷言 allow/deny 的測試抓不到這種變化。
+      allow update: if resource != null && (isAdmin() || isDoctor()
+        || (isOwnUsername(username) && patientOnlyTouchesOwnFields() && pseudonymNotOverwritten()));
+      allow delete: if isAdmin();
     }
 
     match /insurance_data/{doc} {
@@ -79,7 +143,8 @@ service cloud.firestore {
     }
 
     match /ddi_rules/{doc} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin() || isDoctor();
+      allow write: if isAdmin();
     }
 
     match /care_cases/{doc} {

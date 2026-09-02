@@ -1,35 +1,3 @@
-# Node.js
 node_modules/
-dist/
-dist-ssr/
-*.local
-*.log
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-venv/
-.venv/
-env/
-.env
-.pytest_cache/
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Project specific
-backend/data/*.json
-!backend/data/ddi_rules.json
-!backend/data/medications.json
-!backend/data/users.json
-
-# Firebase
-.firebase/
+firestore-debug.log
+firebase-debug.log

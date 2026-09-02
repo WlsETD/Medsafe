@@ -1,3 +1,10 @@
+// 【經評估後決定不採用 Firestore 離線持久化（enablePersistence）】
+// 啟用後 getUserRole() 在離線時會回傳快取的 user_roles 文件並「成功」，
+// 於是一個已被管理員停用的帳號只要離線，就能拿舊快取通過 status === 'active' 檢查
+// 並正常掛載頁面。Firestore 規則仍會擋掉所有實際資料讀取，但畫面會渲染出一個
+// 「看起來還能用」的介面給一個已被停權的人，這與 auth.js 的驗證方向相反。
+// 目前刻意保留「離線時 get() 直接 reject → 顯示可重試畫面」的行為。
+
 const firebaseConfig = {
   apiKey: "AIzaSyCMPhyppaq4D3ba4yUUz-DmeGS9w8wgrN0",
   authDomain: "medsafe-554b7.firebaseapp.com",

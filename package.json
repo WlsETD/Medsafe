@@ -1,0 +1,14 @@
+{
+  "name": "medsafe-security-rules-tests",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "MedSafe Firestore 安全規則的迴歸測試。規則是本專案唯一真正的存取控制邊界，改動後務必執行。",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore --project medsafe-rules-test \"node tests/firestore-rules.test.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^12.0.0"
+  }
+}
