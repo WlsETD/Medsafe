@@ -58,9 +58,10 @@ npm run test:rules       # 83 項（需要 firebase emulators）
 
 ```bash
 BASE=https://medsafe-554b7.web.app
-for f in DEPLOY_CHECKLIST.md README.md progress-dashboard.html          firestore.rules package.json tests/firestore-rules.test.mjs          firestore-debug.log node_modules/vue/package.json; do
-  printf "%-40s %s
-" "$f" "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/$f")"
+for f in DEPLOY_CHECKLIST.md README.md progress-dashboard.html \
+         firestore.rules package.json tests/firestore-rules.test.mjs \
+         firestore-debug.log node_modules/vue/package.json; do
+  printf "%-40s %s\n" "$f" "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/$f")"
 done
 ```
 
