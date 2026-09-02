@@ -1,3 +1,6 @@
 node_modules/
 firestore-debug.log
 firebase-debug.log
+
+# 部署前的線上規則備份（見 DEPLOY_CHECKLIST.md 第六節）
+*.bak
