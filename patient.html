@@ -188,7 +188,10 @@
                     </div>
                     <div class="flex items-center gap-3 border-l-2 border-slate-50 pl-3 md:pl-6 text-left">
                         <div class="text-right hidden md:block"><div class="text-sm font-black text-title">{{ profile.name }}</div><div class="text-[9px] font-black text-primary uppercase">Patient Account</div></div>
-                        <img :src="avatarUrl(profile.name, '#24A15D')" class="w-10 h-10 md:w-12 md:h-12 rounded-[20px] shadow-lg border-2 border-white shrink-0">
+                        <!-- 頭像為裝飾性：使用者姓名已在緊鄰處以文字呈現，
+                             此處給空 alt 是為了避免螢幕閱讀器重複朗讀同一個名字。
+                             空 alt 是刻意的，不是漏寫。 -->
+                        <img alt="" :src="avatarUrl(profile.name, '#24A15D')" class="w-10 h-10 md:w-12 md:h-12 rounded-[20px] shadow-lg border-2 border-white shrink-0">
                     </div>
                 </div>
             </header>
@@ -596,7 +599,7 @@
                         <div class="flex items-center gap-4 shrink-0">
                             <div class="relative w-14 h-14 shrink-0">
                                 <div class="relative w-full h-full rounded-2xl hero-gradient p-1 shadow-xl border-2 border-white/20">
-                                    <img src="images/doctor.jpg" class="w-full h-full rounded-xl object-cover">
+                                    <img alt="" src="images/doctor.jpg" class="w-full h-full rounded-xl object-cover">
                                 </div>
                                 <div class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-primary rounded-full border-2 border-slate-900"></div>
                             </div>

@@ -152,7 +152,10 @@
                     </div>
                     <div class="flex items-center gap-3 pl-4 border-l border-gray-100">
                         <div class="text-right hidden sm:block"><div class="text-sm font-bold text-title">{{ user.name }}</div><div class="text-[9px] font-black uppercase text-primary">ADMIN</div></div>
-                        <img :src="avatarUrl('管', '#7B61FF')" class="w-10 h-10 rounded-xl border-2 border-white shadow-premium">
+                        <!-- 頭像為裝飾性：使用者姓名已在緊鄰處以文字呈現，
+                             此處給空 alt 是為了避免螢幕閱讀器重複朗讀同一個名字。
+                             空 alt 是刻意的，不是漏寫。 -->
+                        <img alt="" :src="avatarUrl('管', '#7B61FF')" class="w-10 h-10 rounded-xl border-2 border-white shadow-premium">
                     </div>
                 </div>
             </header>

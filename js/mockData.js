@@ -111,12 +111,10 @@ window.mockData = {
 
   // 醫師端數據
   doctor: {
-    stats: {
-      totalPatients: 1250,
-      activePrescriptions: 450,
-      conflictAlerts: 12,
-      safetyRate: 98.5
-    },
+    // 原本這裡是 totalPatients 1250／activePrescriptions 450／conflictAlerts 12／
+    // safetyRate 98.5——全部是寫死的常數。醫師端的四張 KPI 已改為由這位醫師
+    // 實際指派到的病患即時計算，這些欄位不再被任何頁面讀取。
+    stats: {},
     prescriptionsByMonth: [65, 59, 80, 81, 56, 55, 40],
     conflictRates: [2.5, 2.1, 3.0, 1.8, 2.4, 1.5, 1.2],
     categoryDistribution: [
@@ -309,14 +307,11 @@ window.mockData = {
 
   // 保險端數據
   insurance: {
-    stats: {
-      activePolicies: 12450,
-      claimsProcessed: 892,
-      aiRiskAnalysis: 3420,
-      premiumDiscounts: 'NT$ 2.4M',
-      coverageHealth: 94.2,
-      securityVerification: '100%'
-    },
+    // 原本這裡是 activePolicies 12450／claimsProcessed 892／aiRiskAnalysis 3420／
+    // premiumDiscounts NT$ 2.4M／coverageHealth 94.2／securityVerification 100%
+    // ——六個全部是寫死的常數，且系統沒有任何保單或理賠資料源。
+    // 核保端的 KPI 已改為由已授權的核保摘要計算，這些欄位不再被讀取。
+    stats: {},
     claimsTrend: [65, 59, 80, 81, 56, 55, 72],
     riskRadar: [85, 90, 70, 80, 75],
     discountsMonthly: [120000, 150000, 140000, 180000, 160000, 210000, 195000],

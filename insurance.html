@@ -153,7 +153,10 @@
                 <div class="flex items-center gap-3 md:gap-6 bg-white p-2 md:p-2.5 rounded-3xl shadow-premium border border-white">
                     <div class="flex items-center gap-3 border-l-2 border-slate-50 pl-3 md:pl-6 text-left">
                         <div class="text-right hidden md:block"><div class="text-sm font-black text-navy">{{ user.name }}</div><div class="text-[9px] font-black text-turquoise uppercase">Underwriter</div></div>
-                        <img :src="avatarUrl('保', '#292E4C')" class="w-10 h-10 md:w-12 md:h-12 rounded-[20px] shadow-lg border-2 border-white shrink-0">
+                        <!-- 頭像為裝飾性：使用者姓名已在緊鄰處以文字呈現，
+                             此處給空 alt 是為了避免螢幕閱讀器重複朗讀同一個名字。
+                             空 alt 是刻意的，不是漏寫。 -->
+                        <img alt="" :src="avatarUrl('保', '#292E4C')" class="w-10 h-10 md:w-12 md:h-12 rounded-[20px] shadow-lg border-2 border-white shrink-0">
                     </div>
                 </div>
             </header>
@@ -189,7 +192,7 @@
                     </section>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-                        <div v-for="kpi in kpis" :key="kpi.label" class="bg-white p-6 md:p-8 rounded-[32px] shadow-premium group hover:-translate-y-2 transition-all duration-500 text-left border border-white/50">
+                        <div v-for="kpi in insuranceKpis" :key="kpi.label" class="bg-white p-6 md:p-8 rounded-[32px] shadow-premium group hover:-translate-y-2 transition-all duration-500 text-left border border-white/50">
                             <div class="flex justify-between items-start mb-6"><div :class="['w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center text-white shadow-lg', kpi.bg]"><component :is="kpi.icon" class="h-6 w-6 md:h-7 md:w-7"></component></div><span class="text-xs font-black text-success">+{{ kpi.trend }}%</span></div>
                             <div class="text-[10px] font-black text-lightText uppercase mb-1 tracking-widest">{{ kpi.label }}</div>
                             <div class="text-2xl md:text-3xl font-black text-navy">{{ kpi.value }}</div>
@@ -763,11 +766,11 @@
                         { name: 'Customers', label: '保戶目錄', icon: Icons.Customers },
                         { name: 'Report', label: '報表中心', icon: Icons.Report },
                     ],
-                    kpis: [
-                        { label: 'Active Policies', value: insData.stats.activePolicies.toLocaleString(), icon: Icons.Policy, trend: 12.5, bg: 'turquoise-gradient', color: 'bg-turquoise', progress: 85 },
-                        { label: 'AI Risk Analysis', value: insData.stats.aiRiskAnalysis.toLocaleString(), icon: Icons.AI, trend: 24.1, bg: 'bg-navy', color: 'bg-turquoise', progress: 62 },
-                        { label: 'Coverage Health', value: insData.stats.coverageHealth + '%', icon: Icons.Risk, trend: 4.2, bg: 'turquoise-gradient', color: 'bg-navy', progress: 94 },
-                    ],
+                    // 這三張卡原本是 Active Policies 12,450 / AI Risk Analysis 3,420 /
+                    // Coverage Health 94.2%，連 +12.5%、+24.1%、+4.2% 的趨勢都是寫死的。
+                    // 系統既沒有保單資料，也沒有歷史可比較。改為由已授權的核保摘要計算，
+                    // 並移除趨勢——沒有歷史就不該有趨勢。
+                    kpis: [],
                     claims: insData.claimsTracking,
                     coverageGaps: insData.coverageGaps,
                     recentPolicies: [
@@ -919,11 +922,10 @@
                     const data = await DbService.getInsuranceData();
                     if (data) {
                         const s = data.stats;
-                        this.kpis = [
-                            { label: 'Active Policies', value: s.activePolicies.toLocaleString(), icon: Icons.Policy, trend: 12.5, bg: 'turquoise-gradient', color: 'bg-turquoise', progress: 85 },
-                            { label: 'AI Risk Analysis', value: s.aiRiskAnalysis.toLocaleString(), icon: Icons.AI, trend: 24.1, bg: 'bg-navy', color: 'bg-turquoise', progress: 62 },
-                            { label: 'Coverage Health', value: s.coverageHealth + '%', icon: Icons.Risk, trend: 4.2, bg: 'turquoise-gradient', color: 'bg-navy', progress: 94 },
-                        ];
+                        // 原本這裡用 data.stats 的 activePolicies／aiRiskAnalysis／
+                        // coverageHealth 覆寫 kpis——三個都是寫死的常數，趨勢箭頭也是。
+                        // KPI 現由 insuranceKpis 這個 computed 依實際授權資料產生，
+                        // 因此這裡不再覆寫。
                         this.claims = data.claimsTracking;
                         this.coverageGaps = data.coverageGaps;
                     }

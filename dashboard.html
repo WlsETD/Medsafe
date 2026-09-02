@@ -154,7 +154,10 @@
 
             <div class="p-6 border-t border-white/5 mt-auto">
                 <div class="flex items-center gap-4 text-white">
-                    <img :src="avatarUrl('醫', '#2DD4BF')" class="w-10 h-10 rounded-xl border border-white/10 shrink-0">
+                    <!-- 頭像為裝飾性：使用者姓名已在緊鄰處以文字呈現，
+                             此處給空 alt 是為了避免螢幕閱讀器重複朗讀同一個名字。
+                             空 alt 是刻意的，不是漏寫。 -->
+                        <img alt="" :src="avatarUrl('醫', '#2DD4BF')" class="w-10 h-10 rounded-xl border border-white/10 shrink-0">
                     <div class="flex-1 overflow-hidden text-left">
                         <div class="text-xs font-black truncate">{{ user.name }}</div>
                         <div class="text-[9px] font-bold text-slate-500">主治醫師 • 已連線</div>
@@ -292,19 +295,29 @@
                         <div class="lg:w-80 shrink-0 bg-white p-8 rounded-[40px] shadow-premium border border-slate-200 relative flex flex-col items-center">
                             <div class="absolute top-0 left-0 clinical-gradient h-2 w-full rounded-t-[40px]"></div>
                             <div class="w-32 h-32 rounded-[40px] clinical-gradient p-1.5 shadow-2xl mb-6 mt-4">
-                                <img :src="avatarUrl(selectedPatient.name, '#ffffff', '#1A5276')" class="w-full h-full rounded-[36px] object-cover">
+                                <img alt="" :src="avatarUrl(selectedPatient.name, '#ffffff', '#1A5276')" class="w-full h-full rounded-[36px] object-cover">
                             </div>
                             <h2 class="text-2xl font-black text-slate-800">{{ selectedPatient.name }}</h2>
                             <p class="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">{{ selectedPatient.id }}</p>
                             
-                            <div class="grid grid-cols-2 gap-3 w-full my-8">
+                            <!-- 這兩塊原本是「健康指數 94.2」與「Verified ✓」。
+                                 94.2 是寫死的常數，與這位病患無關；「Verified」則沒有說明
+                                 驗證了什麼——一個沒有主詞的勾勾，讀者只會自行填空成
+                                 「這位病患的資料已經過確認」，而系統從未做過那件事。
+                                 改為兩個算得出來的數字，且與 startAiCheck 用同一個引擎，
+                                 卡片上的數字不會與檢測結果互相矛盾。
+
+                                 版面：手機上兩欄會擠成一團，改為單欄，sm 以上才並排。 -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full my-8">
                                 <div class="p-4 bg-slate-50 rounded-2xl text-center shadow-inner">
-                                    <div class="text-[9px] font-black text-slate-400 uppercase mb-1">健康指數</div>
-                                    <div class="text-xl font-black text-primary">94.2</div>
+                                    <div class="text-[9px] font-black text-slate-400 uppercase mb-1">用藥安全參考分數</div>
+                                    <div class="text-xl font-black text-primary">{{ patientSafetyScore === null ? '—' : patientSafetyScore }}</div>
+                                    <div class="text-[8px] font-bold text-slate-400 mt-1 leading-tight">依用藥數與已知警示計算，僅供參考</div>
                                 </div>
                                 <div class="p-4 bg-slate-50 rounded-2xl text-center shadow-inner">
-                                    <div class="text-[9px] font-black text-slate-400 uppercase mb-1">Verified</div>
-                                    <div class="text-xl font-black text-accent flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg></div>
+                                    <div class="text-[9px] font-black text-slate-400 uppercase mb-1">交互作用警示</div>
+                                    <div class="text-xl font-black" :class="patientFindingCount > 0 ? 'text-danger' : 'text-primary'">{{ patientFindingCount }}</div>
+                                    <div class="text-[8px] font-bold text-slate-400 mt-1 leading-tight">{{ patientFindingCount > 0 ? '請見下方關係圖' : '知識庫未收錄此組合' }}</div>
                                 </div>
                             </div>
                             
@@ -391,7 +404,10 @@
                             <div class="flex-1 space-y-8 pl-4 border-l-2 border-slate-100 ml-2 overflow-y-auto pr-2">
                                 <div v-for="n in 5" :key="n" class="relative group">
                                     <div class="absolute -left-[19px] top-1 w-4 h-4 rounded-full bg-white border-4 border-primary shadow-sm group-hover:scale-125 transition-all"></div>
-                                    <div class="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-tighter">2025-05-{{ 24-n }} • Verified</div>
+                                                                        <!-- 原本是「2025-05-{{ 24-n }} • Verified」——日期由索引反推、
+                                         而且是 2025 年；Verified 同樣沒有主詞。這一區是示範用的
+                                         時間軸，改為明確標示，不假裝成真實紀錄。 -->
+                                    <div class="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-tighter">示範項目 {{ n }}</div>
                                     <div class="text-sm font-bold text-slate-800 group-hover:text-primary transition-colors leading-snug">FHIR MedicationRequest 同步完成</div>
                                     <p class="text-[10px] text-slate-500 mt-2 font-mono truncate">ID: fhir-req-{{ n }}c7a</p>
                                 </div>
