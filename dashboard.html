@@ -322,7 +322,7 @@
                                 </div>
                             </div>
                             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                                <div v-for="med in currentMeds" :key="med.atc" 
+                                <div v-for="med in currentMeds" :key="med.id"
                                      :class="['p-5 border rounded-3xl transition-all relative overflow-hidden group hover:shadow-xl hover:bg-white', getMedTheme(med.name_en).card]">
                                     <div :class="['absolute top-0 left-0 w-1 h-full', getMedTheme(med.name_en).bar]"></div>
                                     <div class="flex justify-between items-start mb-2">
@@ -837,8 +837,18 @@
                 },
                 async submitPrescription() {
                     const pid = this.selectedPatient.id;
+                    // 解析出藥物身分供後續比對使用。解析不到時明確為 null——
+                    // 那代表「本系統不認得這個藥」，Phase 3 的引擎必須據此拒絕判定為安全，
+                    // 而不是當作沒有交互作用（見 js/drug-catalog.js 與稽核報告 P1-12）。
+                    //
+                    // id 與 atc 是兩件事：id 是「這一列是哪一列」（渲染用，必須唯一），
+                    // atc 是「這是哪一種藥」（比對用，可能與病患既有用藥相同）。
+                    // 兩者不可互相取代——醫師開出病患已在服用的同一種藥時，
+                    // 兩列的 atc 會相同，那正是重複用藥要偵測的情況，不是渲染錯誤。
+                    const rxDrug = window.DrugCatalog ? window.DrugCatalog.resolve(this.newRx.drugName) : null;
                     const newMed = {
                         id: 'rx-' + Date.now(),
+                        atc: rxDrug ? rxDrug.atc : null,
                         name_en: this.newRx.drugName,
                         name_zh: this.newRx.drugName,
                         hospital: '本院 (醫師開立)',
