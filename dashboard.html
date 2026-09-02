@@ -322,7 +322,7 @@
                                 </div>
                             </div>
                             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                                <div v-for="med in currentMeds" :key="med.id" 
+                                <div v-for="med in currentMeds" :key="med.atc" 
                                      :class="['p-5 border rounded-3xl transition-all relative overflow-hidden group hover:shadow-xl hover:bg-white', getMedTheme(med.name_en).card]">
                                     <div :class="['absolute top-0 left-0 w-1 h-full', getMedTheme(med.name_en).bar]"></div>
                                     <div class="flex justify-between items-start mb-2">
@@ -539,6 +539,7 @@
     <script src="js/firebase-config.js"></script>
     <script src="js/db-service.js"></script>
     <script src="js/mockData.js"></script>
+    <script src="js/drug-catalog.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/chatStore.js"></script>
     <script src="js/notify.js"></script>

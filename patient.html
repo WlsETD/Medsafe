@@ -292,7 +292,7 @@
                             <button @click="showAllMedsModal = true" class="text-sm font-bold text-primary hover:underline transition-all">查看所有藥品</button>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
-                            <div v-for="med in medications.slice(0, 4)" :key="med.id"
+                            <div v-for="med in medications.slice(0, 4)" :key="med.atc"
                                  @click="openMedDetail(med)"
                                  class="card-hover p-6 rounded-3xl bg-white border border-gray-100 flex gap-5 text-left cursor-pointer">
                                 <div :class="['w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0', med.color === 'danger' ? 'bg-red-50 text-danger' : 'bg-mint text-primary']">
@@ -493,7 +493,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="med in medications" :key="med.id" class="bg-bgMain rounded-[32px] group transition-all hover:bg-white hover:shadow-xl hover:-translate-y-1 text-left text-left">
+                                    <tr v-for="med in medications" :key="med.atc" class="bg-bgMain rounded-[32px] group transition-all hover:bg-white hover:shadow-xl hover:-translate-y-1 text-left text-left">
                                         <td class="py-8 pl-10 rounded-l-[32px] border-l-8 text-left" :class="med.color === 'danger' ? 'border-danger' : 'border-primary'">
                                             <div class="font-black text-xl text-title leading-none mb-1 text-left">{{ med.zhName }}</div>
                                             <div class="text-[11px] font-black text-lightText uppercase tracking-widest text-left">{{ med.name }}</div>
@@ -696,6 +696,7 @@
     <script src="js/firebase-config.js"></script>
     <script src="js/db-service.js"></script>
     <script src="js/mockData.js"></script>
+    <script src="js/drug-catalog.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/chatStore.js"></script>
     <script src="js/notify.js"></script>

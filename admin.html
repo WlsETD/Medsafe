@@ -468,7 +468,7 @@
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-gray-50">
-                                        <tr v-for="m in medicationInventory" :key="m.id">
+                                        <tr v-for="m in medicationInventory" :key="m.atc">
                                             <td class="px-8 py-4 text-sm font-black text-title">{{ m.zhName }} <span class="text-slate-400 font-bold">{{ m.name }}</span></td>
                                             <td class="px-8 py-4 text-xs font-bold text-slate-500">{{ m.category }}</td>
                                             <td class="px-8 py-4 text-sm font-bold text-slate-600">{{ m.stock.toLocaleString() }} {{ m.unit }}</td>
@@ -766,6 +766,7 @@
     <script src="js/firebase-config.js"></script>
     <script src="js/db-service.js"></script>
     <script src="js/mockData.js"></script>
+    <script src="js/drug-catalog.js"></script>
     <script src="js/auth.js"></script>
     <script>
         const { createApp, markRaw } = Vue;

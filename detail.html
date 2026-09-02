@@ -48,7 +48,26 @@
                     <div class="absolute right-[-5%] top-[-20%] w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
                 </div>
 
-                <div class="p-12 grid grid-cols-1 md:grid-cols-2 gap-12">
+                <!-- 藥物身分：ATC 碼是這個藥在全系統中的唯一識別，跨院比對即以此為準 -->
+                <div class="px-12 pt-10">
+                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">藥物識別碼</h3>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <span class="font-mono text-xl font-bold text-[#1A5276] bg-blue-50 border border-blue-100 rounded-xl px-4 py-2">{{ item.atc }}</span>
+                        <span class="text-sm text-gray-500 font-medium">WHO ATC 碼</span>
+                    </div>
+                    <p class="text-xs text-gray-500 leading-relaxed mt-3">
+                        ATC 是世界衛生組織的解剖—治療—化學分類碼，識別的是<strong>成分</strong>，全球通用。
+                        本系統以它作為跨院用藥比對的基準，因此「Warfarin」「warfarin sodium」「可邁丁」會被視為同一種藥。
+                        <br>
+                        此碼<strong>不是健保藥品代碼</strong>——健保碼為 10 碼、識別「特定廠牌的特定包裝規格」，
+                        一種成分會對應數十至數百組健保碼，粒度過細，不適合作為交互作用的比對鍵。
+                    </p>
+                </div>
+
+                <!-- 營運欄位（庫存、價格、庫位）僅存在於院內藥品主檔。
+                     目錄收錄但主檔尚未收載的藥物沒有這些資料，此時不可顯示 0 或空白數字——
+                     那會被讀成「庫存為零」這個明確但錯誤的事實。缺資料就明說缺資料。 -->
+                <div v-if="item.stock !== undefined" class="p-12 grid grid-cols-1 md:grid-cols-2 gap-12">
                     <div class="space-y-8">
                         <div>
                             <h3 class="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">規格與劑量</h3>
@@ -80,6 +99,15 @@
                     </div>
                 </div>
 
+                <div v-else class="px-12 py-10">
+                    <div class="bg-amber-50 border border-amber-100 rounded-2xl p-6">
+                        <p class="text-sm font-bold text-amber-800 mb-1">本院藥品主檔尚未收載此品項</p>
+                        <p class="text-sm text-amber-700 leading-relaxed">
+                            此藥物已登錄於系統的藥物目錄（因此可參與交互作用比對），但院內庫存、庫位與價格資料尚未建立，故不顯示。
+                        </p>
+                    </div>
+                </div>
+
                 <div class="px-12 pb-12">
                     <div class="bg-blue-50 border border-blue-100 p-6 rounded-2xl flex items-start gap-4">
                         <div class="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-[#1A5276] shrink-0 soft-shadow">
@@ -102,6 +130,7 @@
     </div>
 
     <script src="js/mockData.js"></script>
+    <script src="js/drug-catalog.js"></script>
     <script src="js/auth.js"></script>
     <script>
         const { createApp } = Vue;
@@ -110,9 +139,19 @@
                 // 掛載前已驗證為有效且啟用中的帳號，此處必定拿得到身分
                 const user = getVerifiedUser();
                 
+                // 藥品身分改用 WHO ATC 碼（見 js/drug-catalog.js）。原本以 parseInt 取數字流水號，
+                // 但那個號碼只是陣列位置——同一個號碼在不同病患的用藥清單裡代表不同的藥，
+                // 同一種藥在不同清單裡又有不同號碼（稽核報告 P1-10）。
+                // 仍接受舊的 ?id= 參數名，避免既有書籤失效，但值一律以 ATC 碼解讀。
                 const urlParams = new URLSearchParams(window.location.search);
-                const id = parseInt(urlParams.get('id'));
-                const drug = window.mockData.allMedications.find(d => d.id === id);
+                const atc = (urlParams.get('atc') || urlParams.get('id') || '').trim().toUpperCase();
+                // 先查主檔以取得庫存、價格等營運欄位；查不到再退回藥物目錄，
+                // 讓「目錄收錄但主檔尚未收載」的藥仍能顯示臨床資訊，而不是一片空白。
+                let drug = window.mockData.allMedications.find(d => d.atc === atc) || null;
+                if (!drug) {
+                    const known = window.DrugCatalog && window.DrugCatalog.byAtc(atc);
+                    if (known) drug = { atc: known.atc, name: known.name_en, zhName: known.name_zh, category: known.class_zh };
+                }
                 
                 return {
                     user: user,

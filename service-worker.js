@@ -7,7 +7,8 @@
 // activate 會刪除所有非當前版本的 cache，這是既有使用者拿到新版程式的唯一途徑——
 // 忘記加版本號，等於該次修補（包含安全性修補）永遠送不出去。
 // v2：Phase 1 帳號安全修補（js/auth.js 角色驗證改寫、js/db-service.js 本地頭像）
-const CACHE_VERSION = 'medsafe-static-v2';
+// v3：Phase 2 藥物身分基礎建設（新增 js/drug-catalog.js，js/mockData.js 改用 ATC 碼）
+const CACHE_VERSION = 'medsafe-static-v3';
 
 const PRECACHE_URLS = [
   './index.html',
@@ -22,6 +23,7 @@ const PRECACHE_URLS = [
   './js/auth.js',
   './js/chatStore.js',
   './js/db-service.js',
+  './js/drug-catalog.js',
   './js/firebase-config.js',
   './js/mockData.js',
   './js/notify.js',
