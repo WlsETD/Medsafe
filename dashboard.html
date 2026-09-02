@@ -869,8 +869,20 @@
                     setTimeout(() => {
                         this.initCharts();
                         if (this.recentPatients && this.recentPatients.length > 0) {
-                            const fp = this.recentPatients[0]; this.selectedPatient = fp;
-                            this.initD3Container(); this.loadScenario(this.scenarioFor(fp));
+                            const fp = this.recentPatients[0];
+                            this.selectedPatient = fp;
+                            // 交互作用關係圖的容器位於 v-else（selectedPatient 為真時才渲染）之內。
+                            // 設定 selectedPatient 之後 Vue 尚未重繪，容器在這個 tick 還不存在，
+                            // 因此必須等到下一個 tick 才能初始化 D3——否則 initD3Container()
+                            // 會找不到元素而直接 return，圖表整片空白。
+                            //
+                            // 症狀是「一進入系統看不到圖，切換到別的病患才會出現」：
+                            // switchToPatient() 與 openChatForPatient() 本來就包在 $nextTick 裡，
+                            // 只有這條初次載入的路徑漏了。
+                            this.$nextTick(() => {
+                                this.initD3Container();
+                                this.loadScenario(this.scenarioFor(fp));
+                            });
                         }
                         // 病患清單載入後重新整理訊息中心，讓對話串顯示真實姓名
                         this.loadConversations();
@@ -1426,14 +1438,28 @@
                     }
                 },
                 initD3Container(cid = "ddi-network-container") {
-                    const cnt = d3.select("#" + cid); if (!cnt.node()) return; cnt.selectAll("svg").remove();
+                    const cnt = d3.select("#" + cid);
+                    if (!cnt.node()) {
+                        // 原本這裡是一句沉默的 return。容器不存在時圖表整片空白，
+                        // 而畫面上沒有任何跡象、主控台也沒有任何訊息——
+                        // 開發者只能靠「切換病患後就好了」這種現象反推原因。
+                        // 這類無聲失敗是本專案反覆出現的問題形狀，至少要留下線索。
+                        console.warn('[DDI 關係圖] 找不到容器 #' + cid + '，本次未繪製。'
+                            + '常見原因是在 selectedPatient 設定後、Vue 重繪前就呼叫了本函式。');
+                        return;
+                    }
+                    cnt.selectAll("svg").remove();
                     const w = cnt.node().getBoundingClientRect().width, h = cnt.node().getBoundingClientRect().height;
                     this.svg = cnt.append("svg").attr("width", w).attr("height", h); this.g = this.svg.append("g");
                     this.svg.call(d3.zoom().on("zoom", (e) => this.g.attr("transform", e.transform)));
                 },
                 renderGraph(nodes, links) {
                     const cid = this.showFullScreenGraph ? "ddi-full-network-container" : "ddi-network-container";
-                    const cnt = d3.select("#" + cid); if (!cnt.node()) return;
+                    const cnt = d3.select("#" + cid);
+                    if (!cnt.node()) {
+                        console.warn('[DDI 關係圖] 找不到容器 #' + cid + '，本次未繪製。');
+                        return;
+                    }
                     const w = cnt.node().getBoundingClientRect().width, h = cnt.node().getBoundingClientRect().height;
                     if (this.simulation) this.simulation.stop(); this.g.selectAll("*").remove();
                     this.simulation = d3.forceSimulation(nodes).force("link", d3.forceLink(links).id(d => d.id).distance(100)).force("charge", d3.forceManyBody().strength(-300)).force("center", d3.forceCenter(w/2, h/2));
