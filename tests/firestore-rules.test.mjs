@@ -1,5 +1,5 @@
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, collection, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, collection, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, query, where } from 'firebase/firestore';
 import fs from 'fs';
 
 // 直接讀專案根目錄的規則，確保測的就是會被部署的那一份
@@ -29,6 +29,25 @@ await env.withSecurityRulesDisabled(async ctx => {
     medications: [{ name: 'Warfarin' }],
     ddiAlerts: [], reminders: [], assignedDoctor: 'doctor'
   });
+  // 同意機制測試資料（P1-6）
+  const future = Timestamp.fromDate(new Date(Date.now() + 30 * 86400000));
+  const past = Timestamp.fromDate(new Date(Date.now() - 86400000));
+  // P001 已授權 insurance01；atk 的同意已過期；P900 已撤回
+  await setDoc(doc(db, 'consents/P001__insurance01'), {
+    patient: 'P001', insurer: 'insurance01', scope: 'underwriting-summary',
+    grantedAt: new Date(), expiresAt: future, revokedAt: null });
+  await setDoc(doc(db, 'consents/atk__insurance01'), {
+    patient: 'atk', insurer: 'insurance01', scope: 'underwriting-summary',
+    grantedAt: new Date(), expiresAt: past, revokedAt: null });
+  await setDoc(doc(db, 'consents/P900__insurance01'), {
+    patient: 'P900', insurer: 'insurance01', scope: 'underwriting-summary',
+    grantedAt: new Date(), expiresAt: future, revokedAt: new Date() });
+  for (const u of ['P001', 'atk', 'P900']) {
+    await setDoc(doc(db, 'patient_summaries/' + u), {
+      username: u, displayName: u, ageBand: '65–74 歲', medicationCount: 3,
+      alertCount: 0, safetyScore: 92, scoreStatus: 'assessed',
+      attestedBy: u, attestedAt: new Date() });
+  }
   // 稽核記錄不可竄改的測試對象：一筆已存在的記錄
   await setDoc(doc(db, 'audit_logs/existing'), {
     actor: 'doctor', actorRole: 'doctor', action: 'prescribe', at: new Date()
@@ -78,7 +97,10 @@ await run('病患更新 profile', () => updateDoc(doc(P001(), 'patient_data/P001
 const SAFE_CHECK = { verdict: 'no-known-interaction', checkedAt: '2026-09-02T00:00:00Z', by: 'doctor' };
 await run('醫師新增用藥並附安全檢查紀錄',
   () => updateDoc(doc(DOC(), 'patient_data/P001'), { medications: [{ name: 'X' }, { name: 'Y', safetyCheck: SAFE_CHECK }] }), 'allow');
-await run('核保員讀病歷', () => getDoc(doc(INS(), 'patient_data/P001')), 'allow');
+// 【已移除】原本這裡有一條「核保員讀病歷 → allow」，斷言的正是 P1-6 所描述的缺口：
+// 核保員讀得到每一位病患的完整用藥史。該權限已於 2026-09-02 撤銷，
+// 對應的新斷言在下方「病患同意機制」一節，改為 deny。
+// 保留這段註解，是為了讓日後看到權限變嚴的人知道這是刻意的，而不是漏寫。
 
 // ── 處方安全閘門（Phase 4 / 稽核報告 P1-1、P0-4）─────────────────────────
 // 前端的「必須先檢測才能開立」是流程控制，繞過畫面直接呼叫 SDK 就沒了。
@@ -114,6 +136,112 @@ await run('修改其他欄位而未動用藥清單，不受閘門限制',
 
 await run('移除用藥（清單變短）不受閘門限制',
   () => updateDoc(doc(DOC(), 'patient_data/P900'), { medications: [] }), 'allow');
+
+// ── 病患同意機制（稽核報告 P1-6）─────────────────────────────────────────
+// 修復前：核保員讀得到每一位病患的完整用藥史，無同意、無關聯、無時效、無欄位限制。
+
+// 第一道：保險端已完全失去病歷讀取權
+await run('核保端讀取病患完整病歷（P1-6 的核心缺口）',
+  () => getDoc(doc(INS(), 'patient_data/P001')), 'deny');
+
+// 第二道：改讀摘要，但沒有同意就讀不到
+await run('核保端讀取未取得同意的病患摘要',
+  () => getDoc(doc(INS(), 'patient_summaries/P002')), 'deny');
+
+await run('核保端讀取已取得同意的病患摘要',
+  () => getDoc(doc(INS(), 'patient_summaries/P001')), 'allow');
+
+// 時效與撤回：一份永久有效、無法撤回的同意書在個資法下形同未取得同意
+await run('同意已過期時不得讀取摘要',
+  () => getDoc(doc(INS(), 'patient_summaries/atk')), 'deny');
+
+await run('同意已撤回時不得讀取摘要',
+  () => getDoc(doc(INS(), 'patient_summaries/P900')), 'deny');
+
+// 同意的授予只能由病患本人
+await run('病患授予同意給保險端',
+  () => setDoc(doc(P001(), 'consents/P001__insurance02'), {
+    patient: 'P001', insurer: 'insurance02', scope: 'underwriting-summary',
+    grantedAt: serverTimestamp(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)),
+    revokedAt: null }), 'allow');
+
+await run('保險端自行建立同意書（自己授權給自己）',
+  () => setDoc(doc(INS(), 'consents/P002__insurance01'), {
+    patient: 'P002', insurer: 'insurance01', scope: 'underwriting-summary',
+    grantedAt: serverTimestamp(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)),
+    revokedAt: null }), 'deny');
+
+await run('病患替他人授予同意',
+  () => setDoc(doc(P001(), 'consents/P002__insurance01'), {
+    patient: 'P002', insurer: 'insurance01', scope: 'underwriting-summary',
+    grantedAt: serverTimestamp(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)),
+    revokedAt: null }), 'deny');
+
+// 文件 ID 與內容不符：可用「內容寫 A、ID 寫 B」讓規則的 O(1) 查找指向錯誤的授權
+await run('同意書的文件 ID 與內容不一致',
+  () => setDoc(doc(P001(), 'consents/P001__insuranceX'), {
+    patient: 'P001', insurer: 'insurance01', scope: 'underwriting-summary',
+    grantedAt: serverTimestamp(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)),
+    revokedAt: null }), 'deny');
+
+await run('授予時即宣稱已撤回（狀態不一致的同意書）',
+  () => setDoc(doc(P001(), 'consents/P001__insurance03'), {
+    patient: 'P001', insurer: 'insurance03', scope: 'underwriting-summary',
+    grantedAt: serverTimestamp(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)),
+    revokedAt: serverTimestamp() }), 'deny');
+
+// 撤回只能由病患，且只能改 revokedAt
+await run('病患撤回自己給出的同意',
+  () => updateDoc(doc(P001(), 'consents/P001__insurance01'), { revokedAt: serverTimestamp() }), 'allow');
+
+await run('保險端撤改同意書（延長自己的授權）',
+  () => updateDoc(doc(INS(), 'consents/P900__insurance01'),
+    { expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)) }), 'deny');
+
+await run('刪除同意書（同意與撤回的歷程必須保存）',
+  () => deleteDoc(doc(P001(), 'consents/P001__insurance02')), 'deny');
+
+// 摘要的欄位白名單：少了它，摘要會逐漸長回一份完整病歷
+await run('病患發布自己的核保摘要',
+  () => setDoc(doc(P001(), 'patient_summaries/P001'), {
+    username: 'P001', displayName: '張小泉', ageBand: '65–74 歲', medicationCount: 3,
+    alertCount: 1, safetyScore: 88, scoreStatus: 'assessed',
+    attestedBy: 'P001', attestedAt: serverTimestamp() }), 'allow');
+
+await run('摘要夾帶白名單外的欄位（藥名清單）',
+  () => setDoc(doc(P001(), 'patient_summaries/P001'), {
+    username: 'P001', displayName: '張小泉', ageBand: '65–74 歲', medicationCount: 3,
+    alertCount: 1, safetyScore: 88, scoreStatus: 'assessed',
+    medications: [{ name: 'Warfarin' }],
+    attestedBy: 'P001', attestedAt: serverTimestamp() }), 'deny');
+
+await run('病患竄改他人的核保摘要',
+  () => setDoc(doc(P001(), 'patient_summaries/P002'), {
+    username: 'P002', displayName: 'x', ageBand: null, medicationCount: 0,
+    alertCount: 0, safetyScore: 100, scoreStatus: 'assessed',
+    attestedBy: 'P002', attestedAt: serverTimestamp() }), 'deny');
+
+await run('核保端自行撰寫病患摘要',
+  () => setDoc(doc(INS(), 'patient_summaries/P001'), {
+    username: 'P001', displayName: 'x', ageBand: null, medicationCount: 0,
+    alertCount: 0, safetyScore: 20, scoreStatus: 'assessed',
+    attestedBy: 'insurance01', attestedAt: serverTimestamp() }), 'deny');
+
+await run('偽稱摘要由他人具結（attestedBy 不符）',
+  () => setDoc(doc(P001(), 'patient_summaries/P001'), {
+    username: 'P001', displayName: '張小泉', ageBand: null, medicationCount: 0,
+    alertCount: 0, safetyScore: 100, scoreStatus: 'assessed',
+    attestedBy: 'doctor', attestedAt: serverTimestamp() }), 'deny');
+
+// 核保端只能查到「授權對象是自己」的同意書，無法列舉他人的
+await run('核保端查詢自己收到的同意書',
+  () => getDocs(query(collection(INS(), 'consents'), where('insurer', '==', 'insurance01'))), 'allow');
+
+await run('核保端列舉全部同意書（不帶 insurer 條件）',
+  () => getDocs(collection(INS(), 'consents')), 'deny');
+
+await run('核保端查詢他人收到的同意書',
+  () => getDocs(query(collection(INS(), 'consents'), where('insurer', '==', 'insurance02'))), 'deny');
 
 // ── 稽核軌跡（Phase 4 / 稽核報告 P1-5）───────────────────────────────────
 const LOGS = (db) => collection(db, 'audit_logs');

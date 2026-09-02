@@ -252,10 +252,101 @@ window.DbService = {
     await window.db.collection('care_cases').doc(id).update({ status });
   },
 
-  // 保戶目錄改讀真實病患資料，讓新註冊的病患自動出現在核保員的名單裡
-  async getAllPatients() {
-    const snap = await window.db.collection('patient_data').get();
-    return snap.docs.map(d => ({ username: d.id, ...d.data() }));
+  // ── 病患同意機制（稽核報告 P1-6）───────────────────────────────────────
+  //
+  // 原本這裡有一個 getAllPatients()，直接把 patient_data 整個集合撈給核保端，
+  // 核保員因此讀得到每一位病患的完整用藥史與交互作用警示。該函式已移除，
+  // 安全規則也同步撤銷了保險角色對 patient_data 的讀取權。
+  //
+  // 取而代之的模型：
+  //   一、病患主動授予同意 → consents/{病患}__{保險端}，有期限、可撤回
+  //   二、病患發布核保摘要 → patient_summaries/{病患}，只含最小必要欄位
+  //   三、核保端先查自己拿到哪些同意，再據此逐一取得摘要
+  //
+  // 這個順序很重要：核保端無法列舉「所有摘要」，只能從自己手上的同意書出發。
+  // 沒有同意就連對方存不存在都問不到。
+
+  // 核保所需的最小欄位。刻意不含藥名、劑量、開立醫院、提醒、對話等內容——
+  // 核保要的是風險指標，不是病歷。年齡改為級距，避免以生日反推身分。
+  buildUnderwritingSummary(username, patientDoc) {
+    const meds = (patientDoc && patientDoc.medications) || [];
+    const alerts = (patientDoc && patientDoc.ddiAlerts) || [];
+    const profile = (patientDoc && patientDoc.profile) || {};
+    const age = Number(profile.age);
+    const band = !age || isNaN(age) ? null
+      : (age < 40 ? '40 歲以下' : age < 65 ? '40–64 歲' : age < 75 ? '65–74 歲' : '75 歲以上');
+    return {
+      username: username,
+      displayName: profile.name || username,
+      ageBand: band,
+      medicationCount: meds.length,
+      alertCount: alerts.length,
+      safetyScore: this.computeSafetyScore(meds, alerts),
+      scoreStatus: this.safetyScoreStatus(meds, alerts)
+    };
+  },
+
+  // 病患發布自己的核保摘要。attestedBy/attestedAt 由規則強制為本人與伺服器時間，
+  // 讓核保端看得出這是「病患自述」而非「系統已驗證」的資料。
+  async publishUnderwritingSummary(username, patientDoc) {
+    const summary = this.buildUnderwritingSummary(username, patientDoc);
+    summary.attestedBy = username;
+    summary.attestedAt = window.firebase.firestore.FieldValue.serverTimestamp();
+    await window.db.collection('patient_summaries').doc(username).set(summary);
+    return summary;
+  },
+
+  // 授予同意。有效期限為必填——一份永久有效的同意書在個資法下形同未取得同意。
+  async grantConsent(patientUsername, insurerUsername, days) {
+    const expires = new Date();
+    expires.setDate(expires.getDate() + (days || 90));
+    await window.db.collection('consents')
+      .doc(patientUsername + '__' + insurerUsername)
+      .set({
+        patient: patientUsername,
+        insurer: insurerUsername,
+        scope: 'underwriting-summary',
+        grantedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+        expiresAt: window.firebase.firestore.Timestamp.fromDate(expires),
+        revokedAt: null
+      });
+  },
+
+  // 撤回同意。不刪除文件——同意與撤回的歷程本身就是需要保存的證據。
+  async revokeConsent(patientUsername, insurerUsername) {
+    await window.db.collection('consents')
+      .doc(patientUsername + '__' + insurerUsername)
+      .update({ revokedAt: window.firebase.firestore.FieldValue.serverTimestamp() });
+  },
+
+  // 病患查看自己給出的所有同意
+  async getMyConsents(patientUsername) {
+    const snap = await window.db.collection('consents')
+      .where('patient', '==', patientUsername).get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  },
+
+  // 核保端：先查自己拿到哪些同意，再逐一取得對應的摘要。
+  // where(insurer == 自己) 不只是效率考量——安全規則要求查詢自帶此條件，
+  // 少了它整個查詢會被拒絕，核保端無法列舉他人的同意書。
+  async getConsentedSummaries(insurerUsername) {
+    const snap = await window.db.collection('consents')
+      .where('insurer', '==', insurerUsername).get();
+    const now = Date.now();
+    const valid = snap.docs.map(d => d.data()).filter(c =>
+      !c.revokedAt && c.expiresAt && c.expiresAt.toMillis() > now);
+    const out = [];
+    for (const c of valid) {
+      // 逐份取得。同意已失效者在上方就被濾掉，不會發出請求；
+      // 若規則仍拒絕（例如剛好在此刻過期），該筆略過而非讓整批失敗。
+      try {
+        const doc = await window.db.collection('patient_summaries').doc(c.patient).get();
+        if (doc.exists) out.push({ ...doc.data(), consentExpiresAt: c.expiresAt });
+      } catch (e) {
+        console.warn('核保摘要讀取被拒或失敗：', c.patient, e);
+      }
+    }
+    return out;
   },
 
   // --- Insurance Claims ---

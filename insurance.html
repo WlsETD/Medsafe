@@ -257,6 +257,19 @@
                             <select v-model="customerSort" class="bg-white border-2 border-slate-100 rounded-2xl py-3 px-6 text-sm font-black outline-none"><option value="score">依評分排序</option><option value="name">依姓名排序</option></select>
                         </div>
                     </div>
+                    <!-- 授權狀態說明。「沒有人授權」與「讀取失敗」對核保員的意義完全不同，
+                         必須分開陳述，不可都顯示成一個空白清單。 -->
+                    <div v-if="consentLoadFailed" class="bg-red-50 border-2 border-red-200 rounded-[32px] p-8">
+                        <p class="text-sm font-black text-red-700">無法讀取授權資料</p>
+                        <p class="text-xs font-bold text-red-600 mt-2 leading-relaxed">本次未能取得保戶授權清單，因此無法顯示任何保戶。這不代表沒有保戶授權，請確認網路後重新整理。</p>
+                    </div>
+                    <div v-else-if="topSafeUsers.length === 0" class="bg-slate-50 border-2 border-slate-200 rounded-[32px] p-8">
+                        <p class="text-sm font-black text-navy">目前沒有病患授權本公司查閱核保摘要</p>
+                        <p class="text-xs font-bold text-lightText mt-2 leading-relaxed">依個資法之目的限制與比例原則，本系統僅在病患主動授權後，提供其核保所需的最小必要摘要（用藥筆數、警示筆數、用藥安全評分、年齡級距），不提供完整用藥史。病患可於個人頁面授予或隨時撤回授權。</p>
+                    </div>
+                    <div v-else class="bg-turquoise/10 border border-turquoise/30 rounded-2xl px-6 py-4">
+                        <p class="text-xs font-bold text-navy leading-relaxed">目前有 <strong>{{ consentedCount }}</strong> 位病患授權本公司查閱核保摘要。所列資料為<strong>病患自述之摘要</strong>，非系統驗證之病歷，核保時應依實務另行查證。授權有期限且病患可隨時撤回。</p>
+                    </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 text-left">
                         <div v-for="user in sortedCustomers" :key="user.id" class="bg-white p-6 md:p-8 rounded-[32px] md:rounded-[40px] shadow-premium border border-white hover:border-turquoise/30 hover:-translate-y-2 transition-all duration-500 group flex flex-col">
                             <div class="flex items-center gap-6 mb-8">
@@ -725,6 +738,9 @@
                     showMobileMenu: false,
                     maintenanceMode: false,
                     maintenanceCheckFailed: false,
+                    // 已授權本公司的病患數（P1-6）
+                    consentedCount: 0,
+                    consentLoadFailed: false,
                     activatingCare: false,
                     fhirCheckStatus: 'idle',
                     fhirCheckResult: null,
@@ -758,14 +774,10 @@
                     newClaimError: '',
                     careCases: [],
                     customerSearch: '', customerSort: 'score',
-                    topSafeUsers: [
-                        { name: '王大明', score: 98, discount: 'NT$ 2,500', policies: 3, age: 72, id: 'P-001' },
-                        { name: '陳小美', score: 97, discount: 'NT$ 2,300', policies: 2, age: 65, id: 'P-002' },
-                        { name: '李國華', score: 96, discount: 'NT$ 2,100', policies: 4, age: 68, id: 'P-003' },
-                        { name: '張健', score: 92, discount: 'NT$ 1,800', policies: 2, age: 70, id: 'P-004' },
-                        { name: '劉美玲', score: 90, discount: 'NT$ 1,500', policies: 3, age: 75, id: 'P-005' },
-                        { name: '林志豪', score: 88, discount: 'NT$ 1,200', policies: 1, age: 62, id: 'P-006' }
-                    ],
+                    // 保戶清單一律由「已授權本公司的病患摘要」填入，初始為空（稽核報告 P1-6）。
+                    // 原本這裡寫死了六位假保戶，會在讀取完成前顯示，讀取失敗時更會一直留著——
+                    // 核保員因此以為手上有一批實際保戶，而那些人從未授權、甚至根本不存在。
+                    topSafeUsers: [],
                     riskDetails: {
                         'P-001': { name: '王大明', id: 'P-001', score: 98, alert: 'SAFE', reason: '用藥遵從度極高，無重大交互作用紀錄', recommendation: '建議提供續保費率 10% 優惠' },
                         'P-002': { name: '陳小美', id: 'P-002', score: 97, alert: 'SAFE', reason: '健康管控優異，跨院領藥紀錄整合完整', recommendation: '符合進階健康險承保資格' },
@@ -889,16 +901,31 @@
                 } catch (e) {
                     console.error('Firestore load error:', e);
                 }
+                // 保戶目錄改為「只看得到已授權本公司的病患，且只看得到核保摘要」（稽核報告 P1-6）。
+                //
+                // 修復前這裡呼叫 getAllPatients()，把 patient_data 整個集合撈下來——
+                // 核保員因此讀得到每一位病患的完整用藥史與交互作用警示，
+                // 沒有保戶關聯、沒有病患同意、沒有目的限制、沒有時效。
+                //
+                // 現在先查「授權對象是本公司」的同意書，再據此逐一取得摘要。
+                // 沒有同意，連對方存不存在都問不到。
                 try {
-                    // 保戶目錄／AI 核保建議改讀真實病患資料，取代寫死的假保戶清單
-                    const patients = await DbService.getAllPatients();
-                    if (patients && patients.length > 0) {
-                        const mapped = patients.map(p => this.mapPatientToCustomer(p));
-                        this.topSafeUsers = mapped;
-                        this.riskDetails = Object.fromEntries(mapped.map(m => [m.id, m]));
-                    }
+                    const summaries = await DbService.getConsentedSummaries(this.user.username);
+                    const mapped = summaries.map(x => this.mapSummaryToCustomer(x));
+                    this.topSafeUsers = mapped;
+                    this.riskDetails = Object.fromEntries(mapped.map(m => [m.id, m]));
+                    // 沒有任何授權時清空清單並說明原因。
+                    // 不可退回示範資料——那會讓核保員誤以為手上有一批實際保戶，
+                    // 而畫面上那些人其實從未授權，甚至根本不存在。
+                    this.consentedCount = mapped.length;
+                    this.consentLoadFailed = false;
                 } catch (e) {
-                    console.error('Firestore patients error:', e);
+                    console.error('核保摘要讀取失敗：', e);
+                    // 讀取失敗與「沒有人授權」是兩回事，必須讓核保員分辨得出來
+                    this.topSafeUsers = [];
+                    this.riskDetails = {};
+                    this.consentedCount = 0;
+                    this.consentLoadFailed = true;
                 }
                 try {
                     this.careCases = await DbService.getCareCases();
@@ -1049,12 +1076,13 @@
                         this.triggerToast(`個案關懷已啟動：${name}`);
                     }
                 },
-                mapPatientToCustomer(p) {
-                    // 即時計算，不再信任資料中可能寫死的 safetyScore；無用藥紀錄時為 null
-                    const score = DbService.computeSafetyScore(p.medications, p.ddiAlerts);
-                    const scoreStatus = DbService.safetyScoreStatus(p.medications, p.ddiAlerts);
-                    const medCount = (p.medications || []).length;
-                    const alerts = (p.ddiAlerts || []).length;
+                // 輸入已改為核保摘要（patient_summaries），不再是完整病歷。
+                // 摘要只含風險指標，不含藥名、劑量、開立醫院——核保要的是風險評估，不是病歷。
+                mapSummaryToCustomer(p) {
+                    const score = p.safetyScore == null ? null : p.safetyScore;
+                    const scoreStatus = p.scoreStatus;
+                    const medCount = p.medicationCount || 0;
+                    const alerts = p.alertCount || 0;
                     let recommendation;
                     // null 有兩種成因，必須分開陳述：「沒有用藥」與「有用藥但未評估」
                     // 對核保而言風險方向相反，混為一談會產生與事實不符的敘述
@@ -1066,13 +1094,18 @@
                     else recommendation = '建議加強用藥遵從度追蹤，暫緩調整保費。';
                     return {
                         id: p.username,
-                        name: (p.profile && p.profile.name) || p.username,
-                        age: (p.profile && p.profile.age) || '-',
+                        name: p.displayName || p.username,
+                        // 年齡改為級距，避免以精確年齡配合其他欄位反推身分
+                        age: p.ageBand || '—',
                         score: score === null ? '—' : score,
                         scoreValue: score,
                         policies: 1,
                         discount: score === null ? '待評估' : 'NT$ ' + (score * 25).toLocaleString(),
-                        reason: (p.profile && p.profile.healthSummary) || '尚無健康摘要資料',
+                        // 摘要中不含健康摘要自由文字：那是病歷內容，非核保必要欄位
+                        reason: `用藥 ${medCount} 筆、警示 ${alerts} 筆`,
+                        // 資料為病患自述，核保端必須看得出來（見 firestore.rules 的說明）
+                        attested: true,
+                        consentExpiresAt: p.consentExpiresAt || null,
                         recommendation
                     };
                 },

@@ -10,7 +10,8 @@
 // v3：Phase 2 藥物身分基礎建設（新增 js/drug-catalog.js，js/mockData.js 改用 ATC 碼）
 // v4：Phase 3 交互作用引擎（新增 js/ddi-engine.js，dashboard.html 改接 ATC 比對）
 // v5：Phase 4 處方安全閘門與稽核軌跡（新增 js/audit.js，dashboard/admin 接上稽核）
-const CACHE_VERSION = 'medsafe-static-v5';
+// v6：P1-6 病患同意機制（保險端改讀 patient_summaries，patient/insurance 頁面改版）
+const CACHE_VERSION = 'medsafe-static-v6';
 
 const PRECACHE_URLS = [
   './index.html',

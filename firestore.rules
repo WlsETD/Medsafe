@@ -121,6 +121,92 @@ service cloud.firestore {
 
     // 病患資料：admin/doctor 可讀寫；保險核保員只能讀（核保用途，不得修改病歷）；
     // 病患本人可讀，但寫入僅限上列欄位
+    // ── 病患同意機制（稽核報告 P1-6）─────────────────────────────────────
+    //
+    // 修復前：`allow read: if ... || isInsurance()` —— 核保員讀得到每一位病患的
+    // 完整用藥史與交互作用警示。沒有保戶關聯檢查、沒有病患同意、沒有目的限制、
+    // 沒有欄位遮罩、沒有時效。違反個資法第 5 條比例原則與第 16 條目的外利用限制。
+    //
+    // 修復採兩層：
+    //   一、保險端完全失去 patient_data 的讀取權（下方已移除 isInsurance()）
+    //   二、改讀 patient_summaries —— 一份只含核保所需最小欄位的摘要，
+    //       且必須有未過期、未撤回的 consents 文件才讀得到
+    //
+    // 為何不是「同意後才讀 patient_data」：Firestore 的讀取是整份文件，
+    // 規則無法遮罩欄位。要做到最小化就必須另立一份只含必要欄位的文件，
+    // 這是由資料結構保證，而非由規則保證。
+
+    // 同意書的文件 ID 固定為 {病患username}__{保險端username}，
+    // 讓規則能以 O(1) 直接定位，不必掃描集合。
+    function consentId(patientUsername) {
+      return patientUsername + '__' + profile().username;
+    }
+    function consentPath(patientUsername) {
+      return /databases/$(database)/documents/consents/$(consentId(patientUsername));
+    }
+    // 有效的同意需同時滿足：文件存在、未撤回、未過期、用途相符。
+    // 四者缺一不可——一份「永久有效、用途不限」的同意書在個資法下形同未取得同意。
+    function hasValidConsent(patientUsername) {
+      return isInsurance()
+        && exists(consentPath(patientUsername))
+        && get(consentPath(patientUsername)).data.revokedAt == null
+        && get(consentPath(patientUsername)).data.expiresAt > request.time
+        && get(consentPath(patientUsername)).data.scope == 'underwriting-summary';
+    }
+
+    // 同意書本身。只有病患能授予與撤回——這是同意之所以是同意的前提。
+    match /consents/{cid} {
+      // 病患讀自己給出的所有同意；保險端只讀得到「授權對象是自己」的那些。
+      // 後者的 list 查詢必須自帶 where(insurer == 自己) 才會通過。
+      allow read: if isActive() && (
+        isAdmin()
+        || (resource != null && isOwnUsername(resource.data.patient))
+        || (resource != null && isInsurance() && resource.data.insurer == profile().username)
+      );
+      // 授予同意：只能由病患本人，且文件 ID 必須與內容一致，
+      // 否則可用「內容寫 A、ID 寫 B」的方式讓規則的 O(1) 查找指向錯誤的授權。
+      allow create: if isActive()
+        && isOwnUsername(request.resource.data.patient)
+        && cid == request.resource.data.patient + '__' + request.resource.data.insurer
+        && request.resource.data.scope == 'underwriting-summary'
+        && request.resource.data.grantedAt == request.time
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.revokedAt == null;
+      // 撤回：只能由病患本人，且只能改 revokedAt。
+      // 不允許刪除——同意與撤回的歷程本身就是需要保存的證據。
+      allow update: if isActive()
+        && resource != null
+        && isOwnUsername(resource.data.patient)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revokedAt'])
+        && request.resource.data.revokedAt == request.time;
+      allow delete: if false;
+    }
+
+    // 核保摘要：只含核保所需的最小欄位，不含藥名、劑量、開立醫院等內容。
+    //
+    // 【誠實的限制】此摘要由病患端自行產生並寫入，系統無法驗證其真實性。
+    // 要做到「摘要必然忠實反映病歷」，需由後端 trigger 在病歷變更時自動重算（Phase 6）。
+    // 因此摘要帶有 attestedBy/attestedAt 欄位，核保端看得出這是自述資料，
+    // 應依保險實務另行查證，不可當作已驗證的事實。
+    // 即便如此，這仍優於原本的做法：原本核保端拿到的是完整病歷，
+    // 現在拿到的是最小必要欄位，且必須經病患同意。
+    match /patient_summaries/{username} {
+      allow read: if isActive() && (
+        isAdmin() || isOwnUsername(username) || hasValidConsent(username)
+      );
+      // 只有病患本人能產生自己的摘要，且欄位白名單固定——
+      // 若允許任意欄位，摘要就會逐漸長回一份完整病歷，最小化形同虛設。
+      allow create, update: if isActive()
+        && isOwnUsername(username)
+        && request.resource.data.keys().hasOnly([
+             'username', 'displayName', 'ageBand', 'medicationCount',
+             'alertCount', 'safetyScore', 'scoreStatus', 'attestedBy', 'attestedAt'
+           ])
+        && request.resource.data.attestedBy == profile().username
+        && request.resource.data.attestedAt == request.time;
+      allow delete: if isOwnUsername(username) || isAdmin();
+    }
+
     // ── 處方安全閘門（Phase 4 / 稽核報告 P1-1、P0-4）──────────────────────
     //
     // 前端的「必須先檢測才能開立」是流程控制，不是安全控制——會寫 patient_data 的人
@@ -161,7 +247,14 @@ service cloud.firestore {
     }
 
     match /patient_data/{username} {
-      allow read: if isAdmin() || isDoctor() || isInsurance() || isOwnUsername(username);
+      // isInsurance() 已移除（P1-6）：核保端不再讀得到任何病歷，
+      // 改為經病患同意後讀取 patient_summaries 中的最小必要欄位。
+      //
+      // isDoctor() 暫時保留，但這是一個已知的缺口：任何醫師可讀任何病歷，
+      // 沒有醫病關係（care relationship）驗證。修復需要轉診與代班的授權模型，
+      // 若只用 assignedDoctor 做等值比對，代班醫師與會診醫師會被鎖在門外——
+      // 那在急診情境下會直接致命。此項列於 Phase 6，不在本次修復範圍。
+      allow read: if isAdmin() || isDoctor() || isOwnUsername(username);
       allow create: if isAdmin() || isDoctor()
         || (isOwnUsername(username) && patientInitialDocIsClean());
       // resource != null 守衛：Security Rules 的布林運算子是容錯的（error || true 會得到 true），
