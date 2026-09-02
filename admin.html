@@ -211,14 +211,24 @@
                             <table class="w-full border-collapse">
                                 <thead><tr class="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-gray-100 bg-white"><th class="px-8 py-6">ID</th><th class="px-8 py-6">DRUG A</th><th class="px-8 py-6">DRUG B</th><th class="px-8 py-6">SEVERITY</th><th class="px-8 py-6">EFFECT</th><th class="px-8 py-6 text-right">ACTIONS</th></tr></thead>
                                 <tbody class="divide-y divide-gray-50">
-                                    <tr v-for="rule in filteredRules" :key="rule.id" class="table-row-hover">
-                                        <td class="px-8 py-5 text-sm font-mono text-primary font-bold">#{{ rule.id }}</td>
-                                        <td class="px-8 py-5 font-black text-title">{{ rule.drugA }}</td>
-                                        <td class="px-8 py-5 font-black text-title">{{ rule.drugB }}</td>
-                                        <td class="px-8 py-5"><span :class="['px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest', rule.severityClass]">{{ rule.severity }}</span></td>
-                                        <td class="px-8 py-5 text-xs font-bold text-slate-500">{{ rule.effect }}</td>
+                                    <tr v-for="rule in filteredRules" :key="rule.id || (rule.atcA + '|' + rule.atcB)" class="table-row-hover">
+                                        <td class="px-8 py-5 text-sm font-mono text-primary font-bold">{{ rule.id ? '#' + rule.id : '內建' }}</td>
+                                        <!-- 規則的 id 只是流水號；真正的識別是兩端的 ATC 碼，那也是引擎實際
+                                             拿來比對的東西。管理員看不到 ATC，就無法確認一條規則會命中哪些藥。 -->
+                                        <td class="px-8 py-5 font-black text-title">{{ rule.drugA }}<div class="font-mono text-[10px] font-bold text-slate-400 mt-0.5">{{ rule.atcA || '—' }}</div></td>
+                                        <td class="px-8 py-5 font-black text-title">{{ rule.drugB }}<div class="font-mono text-[10px] font-bold text-slate-400 mt-0.5">{{ rule.atcB || '—' }}</div></td>
+                                        <td class="px-8 py-5"><span :class="['px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest', sevClass(rule)]">{{ sevLabel(rule) }}</span></td>
+                                        <td class="px-8 py-5 text-xs font-bold text-slate-500">
+                                            {{ rule.effect }}
+                                            <!-- 出處與複核日期：臨床指引會改版，沒有出處的規則無從複核（P1-13） -->
+                                            <div v-if="rule.source" class="text-[10px] font-bold text-slate-400 mt-1">依據：{{ rule.source }}<span v-if="rule.reviewedOn"> · {{ rule.reviewedOn }} 複核</span></div>
+                                            <div v-else class="text-[10px] font-black text-amber-600 mt-1">⚠️ 此規則未標註出處，無從複核</div>
+                                        </td>
                                         <td class="px-8 py-5 text-right">
-                                            <button @click="deleteRule(rule.id)" :aria-label="'刪除規則 #' + rule.id" class="p-2.5 rounded-xl bg-red-50 text-danger hover:bg-danger hover:text-white transition-all"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                                            <!-- 內建規則寫在程式碼裡，介面上刪不掉：按下去只會讓它
+                                                 從畫面消失，重新整理又回來——那比不能刪更糟。 -->
+                                            <span v-if="!rule.id" class="text-[10px] font-bold text-slate-400">內建，不可刪除</span>
+                                            <button v-else @click="deleteRule(rule.id)" :aria-label="'刪除規則 #' + rule.id" class="p-2.5 rounded-xl bg-red-50 text-danger hover:bg-danger hover:text-white transition-all"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -461,6 +471,7 @@
                                     <thead>
                                         <tr class="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-gray-100 bg-white">
                                             <th class="px-8 py-5">藥品名稱</th>
+                                            <th class="px-8 py-5">ATC 碼</th>
                                             <th class="px-8 py-5">分類</th>
                                             <th class="px-8 py-5">庫存量</th>
                                             <th class="px-8 py-5">單價</th>
@@ -470,6 +481,9 @@
                                     <tbody class="divide-y divide-gray-50">
                                         <tr v-for="m in medicationInventory" :key="m.atc">
                                             <td class="px-8 py-4 text-sm font-black text-title">{{ m.zhName }} <span class="text-slate-400 font-bold">{{ m.name }}</span></td>
+                                            <!-- ATC 是全系統的藥物識別（Phase 2）。管理員需要它才能對照
+                                                 DDI 規則、確認某個品項在系統中究竟是哪一種藥。 -->
+                                            <td class="px-8 py-4 font-mono text-xs font-bold text-primary">{{ m.atc || '—' }}</td>
                                             <td class="px-8 py-4 text-xs font-bold text-slate-500">{{ m.category }}</td>
                                             <td class="px-8 py-4 text-sm font-bold text-slate-600">{{ m.stock.toLocaleString() }} {{ m.unit }}</td>
                                             <td class="px-8 py-4 text-sm font-bold text-slate-600">NT$ {{ m.price }}</td>
@@ -769,6 +783,7 @@
     <script src="js/db-service.js"></script>
     <script src="js/mockData.js"></script>
     <script src="js/drug-catalog.js"></script>
+    <script src="js/ddi-engine.js"></script>
     <script src="js/audit.js"></script>
     <script src="js/auth.js"></script>
     <script>
@@ -806,10 +821,16 @@
                         { label: '藥物目錄品項', value: 0, icon: Icons.Settings, trend: null, colorClass: 'bg-deep', isDemo: false },
                         { label: '稽核事件數', value: 0, icon: Icons.Dashboard, trend: null, colorClass: 'purple-gradient', isDemo: false },
                     ],
-                    mockRules: [
-                        { id: 1024, drugA: 'Warfarin', drugB: 'Aspirin', severity: '極高風險', severityClass: 'bg-red-100 text-danger border-red-200', effect: '增加出血風險，需監控 INR 指標。' },
-                        { id: 1025, drugA: 'Metformin', drugB: 'Iodinated', severity: '高風險', severityClass: 'bg-orange-100 text-warning border-orange-200', effect: '可能誘發乳酸中毒，需停藥。' },
-                    ],
+                    // 【改為讀引擎實際使用的那一份規則】
+                    //
+                    // 原本這裡是兩條寫死在 admin.html 裡的規則，與交互作用引擎使用的
+                    // mockData.ddiRules 完全無關——管理員以為在管理規則，實際上看的是
+                    // 一份不影響任何行為的假清單。而且內容還是舊的：其中一條寫著
+                    //「可能誘發乳酸中毒，需停藥」，那是 P1-13 已依 ACR 現行指引修掉的過時指示。
+                    //
+                    // 「DDI 規則總數」這個 KPI 也取自這份假清單，因此顯示 2 而非實際的 5。
+                    // 雲端 ddi_rules 若有資料仍會覆蓋（見 created），維持原有行為。
+                    mockRules: (window.mockData && window.mockData.ddiRules) ? window.mockData.ddiRules.slice() : [],
                     mockUsers: [
                         { id: 'U001', name: '李小美', role: 'doctor', roleName: '醫師', email: 'mei@medsafe.com', hospital: '台大醫院', status: 'active', statusName: '正常' },
                         { id: 'patient01', name: '王大明', role: 'patient', roleName: '患者', email: 'patient01@medsafe.com', hospital: 'N/A', status: 'active', statusName: '正常' },
@@ -1066,18 +1087,6 @@
                         await DbService.deleteDdiRule(String(id));
                         this.mockRules = this.mockRules.filter(r => r.id !== id && r.id !== String(id));
                         this.kpis[0].value = this.mockRules.length;
-                // 藥物目錄品項數：目錄本身就在前端，直接算即可
-                this.kpis[2].value = window.DrugCatalog ? window.DrugCatalog.all().length : 0;
-                // 稽核事件數。最多取 500 筆——超過時顯示「500+」而非硬報一個數字，
-                // 因為那已經不是實際筆數，而是查詢上限。把上限說成總數是另一種造假。
-                try {
-                    const snap = await window.db.collection('audit_logs').limit(500).get();
-                    this.kpis[3].value = snap.size >= 500 ? '500+' : snap.size;
-                } catch (e) {
-                    console.error('稽核事件數讀取失敗：', e);
-                    // 讀不到就顯示破折號，不顯示 0——「沒有事件」與「讀不到」是兩回事
-                    this.kpis[3].value = '—';
-                }
                         this.triggerToast('已刪除', '規則已從資料庫移除');
                     } catch (e) {
                         this.triggerToast('刪除失敗', '請稍後再試');
@@ -1225,6 +1234,21 @@
                         this.triggerToast('儲存失敗', '請確認 Firestore 規則允許寫入 admin_data');
                     }
                 },
+                // 規則的 severity 有兩種來源：雲端 ddi_rules 可能是中文（「極高風險」），
+                // 內建規則是引擎的英文鍵（major／moderate／minor）。統一經引擎正規化後顯示，
+                // 避免管理端與醫師端對同一條規則說出不同的嚴重度。
+                sevLabel(rule) {
+                    const E = window.DdiEngine;
+                    if (!E) return rule.severity || '—';
+                    const k = E.normalizeSeverity(rule.severity);
+                    return k ? E.SEVERITY[k].zh : '未分級';
+                },
+                sevClass(rule) {
+                    const E = window.DdiEngine;
+                    if (!E) return rule.severityClass || 'bg-slate-100 text-slate-600';
+                    const k = E.normalizeSeverity(rule.severity);
+                    return k ? E.SEVERITY[k].cls : E.SEVERITY.unknown.cls;
+                },
                 exportReportPdf() {
                     window.print();
                 },
@@ -1265,18 +1289,6 @@
                         const id = await DbService.addDdiRule(rule);
                         this.mockRules.push({ id, ...rule });
                         this.kpis[0].value = this.mockRules.length;
-                // 藥物目錄品項數：目錄本身就在前端，直接算即可
-                this.kpis[2].value = window.DrugCatalog ? window.DrugCatalog.all().length : 0;
-                // 稽核事件數。最多取 500 筆——超過時顯示「500+」而非硬報一個數字，
-                // 因為那已經不是實際筆數，而是查詢上限。把上限說成總數是另一種造假。
-                try {
-                    const snap = await window.db.collection('audit_logs').limit(500).get();
-                    this.kpis[3].value = snap.size >= 500 ? '500+' : snap.size;
-                } catch (e) {
-                    console.error('稽核事件數讀取失敗：', e);
-                    // 讀不到就顯示破折號，不顯示 0——「沒有事件」與「讀不到」是兩回事
-                    this.kpis[3].value = '—';
-                }
                         this.newRule = { drugA: '', drugB: '', severity: '高風險', effect: '' };
                         this.newRuleError = '';
                         this.showAddRuleModal = false;

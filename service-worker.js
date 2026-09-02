@@ -20,7 +20,8 @@
 // v13：管理端 KPI 與核保端趨勢圖改為實算／誠實空狀態
 // v14：修正初次進入醫師端時交互作用關係圖不顯示
 // v15：醫師端 KPI 改為由實際指派病患計算
-const CACHE_VERSION = 'medsafe-static-v15';
+// v16：管理端顯示 ATC 碼，規則管理改讀引擎實際使用的規則
+const CACHE_VERSION = 'medsafe-static-v16';
 
 const PRECACHE_URLS = [
   './index.html',
