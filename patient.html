@@ -606,7 +606,12 @@
                             </div>
                         </div>
                         <div id="chat-scroll" class="flex-1 space-y-4 max-h-72 overflow-y-auto pr-1">
-                            <div v-if="chatMessages.length === 0" class="text-center text-xs font-bold text-slate-500 py-10">尚無對話紀錄，開始留言給{{ doctorName }}吧</div>
+                                                        <!-- 對話載入失敗必須與「沒有訊息」分開呈現：兩者長得一樣，意義卻完全相反——
+                                 後者是沒人說話，前者是說了但你看不到。 -->
+                            <div v-if="!chatReady" class="text-center text-xs font-black text-danger bg-red-50 border border-red-200 rounded-2xl py-4 px-5 leading-relaxed">
+                                無法連線至對話伺服器，目前顯示的內容可能不完整。<br>這不代表沒有訊息，請確認網路後重新整理。
+                            </div>
+                            <div v-else-if="chatMessages.length === 0" class="text-center text-xs font-bold text-slate-500 py-10">尚無對話紀錄，開始留言給{{ doctorName }}吧</div>
                             <template v-for="(msg, i) in chatMessages" :key="i">
                                 <div v-if="msg.from === 'system'" class="text-center">
                                     <span class="inline-block text-[10px] font-bold text-slate-400 bg-white/5 border border-white/10 rounded-full px-4 py-2">{{ msg.text }}</span>
@@ -798,6 +803,10 @@
                     consentDays: 90,
                     consentBusy: false,
                     consentError: '',
+                    // 對話（P1-4）
+                    chatSending: false,
+                    chatReady: true,
+                    doctorUsername: '',
                     maintenanceMode: false,
                     maintenanceCheckFailed: false,
                     profile: patientData.profile,
@@ -887,6 +896,8 @@
                 if (this.maintenanceMode) return;
                 try {
                     await this.loadConsents();
+                    // 對話改由 Firestore 承載，必須先初始化才能收發（P1-4）
+                    this.chatReady = await window.chatStore.init('patient', this._username);
                     const data = await DbService.getPatientData(this._username);
                     if (data) {
                         this.profile = data.profile;
@@ -896,6 +907,12 @@
                         this.aiInsights = data.aiInsights;
                         this.reminders = data.reminders;
                         if (data.assignedDoctorName) this.doctorName = data.assignedDoctorName;
+                        // 主治醫師的帳號決定了誰能讀這串對話（conversations.participants），
+                        // 因此必須取自病歷中的指派結果，不可由病患自行指定。
+                        if (data.assignedDoctor) this.doctorUsername = data.assignedDoctor;
+                        // 指派醫師之後才重新初始化對話：participants 在建立當下就要寫對，
+                        // 事後補寫等於讓對話有一段時間讀不到或人人可讀。
+                        this.chatReady = await window.chatStore.init('patient', this._username);
                     }
                 } catch (e) {
                     console.error('Firestore load error:', e);
@@ -917,8 +934,11 @@
                     if (this.showChatModal) this.closeChat();
                 };
                 document.addEventListener('keydown', this._escHandler);
-                this._chatUnsub = window.chatStore.onChange((e) => {
-                    if (e.key !== 'medsafe_chat_' + this.profile.id) return;
+                // 對話變更的來源已由 localStorage 的 storage 事件改為 Firestore 的即時監聽
+                //（稽核報告 P1-4）。storage 事件只在同一台電腦的不同分頁間作用——
+                // 所謂「即時通訊」原本實際上要求醫師與病患共用同一台機器。
+                // 現在跨裝置、跨網路都會收到，且回呼不再帶 event 參數。
+                this._chatUnsub = window.chatStore.onChange(() => {
                     const msgs = window.chatStore.getMessages(this.profile.id);
                     if (msgs.length <= this.chatMessages.length) return;
                     const newOnes = msgs.slice(this.chatMessages.length).filter(m => m.from === 'doctor');
@@ -1141,6 +1161,8 @@
                         });
                         await DbService.grantConsent(this._username, insurer, this.consentDays);
                         await this.loadConsents();
+                    // 對話改由 Firestore 承載，必須先初始化才能收發（P1-4）
+                    this.chatReady = await window.chatStore.init('patient', this._username);
                         this.consentInsurer = '';
                         this.triggerToast('已授權', insurer + ' 可於期限內查閱您的核保摘要，您隨時可以撤回。');
                     } catch (e) {
@@ -1156,6 +1178,8 @@
                     try {
                         await DbService.revokeConsent(this._username, c.insurer);
                         await this.loadConsents();
+                    // 對話改由 Firestore 承載，必須先初始化才能收發（P1-4）
+                    this.chatReady = await window.chatStore.init('patient', this._username);
                         this.triggerToast('已撤回授權', c.insurer + ' 已無法再查閱您的資料。');
                     } catch (e) {
                         console.error('撤回失敗：', e);
@@ -1231,7 +1255,10 @@
                         const note = this.ddiAlerts.length > 0
                             ? `系統已將「${this.ddiAlerts[0].drugs.join(' + ')}」交互作用警示通知${this.doctorName}，您可以直接在此留言說明狀況。`
                             : `這是您與${this.doctorName}的專屬留言板，訊息會即時同步，隨時都能留言。`;
-                        window.chatStore.addMessage(this.profile.id, 'system', note);
+                        // 這則問候語是畫面元素，不是醫病溝通內容，因此只在本地顯示、
+                        // 不寫入病歷。原本它會被存進對話紀錄，一來污染病歷，
+                        // 二來需要在規則中開放一個 'system' 身分，而那個身分
+                        // 任何參與者都能冒用——病患可以貼出一則看似系統公告的訊息。
                         this.chatMessages.push({ from: 'system', text: note });
                     }
                     this.$nextTick(() => this.scrollChat());
@@ -1245,19 +1272,28 @@
                     this.showNotifDropdown = false;
                     if (n.action === 'chat') this.openChat();
                 },
-                sendResponse() {
+                async sendResponse() {
                     const msg = this.chatInput.trim();
-                    if (!msg) return;
-                    window.chatStore.addMessage(this.profile.id, 'patient', msg);
-                    this.chatMessages.push({ from: 'patient', text: msg });
+                    if (!msg || this.chatSending) return;
+                    this.chatSending = true;
+                    // 先寫入再更新畫面。相反的順序會讓病患看到訊息已送出，
+                    // 而伺服器其實沒收到——醫師永遠等不到那則訊息，病患卻以為已經說過了。
+                    const res = await window.chatStore.addMessage(
+                        this.profile.id, 'patient', msg, this.doctorUsername);
+                    this.chatSending = false;
+                    if (!res.ok) {
+                        this.triggerToast('訊息未送出', '網路或權限問題導致訊息無法送出，您的內容仍保留在輸入框中，請重試。');
+                        return;
+                    }
+                    // 訊息本身由 Firestore 監聽回填到 chatMessages，此處不重複 push，
+                    // 否則同一則訊息會出現兩次
                     this.chatInput = '';
                     this.$nextTick(() => this.scrollChat());
                     this.awaitingReply = true;
+                    // 通知只帶不含內容的中繼資料：姓名與訊息全文不再落地到醫師電腦的
+                    // localStorage（見 js/chatStore.js 的說明）
                     window.chatStore.notify('doctor', {
-                        title: '病患新訊息',
-                        content: `${this.profile.name}：${msg}`,
                         patientId: this.profile.id,
-                        patientName: this.profile.name,
                         critical: this.ddiAlerts.length > 0
                     });
                 },

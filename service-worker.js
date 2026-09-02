@@ -11,7 +11,8 @@
 // v4：Phase 3 交互作用引擎（新增 js/ddi-engine.js，dashboard.html 改接 ATC 比對）
 // v5：Phase 4 處方安全閘門與稽核軌跡（新增 js/audit.js，dashboard/admin 接上稽核）
 // v6：P1-6 病患同意機制（保險端改讀 patient_summaries，patient/insurance 頁面改版）
-const CACHE_VERSION = 'medsafe-static-v6';
+// v7：P1-4 醫病對話改由 Firestore 承載（js/chatStore.js 全檔改寫）
+const CACHE_VERSION = 'medsafe-static-v7';
 
 const PRECACHE_URLS = [
   './index.html',

@@ -240,8 +240,9 @@
                                                 class="w-full text-left px-6 py-4 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex gap-3 items-start">
                                             <div v-if="n.critical" class="w-2 h-2 rounded-full bg-danger mt-1.5 shrink-0"></div>
                                             <div class="min-w-0">
-                                                <div :class="['text-xs truncate', n.critical ? 'font-black text-danger' : 'font-black text-slate-800']">{{ n.title }}</div>
-                                                <div class="text-[11px] text-slate-500 font-bold mt-0.5">{{ n.content }}</div>
+                                                <!-- 標題與預覽改為即時計算：通知本身已不再儲存病患姓名與訊息內容（P1-4） -->
+                                                <div :class="['text-xs truncate', n.critical ? 'font-black text-danger' : 'font-black text-slate-800']">{{ notifTitle(n) }}</div>
+                                                <div class="text-[11px] text-slate-500 font-bold mt-0.5">{{ notifPreview(n) }}</div>
                                             </div>
                                         </button>
                                     </div>
@@ -566,7 +567,12 @@
                         <button @click="showChatModal = false" aria-label="關閉" class="text-slate-400 hover:text-white transition-colors p-2"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
                     </div>
                     <div id="doctor-chat-scroll" class="p-6 space-y-4 max-h-72 overflow-y-auto">
-                        <div v-if="chatMessages.length === 0" class="text-center text-xs font-bold text-slate-500 py-8">尚無對話紀錄，開始輸入以聯繫病患</div>
+                                                <!-- 對話載入失敗必須與「沒有訊息」分開呈現：兩者長得一樣，意義卻完全相反——
+                             後者是沒人說話，前者是說了但你看不到。 -->
+                        <div v-if="!chatReady" class="text-center text-xs font-black text-danger bg-red-50 border border-red-200 rounded-2xl py-4 px-5 leading-relaxed">
+                            無法連線至對話伺服器，目前顯示的內容可能不完整。<br>這不代表沒有訊息，請確認網路後重新整理。
+                        </div>
+                        <div v-else-if="chatMessages.length === 0" class="text-center text-xs font-bold text-slate-500 py-8">尚無對話紀錄，開始輸入以聯繫病患</div>
                         <template v-for="(msg, i) in chatMessages" :key="i">
                             <div v-if="msg.from === 'system'" class="text-center">
                                 <span class="inline-block text-[10px] font-bold text-slate-400 bg-white/5 border border-white/10 rounded-full px-4 py-2">{{ msg.text }}</span>
@@ -703,6 +709,10 @@
                     extraPrescriptions: {},
                     showNotifDropdown: false,
                     doctorNotifications: [],
+                    // 每串對話最後一次提示過的訊息時間，用於避免重複彈出通知（P1-4）
+                    _lastToastTs: {},
+                    chatSending: false,
+                    chatReady: true,
                     showMsgDropdown: false,
                     conversations: [],
                     showChatModal: false,
@@ -834,33 +844,51 @@
                     }, 50);
                 });
             },
-            mounted() {
+            async mounted() {
                 this._resizeHandler = () => { if (this._charts) Object.values(this._charts).forEach(c => c && c.resize()); };
                 window.addEventListener('resize', this._resizeHandler);
                 window.medNotify.init();
+                // 對話改由 Firestore 承載（稽核報告 P1-4）。必須先初始化才收得到訊息。
+                // 範圍由查詢與安全規則共同決定：只訂閱得到把自己列為參與者的對話，
+                // 不再像原本那樣掃描整個 localStorage 而看到這台電腦上所有病患的紀錄。
+                this.chatReady = await window.chatStore.init('doctor', this.user.username);
                 this.loadDoctorNotifications();
                 this.loadConversations();
-                this._chatUnsub = window.chatStore.onChange((e) => {
-                    if (!e.key) return;
-                    if (e.key === 'medsafe_notif_doctor') this.loadDoctorNotifications();
-                    if (e.key.indexOf('medsafe_chat_') !== 0) return;
-                    const patientId = e.key.slice('medsafe_chat_'.length);
-                    const msgs = window.chatStore.getMessages(patientId);
-                    const isOpenConversation = this.showChatModal && this.selectedPatient && this.selectedPatient.id === patientId;
-                    if (this.selectedPatient && this.selectedPatient.id === patientId && msgs.length > this.chatMessages.length) {
-                        msgs.slice(this.chatMessages.length).forEach(m => this.chatMessages.push({ from: m.from, text: m.text }));
-                        if (this.showChatModal) {
-                            window.chatStore.markChatRead('doctor', patientId);
-                            this.$nextTick(() => this.scrollDoctorChat());
+                // 監聽回呼不再帶 event 參數——來源已從 storage 事件換成 Firestore 快照，
+                // 因此無從得知「是哪一個鍵變了」，改為每次比對全部對話。
+                this._chatUnsub = window.chatStore.onChange(() => {
+                    const openPid = this.selectedPatient ? this.selectedPatient.id : null;
+                    if (openPid) {
+                        const msgs = window.chatStore.getMessages(openPid);
+                        // 以整份取代而非逐則附加：Firestore 的快照本身就是完整狀態，
+                        // 逐則附加會在重連或補送時把同一則訊息加進去兩次。
+                        if (msgs.length !== this.chatMessages.length) {
+                            this.chatMessages = msgs.map(m => ({ from: m.from, text: m.text }));
+                            if (this.showChatModal) {
+                                window.chatStore.markChatRead('doctor', openPid);
+                                this.$nextTick(() => this.scrollDoctorChat());
+                            }
                         }
                     }
-                    const last = msgs[msgs.length - 1];
-                    if (last && last.from === 'patient' && !isOpenConversation) {
-                        const name = this.patientNameOf(patientId);
+                    for (const c of window.chatStore.listConversations()) {
+                        const last = c.last;
+                        if (!last || last.from !== 'patient') continue;
+                        // 首次看到這串對話時，只記錄目前位置而不提示。
+                        // 否則每次進入頁面都會把既有訊息重新彈一輪通知，
+                        // 真正的新訊息反而被淹沒在其中。未讀數仍會正常顯示。
+                        if (this._lastToastTs[c.patientId] === undefined) {
+                            this._lastToastTs[c.patientId] = last.ts;
+                            continue;
+                        }
+                        if (last.ts <= this._lastToastTs[c.patientId]) continue;
+                        this._lastToastTs[c.patientId] = last.ts;
+                        if (this.showChatModal && openPid === c.patientId) continue;
+                        const name = this.patientNameOf(c.patientId);
                         this.triggerToast('病患新訊息', name + '：' + last.text);
-                        window.medNotify.ping('病患新訊息', name + '：' + last.text, () => this.openChatForPatient(patientId));
+                        window.medNotify.ping('病患新訊息', name + '：' + last.text, () => this.openChatForPatient(c.patientId));
                     }
                     this.loadConversations();
+                    this.loadDoctorNotifications();
                 });
                 this._closeDropdownHandler = () => { this.showMsgDropdown = false; this.showNotifDropdown = false; };
                 document.addEventListener('click', this._closeDropdownHandler);
@@ -1218,6 +1246,20 @@
                     return (d.getMonth() + 1) + '/' + d.getDate();
                 },
                 // 重新整理訊息中心清單，同時把未讀總數同步到分頁標題
+                // 通知只存 patientId 與旗標，姓名與預覽在顯示當下才從對話快取取得。
+                // 這讓「醫師電腦上不留病患姓名與訊息全文」成為結構上的保證，
+                // 而不是靠呼叫端每次都記得不要寫進去。
+                notifTitle(n) {
+                    return n.critical ? '病患新訊息（該病患有交互作用警示）' : '病患新訊息';
+                },
+                notifPreview(n) {
+                    if (!n.patientId) return '';
+                    const msgs = window.chatStore.getMessages(n.patientId);
+                    const last = msgs.length ? msgs[msgs.length - 1] : null;
+                    const name = this.patientNameOf(n.patientId);
+                    // 對話讀不到時只顯示姓名，不編造內容——可能是權限已變更或尚未同步
+                    return last ? name + '：' + last.text : name;
+                },
                 loadConversations() {
                     this.conversations = window.chatStore.listConversations().map(c => ({
                         patientId: c.patientId,
@@ -1277,11 +1319,19 @@
                     this.$nextTick(() => this.scrollDoctorChat());
                 },
                 scrollDoctorChat() { const el = document.getElementById('doctor-chat-scroll'); if (el) el.scrollTop = el.scrollHeight; },
-                sendDoctorMessage() {
+                async sendDoctorMessage() {
                     const msg = this.chatInput.trim();
-                    if (!msg || !this.selectedPatient) return;
-                    window.chatStore.addMessage(this.selectedPatient.id, 'doctor', msg);
-                    this.chatMessages.push({ from: 'doctor', text: msg });
+                    if (!msg || !this.selectedPatient || this.chatSending) return;
+                    this.chatSending = true;
+                    // 先寫入再更新畫面。相反的順序會讓醫師看到訊息已送出，
+                    // 而伺服器其實沒收到——病患永遠等不到那則回覆，醫師卻以為已經回過了。
+                    const res = await window.chatStore.addMessage(this.selectedPatient.id, 'doctor', msg);
+                    this.chatSending = false;
+                    if (!res.ok) {
+                        this.triggerToast('訊息未送出', '網路或權限問題導致訊息無法送出，您的內容仍保留在輸入框中，請重試。');
+                        return;
+                    }
+                    // 訊息由 Firestore 監聽回填，此處不重複 push，否則會出現兩次
                     this.chatInput = '';
                     window.chatStore.markChatRead('doctor', this.selectedPatient.id);
                     this.loadConversations();

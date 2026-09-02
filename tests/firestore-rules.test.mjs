@@ -29,6 +29,12 @@ await env.withSecurityRulesDisabled(async ctx => {
     medications: [{ name: 'Warfarin' }],
     ddiAlerts: [], reminders: [], assignedDoctor: 'doctor'
   });
+  // 醫病對話測試資料（P1-4）
+  // P001 與 doctor 的對話；atk 不在參與者名單中
+  await setDoc(doc(db, 'conversations/P001'), {
+    patient: 'P001', doctor: 'doctor', participants: ['P001', 'doctor'], createdAt: new Date() });
+  await setDoc(doc(db, 'conversations/P001/messages/m1'), {
+    from: 'patient', text: '我最近有點頭暈', at: new Date() });
   // 同意機制測試資料（P1-6）
   const future = Timestamp.fromDate(new Date(Date.now() + 30 * 86400000));
   const past = Timestamp.fromDate(new Date(Date.now() - 86400000));
@@ -136,6 +142,82 @@ await run('修改其他欄位而未動用藥清單，不受閘門限制',
 
 await run('移除用藥（清單變短）不受閘門限制',
   () => updateDoc(doc(DOC(), 'patient_data/P900'), { medications: [] }), 'allow');
+
+// ── 醫病對話（稽核報告 P1-4）─────────────────────────────────────────────
+// 修復前對話全存在 localStorage，明文、無存取控制。移入 Firestore 後，
+// 這一節驗證的是「誰讀得到、誰寫得了、寫下去能不能改」。
+const MSGS = (db, pid) => collection(db, 'conversations/' + pid + '/messages');
+
+await run('對話參與者讀取訊息（病患本人）',
+  () => getDocs(MSGS(P001(), 'P001')), 'allow');
+
+await run('對話參與者讀取訊息（主治醫師）',
+  () => getDocs(MSGS(DOC(), 'P001')), 'allow');
+
+// 這是 P1-4 的核心：原本任何人只要坐在同一台電腦前就讀得到全部對話
+await run('非參與者讀取他人的醫病對話',
+  () => getDocs(MSGS(ATK(), 'P001')), 'deny');
+
+await run('核保端讀取醫病對話',
+  () => getDocs(MSGS(INS(), 'P001')), 'deny');
+
+await run('非參與者讀取對話中繼資料',
+  () => getDoc(doc(ATK(), 'conversations/P001')), 'deny');
+
+// from 必須等於自己的角色：少了這條，病患可以貼出一則「醫師說可以加倍劑量」
+await run('病患冒用醫師身分發言',
+  () => addDoc(MSGS(P001(), 'P001'), { from: 'doctor', text: '可以加倍劑量', at: serverTimestamp() }), 'deny');
+
+await run('醫師冒用病患身分發言',
+  () => addDoc(MSGS(DOC(), 'P001'), { from: 'patient', text: '我同意', at: serverTimestamp() }), 'deny');
+
+// 介面上的問候語不應寫進病歷，因此規則不承認第三種身分
+await run('以 system 身分發言（偽造系統公告）',
+  () => addDoc(MSGS(P001(), 'P001'), { from: 'system', text: '本院已核准提高劑量', at: serverTimestamp() }), 'deny');
+
+await run('非參與者送出訊息',
+  () => addDoc(MSGS(ATK(), 'P001'), { from: 'patient', text: 'x', at: serverTimestamp() }), 'deny');
+
+await run('以用戶端時間取代伺服器時間戳',
+  () => addDoc(MSGS(P001(), 'P001'), { from: 'patient', text: 'x', at: new Date('2020-01-01') }), 'deny');
+
+await run('送出空白訊息',
+  () => addDoc(MSGS(P001(), 'P001'), { from: 'patient', text: '', at: serverTimestamp() }), 'deny');
+
+// 對話紀錄屬病歷一部分：事後改寫自己說過的話會讓整串紀錄失去證據價值
+await run('修改已送出的訊息',
+  () => updateDoc(doc(P001(), 'conversations/P001/messages/m1'), { text: '我沒有說過這句' }), 'deny');
+
+await run('刪除已送出的訊息',
+  () => deleteDoc(doc(P001(), 'conversations/P001/messages/m1')), 'deny');
+
+await run('刪除整串對話',
+  () => deleteDoc(doc(P001(), 'conversations/P001')), 'deny');
+
+// participants 是這串對話的存取控制清單，建立後不可變更——
+// 否則任何參與者都能把第三人加進來，形同單方面轉發整串病歷對話
+await run('事後把第三人加進參與者名單',
+  () => updateDoc(doc(DOC(), 'conversations/P001'), { participants: ['P001', 'doctor', 'atk'] }), 'deny');
+
+// 一串「病患不在參與者中」的病患對話，等於在病患不知情下建立的病歷
+await run('建立不含病患本人的對話',
+  () => setDoc(doc(DOC(), 'conversations/P002'), {
+    patient: 'P002', doctor: 'doctor', participants: ['doctor'], createdAt: serverTimestamp() }), 'deny');
+
+await run('建立自己不在其中的對話（替他人開對話）',
+  () => setDoc(doc(ATK(), 'conversations/P003'), {
+    patient: 'P003', doctor: 'doctor', participants: ['P003', 'doctor'], createdAt: serverTimestamp() }), 'deny');
+
+// 合法路徑不可被誤擋
+await run('病患送出訊息',
+  () => addDoc(MSGS(P001(), 'P001'), { from: 'patient', text: '好的，謝謝醫師', at: serverTimestamp() }), 'allow');
+
+await run('醫師回覆訊息',
+  () => addDoc(MSGS(DOC(), 'P001'), { from: 'doctor', text: '請先觀察兩天', at: serverTimestamp() }), 'allow');
+
+await run('病患建立自己與主治醫師的對話',
+  () => setDoc(doc(ATK(), 'conversations/atk'), {
+    patient: 'atk', doctor: 'doctor', participants: ['atk', 'doctor'], createdAt: serverTimestamp() }), 'allow');
 
 // ── 病患同意機制（稽核報告 P1-6）─────────────────────────────────────────
 // 修復前：核保員讀得到每一位病患的完整用藥史，無同意、無關聯、無時效、無欄位限制。

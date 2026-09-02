@@ -137,6 +137,12 @@ async function mountWhenAuthorized(app, expectedRole) {
 
 // 登出：本地狀態與 Firebase Auth 的登入狀態都要清掉，且等 signOut 完成再導頁
 async function logout() {
+  // 解除對話的即時監聽並清空記憶體中的訊息（稽核報告 P1-4）。
+  // 不做這件事，切換帳號後前一位使用者的對話仍留在同一個 JS 環境裡，
+  // 且舊的 Firestore 監聽會持續運作到頁面真正卸載為止。
+  if (window.chatStore && window.chatStore.dispose) {
+    try { window.chatStore.dispose(); } catch (e) { /* 清理失敗不應阻擋登出 */ }
+  }
   clearLocalState();
   if (window.auth) {
     try { await window.auth.signOut(); } catch (e) { /* 即使失敗仍要離開此頁 */ }

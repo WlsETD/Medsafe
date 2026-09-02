@@ -121,6 +121,57 @@ service cloud.firestore {
 
     // 病患資料：admin/doctor 可讀寫；保險核保員只能讀（核保用途，不得修改病歷）；
     // 病患本人可讀，但寫入僅限上列欄位
+    // ── 醫病對話（稽核報告 P1-4）─────────────────────────────────────────
+    //
+    // 修復前：全部對話存在 localStorage['medsafe_chat_*']，明文、無加密、永不過期，
+    // 且醫師端會掃描整個 localStorage 而累積這台電腦上所有病患的對話。
+    // 醫病溝通紀錄在法律上屬於病歷的一部分，存在瀏覽器裡既不符合
+    // 《醫療機構電子病歷製作及管理辦法》的保存要求，也會隨清除快取而永久遺失。
+    //
+    // participants 是這串對話的存取控制清單，在建立當下就必須寫對——
+    // 事後補寫等於讓對話有一段時間無人可讀或人人可讀。且建立後不可變更，
+    // 否則任何參與者都能把自己以外的人加進來，形同單方面轉發整串病歷對話。
+    match /conversations/{pid} {
+      function convData() {
+        return get(/databases/$(database)/documents/conversations/$(pid)).data;
+      }
+      function inConversation() {
+        return isActive()
+          && exists(/databases/$(database)/documents/conversations/$(pid))
+          && profile().username in convData().participants;
+      }
+
+      allow read: if isAdmin()
+        || (isActive() && resource != null && profile().username in resource.data.participants);
+      // 建立者必須是參與者之一，且病患本人必須在名單內——
+      // 一串「病患不在參與者中」的病患對話，等於在病患不知情下建立的病歷。
+      allow create: if isActive()
+        && request.resource.data.patient == pid
+        && pid in request.resource.data.participants
+        && profile().username in request.resource.data.participants;
+      allow update: if isActive() && resource != null
+        && profile().username in resource.data.participants
+        && request.resource.data.participants == resource.data.participants;
+      // 病歷不可刪除
+      allow delete: if false;
+
+      match /messages/{mid} {
+        allow read: if isAdmin() || inConversation();
+        // from 必須等於發言者自己的角色：少了這一條，病患可以貼出一則
+        //「醫師說可以加倍劑量」的訊息，或醫師端看到偽造的病患陳述。
+        // 對話中沒有第三種身分——介面上的問候語屬於畫面元素，不應寫進病歷。
+        allow create: if inConversation()
+          && request.resource.data.from == profile().role
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 4000
+          && request.resource.data.at == request.time;
+        // 已送出的訊息不可修改或刪除。對話紀錄屬病歷一部分，
+        // 事後改寫自己說過的話會讓整串紀錄失去證據價值。
+        allow update, delete: if false;
+      }
+    }
+
     // ── 病患同意機制（稽核報告 P1-6）─────────────────────────────────────
     //
     // 修復前：`allow read: if ... || isInsurance()` —— 核保員讀得到每一位病患的
