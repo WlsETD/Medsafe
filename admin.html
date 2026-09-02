@@ -202,6 +202,19 @@
                             Add Rule
                         </button>
                     </div>
+                    <!-- 失效規則的統計。這個數字比規則總數重要：
+                         一條無法解析為 ATC 的規則，在醫師端永遠不會觸發，
+                         而它仍然被計入「DDI 規則總數」，讓知識庫看起來比實際完整。 -->
+                    <div v-if="inertRuleCount > 0" class="bg-red-50 border-2 border-red-200 rounded-3xl p-6">
+                        <p class="text-sm font-black text-danger">{{ inertRuleCount }} 條規則不會生效</p>
+                        <p class="text-[11px] font-bold text-red-700 mt-2 leading-relaxed">
+                            這些規則的藥名無法解析為 ATC 碼（下方以紅底標示），因此交互作用引擎會在比對前將其丟棄——
+                            醫師端永遠不會觸發。規則內容本身可能完全正確，問題在於
+                            <strong>該藥物尚未收錄於本系統的藥物目錄</strong>（<code class="font-mono">js/drug-catalog.js</code>）。
+                            <br>把該藥加進目錄後，這條規則就會自動生效，不需要修改規則本身。
+                        </p>
+                    </div>
+
                     <div class="bg-white rounded-[40px] shadow-premium border border-white overflow-hidden">
                         <div class="p-8 border-b border-gray-50 flex flex-col md:flex-row items-center gap-6 bg-slate-50/50">
                             <input v-model="ruleSearch" type="text" placeholder="搜索藥品成分..." class="flex-1 bg-white border-2 border-slate-100 rounded-2xl py-3 px-6 text-sm focus:border-primary/20 outline-none font-bold">
@@ -211,12 +224,23 @@
                             <table class="w-full border-collapse">
                                 <thead><tr class="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-gray-100 bg-white"><th class="px-8 py-6">ID</th><th class="px-8 py-6">DRUG A</th><th class="px-8 py-6">DRUG B</th><th class="px-8 py-6">SEVERITY</th><th class="px-8 py-6">EFFECT</th><th class="px-8 py-6 text-right">ACTIONS</th></tr></thead>
                                 <tbody class="divide-y divide-gray-50">
-                                    <tr v-for="rule in filteredRules" :key="rule.id || (rule.atcA + '|' + rule.atcB)" class="table-row-hover">
+                                    <tr v-for="rule in filteredRules" :key="rule.id || (rule.drugA + '|' + rule.drugB)"
+                                        :class="['table-row-hover', ruleIsInert(rule) ? 'bg-red-50/50' : '']">
                                         <td class="px-8 py-5 text-sm font-mono text-primary font-bold">{{ rule.id ? '#' + rule.id : '內建' }}</td>
                                         <!-- 規則的 id 只是流水號；真正的識別是兩端的 ATC 碼，那也是引擎實際
                                              拿來比對的東西。管理員看不到 ATC，就無法確認一條規則會命中哪些藥。 -->
-                                        <td class="px-8 py-5 font-black text-title">{{ rule.drugA }}<div class="font-mono text-[10px] font-bold text-slate-400 mt-0.5">{{ rule.atcA || '—' }}</div></td>
-                                        <td class="px-8 py-5 font-black text-title">{{ rule.drugB }}<div class="font-mono text-[10px] font-bold text-slate-400 mt-0.5">{{ rule.atcB || '—' }}</div></td>
+                                        <td class="px-8 py-5 font-black text-title">{{ rule.drugA }}
+                                            <div v-if="ruleAtc(rule, 'A').code" class="font-mono text-[10px] font-bold mt-0.5" :class="ruleAtc(rule, 'A').derived ? 'text-slate-400' : 'text-primary'">
+                                                {{ ruleAtc(rule, 'A').code }}<span v-if="ruleAtc(rule, 'A').derived" class="ml-1 font-sans">（由藥名解析）</span>
+                                            </div>
+                                            <div v-else class="text-[10px] font-black text-danger mt-0.5">無法解析</div>
+                                        </td>
+                                        <td class="px-8 py-5 font-black text-title">{{ rule.drugB }}
+                                            <div v-if="ruleAtc(rule, 'B').code" class="font-mono text-[10px] font-bold mt-0.5" :class="ruleAtc(rule, 'B').derived ? 'text-slate-400' : 'text-primary'">
+                                                {{ ruleAtc(rule, 'B').code }}<span v-if="ruleAtc(rule, 'B').derived" class="ml-1 font-sans">（由藥名解析）</span>
+                                            </div>
+                                            <div v-else class="text-[10px] font-black text-danger mt-0.5">無法解析</div>
+                                        </td>
                                         <td class="px-8 py-5"><span :class="['px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest', sevClass(rule)]">{{ sevLabel(rule) }}</span></td>
                                         <td class="px-8 py-5 text-xs font-bold text-slate-500">
                                             {{ rule.effect }}
@@ -986,6 +1010,11 @@
             computed: {
                 // DDInter 藥物清單。資料以陣列形式儲存（[id, name, n, atc?]）以節省體積，
                 // 1,971 筆用物件形式會多出約 40%。
+                // 不會生效的規則數。刻意與「規則總數」分開呈現——
+                // 兩者混在一起，知識庫就會看起來比實際完整。
+                inertRuleCount() {
+                    return (this.mockRules || []).filter(r => this.ruleIsInert(r)).length;
+                },
                 ddinterMeta() {
                     return window.DDINTER_DRUGS || { total: 0, rows: [], importedOn: '—' };
                 },
@@ -1359,6 +1388,31 @@
                 // 規則的 severity 有兩種來源：雲端 ddi_rules 可能是中文（「極高風險」），
                 // 內建規則是引擎的英文鍵（major／moderate／minor）。統一經引擎正規化後顯示，
                 // 避免管理端與醫師端對同一條規則說出不同的嚴重度。
+                // 規則實際會使用的 ATC 碼。
+                //
+                // 原本這裡直接顯示 rule.atcA——但雲端 ddi_rules 的文件沒有這個欄位，
+                // 所以整欄都是「—」。而引擎並不是讀那個欄位：它會先用藥名去解析，
+                // 解析得到就照樣比對。也就是說畫面顯示「—」的規則其實是生效的。
+                //
+                // 一個在「規則有效」與「規則失效」兩種情況下都顯示同一個符號的欄位，
+                // 不帶任何訊息，比不顯示更糟——它看起來像是在告訴你什麼。
+                //
+                // 現在顯示引擎實際會用的碼，並區分兩種來源：
+                //   文件自帶     以主色顯示
+                //   由藥名解析   以灰色顯示並註明
+                // 兩者都解析不到時顯示紅色「無法解析」——那才是真正該注意的狀態，
+                // 因為那條規則在醫師端永遠不會觸發。
+                ruleAtc(rule, side) {
+                    const stored = side === 'A' ? rule.atcA : rule.atcB;
+                    if (stored) return { code: stored, derived: false };
+                    const name = side === 'A' ? rule.drugA : rule.drugB;
+                    const d = window.DrugCatalog ? window.DrugCatalog.resolve(name) : null;
+                    return d ? { code: d.atc, derived: true } : { code: null, derived: false };
+                },
+                // 兩端有任一端解析不到，這條規則就不會被引擎採用。
+                ruleIsInert(rule) {
+                    return !this.ruleAtc(rule, 'A').code || !this.ruleAtc(rule, 'B').code;
+                },
                 sevLabel(rule) {
                     const E = window.DdiEngine;
                     if (!E) return rule.severity || '—';

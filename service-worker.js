@@ -22,7 +22,8 @@
 // v15：醫師端 KPI 改為由實際指派病患計算
 // v16：管理端顯示 ATC 碼，規則管理改讀引擎實際使用的規則
 // v17：藥物目錄擴充為 26 種；新增 DDInter 藥物庫頁面
-const CACHE_VERSION = 'medsafe-static-v17';
+// v18：管理端 ATC 欄改顯示引擎實際使用的碼，並標示不會生效的規則
+const CACHE_VERSION = 'medsafe-static-v18';
 
 const PRECACHE_URLS = [
   './index.html',
