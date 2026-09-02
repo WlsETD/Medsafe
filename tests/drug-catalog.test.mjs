@@ -45,7 +45,9 @@ check('同成分不同適應症的 ATC 碼歸戶為同一藥（B01AC06 = N02BA01
 // --- 二、查不到必須回傳 null，不可猜測 ---
 // 這是 P0-3「查無資料就顯示安全」在藥物解析層的對應。系統「不認得」與
 // 系統「確認無交互作用」是完全不同的兩件事，不可在此處就把前者變成後者。
-for (const v of ['Ibuprofen', 'Warfarinx', '不存在的藥', '', '   ', null, undefined, 123, {}]) {
+// 'Ibuprofen' 原本列在此處作為未知藥的例子，2026-09-02 已收錄進目錄，
+// 改用確定不存在的字串。這正是這類測試的用途：目錄擴充時強制回頭檢視斷言。
+for (const v of ['Zzyzxatinib', 'Warfarinx', '不存在的藥', '', '   ', null, undefined, 123, {}]) {
   check('未知輸入回傳 null：' + JSON.stringify(v), C.resolve(v) === null);
 }
 

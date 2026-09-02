@@ -21,7 +21,8 @@
 // v14：修正初次進入醫師端時交互作用關係圖不顯示
 // v15：醫師端 KPI 改為由實際指派病患計算
 // v16：管理端顯示 ATC 碼，規則管理改讀引擎實際使用的規則
-const CACHE_VERSION = 'medsafe-static-v16';
+// v17：藥物目錄擴充為 26 種；新增 DDInter 藥物庫頁面
+const CACHE_VERSION = 'medsafe-static-v17';
 
 const PRECACHE_URLS = [
   './index.html',
@@ -38,6 +39,8 @@ const PRECACHE_URLS = [
   './js/db-service.js',
   './js/drug-catalog.js',
   './js/ddi-engine.js',
+  './js/ddinter-drugs.js',
+  './js/ddi-rules-ddinter.js',
   './js/audit.js',
   './js/fhir-client.js',
   './js/firebase-config.js',

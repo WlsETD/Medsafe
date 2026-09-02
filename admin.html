@@ -238,6 +238,97 @@
                 </div>
 
                 <!-- 用戶管理 (Fully Functional) -->
+                <!-- ═══ DDInter 藥物庫 ═══
+                     這一頁的用途不是「展示我們有很多藥」，而是把一個具體的瓶頸攤開：
+                     DDInter 收錄 1,971 種藥，本系統的藥物目錄目前對應得到其中一小部分。
+                     只有第四欄有 ATC 碼的藥，其交互作用規則才能被引擎使用——
+                     沒有 ATC 的那些，規則寫得再好也會在正規化階段被丟棄。
+                     這一頁就是那條分界線的實體呈現。 -->
+                <div v-else-if="activeMenu === 'DDInter 藥物庫'" class="space-y-6 animate-fade-in text-left">
+                    <div>
+                        <h2 class="text-3xl font-black text-title mb-2 italic">DDINTER DRUG INDEX</h2>
+                        <p class="text-lightText font-bold">DDInter 2.0 收錄之藥物與本系統目錄的對應狀況</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="bg-white rounded-3xl p-6 shadow-premium border border-white">
+                            <div class="text-[10px] font-black text-lightText uppercase tracking-widest">DDInter 藥物總數</div>
+                            <div class="text-3xl font-black text-title mt-1">{{ ddinterStats.total.toLocaleString() }}</div>
+                        </div>
+                        <div class="bg-white rounded-3xl p-6 shadow-premium border border-white">
+                            <div class="text-[10px] font-black text-lightText uppercase tracking-widest">本系統已對應</div>
+                            <div class="text-3xl font-black text-primary mt-1">{{ ddinterStats.mapped }}</div>
+                            <div class="text-[10px] font-bold text-lightText mt-1">{{ ddinterStats.pct }}%</div>
+                        </div>
+                        <div class="bg-white rounded-3xl p-6 shadow-premium border border-white">
+                            <div class="text-[10px] font-black text-lightText uppercase tracking-widest">交互作用組合</div>
+                            <div class="text-3xl font-black text-title mt-1">234,981</div>
+                        </div>
+                        <div class="bg-white rounded-3xl p-6 shadow-premium border border-white">
+                            <div class="text-[10px] font-black text-lightText uppercase tracking-widest">引擎目前可用</div>
+                            <div class="text-3xl font-black text-title mt-1">{{ ddinterStats.usableRules }}</div>
+                            <div class="text-[10px] font-bold text-amber-600 mt-1">受目錄大小限制</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-amber-50 border border-amber-200 rounded-3xl p-6">
+                        <p class="text-xs font-black text-amber-800">為什麼多數藥物沒有 ATC 碼</p>
+                        <p class="text-[11px] font-bold text-amber-700 mt-2 leading-relaxed">
+                            DDInter 的原始資料以<strong>藥名</strong>為鍵，本系統的交互作用引擎以 <strong>ATC 碼</strong>比對
+                            （這是為了讓「Warfarin」「warfarin sodium」「可邁丁」被視為同一種藥）。
+                            兩端都能解析為 ATC 的規則才會被採用；解析不到的一律不收——
+                            收進一批比對不到的死規則，只會讓知識庫的規則數虛胖，讓醫師以為涵蓋範圍比實際更廣。
+                            <br><br>
+                            因此<strong>目錄每擴充一種常見藥，可用規則通常會增加數十到數百條</strong>。
+                            2026-09-02 由 9 種擴充為 26 種時，可用規則從 20 條增為 236 條。
+                        </p>
+                    </div>
+
+                    <div class="bg-white rounded-[40px] shadow-premium border border-white overflow-hidden">
+                        <div class="p-8 border-b border-gray-50 flex flex-col md:flex-row items-center gap-6 bg-slate-50/50">
+                            <input v-model="ddinterSearch" type="text" placeholder="搜尋藥名或 DDInter ID..." class="flex-1 bg-white border-2 border-slate-100 rounded-2xl py-3 px-6 text-sm focus:border-primary/20 outline-none font-bold">
+                            <select v-model="ddinterFilter" class="bg-white border-2 border-slate-100 rounded-2xl py-3 px-6 text-sm font-black text-title outline-none">
+                                <option value="all">全部藥物</option>
+                                <option value="mapped">已對應 ATC</option>
+                                <option value="unmapped">尚未對應</option>
+                            </select>
+                        </div>
+                        <div class="px-8 py-4 bg-white border-b border-gray-50 text-[11px] font-bold text-lightText">
+                            符合條件 {{ ddinterFiltered.length.toLocaleString() }} 種，顯示前 {{ Math.min(ddinterFiltered.length, 200) }} 種
+                            <span v-if="ddinterFiltered.length > 200" class="text-amber-600">（清單過長，請用搜尋縮小範圍）</span>
+                        </div>
+                        <div class="overflow-x-auto max-h-[70vh] overflow-y-auto">
+                            <table class="w-full border-collapse">
+                                <thead class="sticky top-0 bg-white z-10">
+                                    <tr class="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-gray-100">
+                                        <th class="px-8 py-5 text-left">DDInter ID</th>
+                                        <th class="px-8 py-5 text-left">藥物名稱</th>
+                                        <th class="px-8 py-5 text-left">交互作用筆數</th>
+                                        <th class="px-8 py-5 text-left">本系統 ATC 碼</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-50">
+                                    <tr v-for="d in ddinterFiltered.slice(0, 200)" :key="d[0]" class="table-row-hover">
+                                        <td class="px-8 py-4 text-xs font-mono font-bold text-primary">{{ d[0] }}</td>
+                                        <td class="px-8 py-4 text-sm font-black text-title">{{ d[1] }}</td>
+                                        <td class="px-8 py-4 text-sm font-bold text-slate-500">{{ d[2].toLocaleString() }}</td>
+                                        <td class="px-8 py-4">
+                                            <span v-if="d[3]" class="font-mono text-xs font-black text-primary bg-primary/5 px-3 py-1.5 rounded-lg">{{ d[3] }}</span>
+                                            <span v-else class="text-[10px] font-bold text-slate-400">尚未收錄於本系統目錄</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="px-8 py-5 bg-slate-50/50 border-t border-gray-50">
+                            <p class="text-[10px] font-bold text-lightText leading-relaxed">
+                                資料來源：DDInter 2.0（ddinter2.scbdd.com）·
+                                <em>Nucleic Acids Research</em> 2025, 53(D1):D1356–D1364 ·
+                                匯入日期 {{ ddinterMeta.importedOn }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
                 <div v-else-if="activeMenu === '用戶管理'" class="animate-fade-in space-y-6 text-left">
                     <div class="flex justify-between items-end mb-4">
                         <div>
@@ -784,6 +875,8 @@
     <script src="js/mockData.js"></script>
     <script src="js/drug-catalog.js"></script>
     <script src="js/ddi-engine.js"></script>
+    <script src="js/ddinter-drugs.js"></script>
+    <script src="js/ddi-rules-ddinter.js"></script>
     <script src="js/audit.js"></script>
     <script src="js/auth.js"></script>
     <script>
@@ -806,6 +899,7 @@
                     menuItems: [
                         { name: '儀表板總覽', label: '儀表板總覽', icon: Icons.Dashboard },
                         { name: 'DDI 交互規則', label: 'DDI 交互規則', icon: Icons.Rules },
+                        { name: 'DDInter 藥物庫', label: 'DDInter 藥物庫', icon: Icons.Rules },
                         { name: '用戶管理', label: '用戶管理', icon: Icons.Users },
                         { name: '報表中心', label: '報表中心', icon: Icons.Report },
                         { name: '系統設置', label: '系統設置', icon: Icons.Settings },
@@ -831,6 +925,9 @@
                     // 「DDI 規則總數」這個 KPI 也取自這份假清單，因此顯示 2 而非實際的 5。
                     // 雲端 ddi_rules 若有資料仍會覆蓋（見 created），維持原有行為。
                     mockRules: (window.mockData && window.mockData.ddiRules) ? window.mockData.ddiRules.slice() : [],
+                    // DDInter 藥物庫頁面的搜尋與篩選
+                    ddinterSearch: '',
+                    ddinterFilter: 'all',
                     mockUsers: [
                         { id: 'U001', name: '李小美', role: 'doctor', roleName: '醫師', email: 'mei@medsafe.com', hospital: '台大醫院', status: 'active', statusName: '正常' },
                         { id: 'patient01', name: '王大明', role: 'patient', roleName: '患者', email: 'patient01@medsafe.com', hospital: 'N/A', status: 'active', statusName: '正常' },
@@ -887,6 +984,31 @@
                 }
             },
             computed: {
+                // DDInter 藥物清單。資料以陣列形式儲存（[id, name, n, atc?]）以節省體積，
+                // 1,971 筆用物件形式會多出約 40%。
+                ddinterMeta() {
+                    return window.DDINTER_DRUGS || { total: 0, rows: [], importedOn: '—' };
+                },
+                ddinterStats() {
+                    const rows = this.ddinterMeta.rows || [];
+                    const mapped = rows.filter(r => r[3]).length;
+                    const rules = (window.DDINTER_RULES && window.DDINTER_RULES.rules) ? window.DDINTER_RULES.rules.length : 0;
+                    return {
+                        total: this.ddinterMeta.total || rows.length,
+                        mapped: mapped,
+                        pct: rows.length ? (mapped / rows.length * 100).toFixed(2) : '0',
+                        usableRules: rules
+                    };
+                },
+                ddinterFiltered() {
+                    const q = this.ddinterSearch.trim().toLowerCase();
+                    let rows = this.ddinterMeta.rows || [];
+                    if (this.ddinterFilter === 'mapped') rows = rows.filter(r => r[3]);
+                    else if (this.ddinterFilter === 'unmapped') rows = rows.filter(r => !r[3]);
+                    if (q) rows = rows.filter(r => r[1].toLowerCase().includes(q) || r[0].toLowerCase().includes(q));
+                    // 已對應的排前面：那些是實際能發揮作用的藥，管理員多半在找它們
+                    return rows.slice().sort((a, b) => (b[3] ? 1 : 0) - (a[3] ? 1 : 0) || b[2] - a[2]);
+                },
                 filteredRules() {
                     let rs = this.mockRules;
                     if (this.ruleSeverityFilter !== 'all') rs = rs.filter(r => r.severity === this.ruleSeverityFilter);

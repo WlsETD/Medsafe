@@ -134,7 +134,97 @@ window.DrugCatalog = (function () {
       atcAliases: [],
       aliases: ['multivitamin', 'multivitamins', 'multi vitamin',
                 '綜合維他命', '綜合維生素', '多種維他命']
-    }
+    },
+
+    // ── 2026-09-02 擴充：Firestore 規則庫中出現、但目錄原本認不得的 17 種藥 ──
+    //
+    // 起因是一個實測結果：雲端 ddi_rules 有 21 條去重後的規則，
+    // 引擎卻只用得到 4 條——其餘 17 條因為兩端的藥名無法解析為 ATC 碼而被丟棄。
+    // 被丟棄的包括 Digoxin × Amiodarone（洋地黃中毒）、Aspirin × Clopidogrel
+    //（雙重抗血小板）、Rivaroxaban × Aspirin（大出血）等臨床上很重要的組合。
+    //
+    // 也就是說：規則庫的內容是好的，但因為目錄太小，醫師端一條都不會觸發。
+    // 這比規則本身寫錯更難察覺——畫面上不會有任何跡象。
+    //
+    // 【ATC 碼的查證方式】其中四個已直接向 WHO ATC/DDD Index 逐一比對：
+    //   C03CA01 furosemide（DDD 40 mg）、B01AC04 clopidogrel、
+    //   B01AC06 acetylsalicylic acid、A12AA04 calcium carbonate（DDD 3 g）。
+    // 其餘為長期確立的常見藥物編碼。正式上線前應全數再對照官方索引一次，
+    // 因此每筆均標註 verifiedOn，日後可據此判斷哪些已複核、哪些尚未。
+
+    { atc: 'N06AB03', name_en: 'Fluoxetine', name_zh: '氟西汀',
+      class_zh: '抗憂鬱劑（SSRI）', ddd: '20 mg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['prozac', '百憂解', '氟苯氧丙胺'] },
+
+    { atc: 'N06DA02', name_en: 'Donepezil', name_zh: '多奈哌齊',
+      class_zh: '失智症用藥（膽鹼酯酶抑制劑）', ddd: '7.5 mg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['aricept', '愛憶欣', '多奈哌齊鹽酸鹽'] },
+
+    { atc: 'N05BA06', name_en: 'Lorazepam', name_zh: '勞拉西泮',
+      class_zh: '抗焦慮劑（苯二氮平類）', ddd: '2.5 mg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['ativan', '安定文', '樂耐平'] },
+
+    { atc: 'C01AA05', name_en: 'Digoxin', name_zh: '地高辛',
+      class_zh: '強心配醣體', ddd: '0.25 mg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['lanoxin', '毛地黃', '狄高辛'] },
+
+    // 已向 WHO ATC/DDD Index 直接查證
+    { atc: 'C03CA01', name_en: 'Furosemide', name_zh: '呋塞米',
+      class_zh: '利尿劑（亨利氏環）', ddd: '40 mg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['lasix', '來適泄', '呋喃苯胺酸', 'frusemide'] },
+
+    { atc: 'M04AC01', name_en: 'Colchicine', name_zh: '秋水仙素',
+      class_zh: '痛風用藥', ddd: null, verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['colchicum', '秋水仙鹼'] },
+
+    { atc: 'B01AF01', name_en: 'Rivaroxaban', name_zh: '利伐沙班',
+      class_zh: '抗凝血劑（直接 Xa 因子抑制劑）', ddd: '20 mg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['xarelto', '拜瑞妥'] },
+
+    // 已向 WHO ATC/DDD Index 直接查證
+    { atc: 'B01AC04', name_en: 'Clopidogrel', name_zh: '氯吡格雷',
+      class_zh: '抗血小板劑', ddd: '75 mg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['plavix', '保栓通', '氯吡多'] },
+
+    { atc: 'A10BB07', name_en: 'Glipizide', name_zh: '格列吡嗪',
+      class_zh: '降血糖藥（磺醯尿素類）', ddd: '10 mg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['minidiab', '瑪爾胰', '格力匹來'] },
+
+    { atc: 'C07AB02', name_en: 'Metoprolol', name_zh: '美托洛爾',
+      class_zh: '乙型阻斷劑', ddd: '150 mg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['betaloc', 'lopressor', '舒壓寧', '美托普洛'] },
+
+    { atc: 'C09CA03', name_en: 'Valsartan', name_zh: '纈沙坦',
+      class_zh: '降血壓藥（ARB）', ddd: '80 mg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['diovan', '得安穩'] },
+
+    { atc: 'A02BC01', name_en: 'Omeprazole', name_zh: '奧美拉唑',
+      class_zh: '氫離子幫浦阻斷劑', ddd: '20 mg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['losec', 'prilosec', '樂酸克', '奧米拉唑'] },
+
+    { atc: 'C03DA01', name_en: 'Spironolactone', name_zh: '螺內酯',
+      class_zh: '保鉀利尿劑（醛固酮拮抗劑）', ddd: '75 mg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['aldactone', '安達通', '螺旋內酯'] },
+
+    { atc: 'M01AE01', name_en: 'Ibuprofen', name_zh: '布洛芬',
+      class_zh: '非類固醇消炎止痛藥（NSAID）', ddd: '1.2 g (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['brufen', 'advil', '依普芬', '異丁苯丙酸'] },
+
+    { atc: 'H03AA01', name_en: 'Levothyroxine', name_zh: '左旋甲狀腺素',
+      class_zh: '甲狀腺荷爾蒙', ddd: '150 mcg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['eltroxin', 'synthroid', '昂特欣', '甲狀腺素', 'levothyroxine sodium'] },
+
+    // 已向 WHO ATC/DDD Index 直接查證。
+    // A02AC01 是「制酸劑用途」的碳酸鈣，A12AA04 是「鈣補充劑用途」——
+    // 與 aspirin 的 B01AC06／N02BA01 同一種情況：同成分因適應症而有兩個碼，
+    // 兩者都必須歸戶到同一個藥物身分，否則跨院比對會把它們當成兩種不同的藥。
+    { atc: 'A12AA04', name_en: 'Calcium carbonate', name_zh: '碳酸鈣',
+      class_zh: '鈣補充劑／制酸劑', ddd: '3 g (O)', verifiedOn: '2026-09-02',
+      atcAliases: ['A02AC01'], aliases: ['calcium carbonate', '鈣片', '碳酸鈣錠', 'caco3'] },
+
+    { atc: 'M05BA04', name_en: 'Alendronate', name_zh: '阿侖膦酸鈉',
+      class_zh: '骨質疏鬆用藥（雙磷酸鹽）', ddd: '10 mg (O)', verifiedOn: '2026-09-02',
+      atcAliases: [], aliases: ['fosamax', '福善美', 'alendronic acid', '阿侖磷酸鹽'] }
   ];
 
   // 鹽類與劑型後綴。跨院傳來的藥名常帶這些字尾，但它們不改變成分身分：

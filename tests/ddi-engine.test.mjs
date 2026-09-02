@@ -5,7 +5,7 @@
 //
 // 關於驗收標準的偏離（誠實說明）：
 // 稽核報告的 Phase 3 驗收標準寫的是「挑選至少 20 組已知會產生交互作用的藥物組合實際測試」。
-// 但本系統的藥物目錄僅 9 種藥，兩兩組合上限為 C(9,2) = 36 組，其中有實證記載的
+// 撰寫當時目錄僅 9 種藥，兩兩組合上限為 C(9,2) = 36 組，其中有實證記載的
 // 交互作用只有 5 組——湊不出 20 組「已知會產生交互作用」的組合。
 // 硬湊的唯一方法是編造交互作用，那正是這份稽核報告從頭到尾在反對的事。
 // 因此改為【窮舉全部 36 組】並逐一斷言預期結果，涵蓋率為 100%，強於抽測 20 組。
@@ -61,7 +61,9 @@ for (let i = 0; i < ALL.length; i++) {
 }
 check('窮舉全部 ' + pairCount + ' 組兩兩配對，結果與實證對照表一致',
       wrongPairs.length === 0, wrongPairs.join('\n        '));
-check('配對總數為 C(9,2) = 36（目錄擴充後此數需同步更新）', pairCount === 36,
+// 2026-09-02：目錄由 9 種擴充為 26 種，C(26,2) = 325。
+// 這條斷言的用途就是在目錄變動時失敗，強迫回頭複核 EXPECTED 表——它做到了。
+check('配對總數為 C(26,2) = 325（目錄擴充後此數需同步更新）', pairCount === 325,
       '實際為 ' + pairCount + '，表示目錄藥物數已變動，EXPECTED 表需複核');
 
 // ---------------------------------------------------------------
@@ -117,7 +119,8 @@ check('綜合維他命被列入 unevaluable 且理由為 composition',
 check('unevaluable 的理由文字非空且提及向藥師確認',
       rMulti.unevaluable[0].reason.includes('藥師'));
 
-const rUnknown = E.analyze([{ name_en: 'Ibuprofen' }, { atc: 'B01AA03' }], LOCAL_RULES);
+// Ibuprofen 已於 2026-09-02 收錄進目錄，改用確定不存在的藥名
+const rUnknown = E.analyze([{ name_en: 'Zzyzxatinib' }, { atc: 'B01AA03' }], LOCAL_RULES);
 check('系統不認得的藥：結論為 unevaluable，不可呈現為未發現交互作用',
       rUnknown.verdict === 'unevaluable');
 check('不認得的藥被列入 unevaluable 且理由為 unknown-drug',
