@@ -77,6 +77,10 @@
 <body class="overflow-x-hidden">
     <div id="app" v-cloak class="flex min-h-screen relative overflow-x-hidden text-left">
         <!-- Global Maintenance Lock -->
+        <!-- 維護狀態未能確認時的提示。不鎖站，但不隱瞞。 -->
+        <div v-if="maintenanceCheckFailed && !maintenanceMode" class="fixed top-0 inset-x-0 z-[998] bg-amber-500 text-white text-center text-[11px] font-black py-2 px-4">
+            ⚠️ 無法確認系統維護狀態，目前以「未維護」繼續使用。若畫面資料異常請重新整理。
+        </div>
         <div v-if="maintenanceMode" class="fixed inset-0 z-[999] bg-slate-950 flex items-center justify-center p-8 text-center">
             <div class="max-w-md">
                 <div class="w-16 h-16 mx-auto mb-6 rounded-2xl bg-danger/10 flex items-center justify-center text-danger">
@@ -725,6 +729,7 @@
                     passwordForm: { current: '', next: '', confirm: '' },
                     _username: user.username || 'patient01',
                     maintenanceMode: false,
+                    maintenanceCheckFailed: false,
                     profile: patientData.profile,
                     stats: patientData.stats,
                     medications: patientData.medications,
@@ -786,9 +791,23 @@
             async created() {
                 this._charts = {};
                 await waitForAuthReady();
+                // 維護模式查詢失敗過去是一個空的 catch（稽核報告 P1-2）：查不到就當作
+                // 「沒有在維護」，使用者照樣進站——維護模式的目的因此完全落空。
+                //
+                // 這裡的取捨與處方攔截政策相同：先重試一次；仍失敗則不鎖站，但必須讓
+                // 使用者看見狀態未確認。理由是可用性失效在臨床系統同樣會傷人——
+                // 因一次網路抖動就把醫師鎖在病歷之外，代價高於讓人在維護期間看到舊資料。
+                // 但「因此就什麼都不說」是另一回事，那是把系統的不確定藏起來。
                 try {
                     this.maintenanceMode = await DbService.getMaintenanceMode();
-                } catch (e) {}
+                } catch (e) {
+                    try {
+                        this.maintenanceMode = await DbService.getMaintenanceMode();
+                    } catch (e2) {
+                        console.error('維護模式狀態讀取失敗（已重試一次）：', e2);
+                        this.maintenanceCheckFailed = true;
+                    }
+                }
                 if (this.maintenanceMode) return;
                 try {
                     const data = await DbService.getPatientData(this._username);
@@ -1003,9 +1022,23 @@
                     this.selectedMed = med;
                     this.showMedDetailModal = true;
                 },
+                // 用藥提醒的完成狀態同步失敗，過去被靜默忽略（稽核報告 P1-2）。
+                // 這一項的實際傷害很直接：病患在手機上勾了「已服用」，同步卻失敗，
+                // 換一台裝置或重新整理後該筆又變回未服用——可能因此重複服藥；
+                // 反之亦然，可能誤以為已服用而漏服。
+                //
+                // 因此失敗時把畫面上的勾選狀態一併還原，讓畫面與實際儲存的狀態一致，
+                // 並明確告知。寧可讓病患看到「同步失敗，請重試」，也不要讓他相信一個假的已完成。
                 async toggleReminder(reminder) {
-                    reminder.completed = !reminder.completed;
-                    try { await DbService.updateReminders(this._username, this.reminders); } catch (e) { /* 同步失敗不影響本地操作 */ }
+                    const before = reminder.completed;
+                    reminder.completed = !before;
+                    try {
+                        await DbService.updateReminders(this._username, this.reminders);
+                    } catch (e) {
+                        console.error('用藥提醒同步失敗：', e);
+                        reminder.completed = before;
+                        this.triggerToast('同步失敗', '服藥狀態未能儲存，畫面已還原為先前狀態，請確認網路後重試。');
+                    }
                 },
                 openPasswordModal() {
                     this.passwordForm = { current: '', next: '', confirm: '' };

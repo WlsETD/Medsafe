@@ -1,5 +1,5 @@
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, collection, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import fs from 'fs';
 
 // 直接讀專案根目錄的規則，確保測的就是會被部署的那一份
@@ -21,6 +21,18 @@ await env.withSecurityRulesDisabled(async ctx => {
   // 假設它已經以某種方式被寫進資料庫（舊版規則時期的殘留、或日後某條規則出現缺口），
   // 用來驗證 isOwnUsername() 的第二道 token.email 檢查是否真的能獨立擋下。
   await setDoc(doc(db, 'user_roles/uidForged'), { username: 'P001', name: '冒充者', role: 'patient', status: 'active' });
+  await setDoc(doc(db, 'user_roles/uidAdm'), { username: 'admin', name: '管理員', role: 'admin', status: 'active' });
+  // 處方閘門測試專用的病歷。與 P001 分開，避免前面的測試改動用藥清單長度後
+  // 影響後續斷言——閘門規則的判斷正是以「清單是否變長」為準。
+  await setDoc(doc(db, 'patient_data/P900'), {
+    profile: { id: 'P900', name: '閘門測試' },
+    medications: [{ name: 'Warfarin' }],
+    ddiAlerts: [], reminders: [], assignedDoctor: 'doctor'
+  });
+  // 稽核記錄不可竄改的測試對象：一筆已存在的記錄
+  await setDoc(doc(db, 'audit_logs/existing'), {
+    actor: 'doctor', actorRole: 'doctor', action: 'prescribe', at: new Date()
+  });
   await setDoc(doc(db, 'patient_data/P001'), {
     profile: { id: 'P001', name: '張小泉' },
     stats: { safetyScore: null },
@@ -44,6 +56,7 @@ const NEW2 = () => ctxFor('uidNew2', 'newbie2@medsafe.local').firestore();
 const NEW3 = () => ctxFor('uidNew3', 'newbie3@medsafe.local').firestore();
 const NEW4 = () => ctxFor('uidNew4', 'newbie4@medsafe.local').firestore();
 const FORGED = () => ctxFor('uidForged', 'forged@medsafe.local').firestore();
+const ADM = () => ctxFor('uidAdm', 'admin@medsafe.local').firestore();
 
 const results = [];
 const run = async (name, fn, expect) => {
@@ -60,8 +73,88 @@ await run('病患讀自己病歷', () => getDoc(doc(P001(), 'patient_data/P001')
 await run('病患更新 reminders', () => updateDoc(doc(P001(), 'patient_data/P001'), { reminders: [{ t: '08:00' }] }), 'allow');
 await run('病患寫入自己的 fhirPseudonym', () => updateDoc(doc(P001(), 'patient_data/P001'), { fhirPseudonym: 'DEMO-ABC123' }), 'allow');
 await run('病患更新 profile', () => updateDoc(doc(P001(), 'patient_data/P001'), { profile: { id: 'P001', name: '張小泉', age: 70 } }), 'allow');
-await run('醫師寫 medications', () => updateDoc(doc(DOC(), 'patient_data/P001'), { medications: [{ name: 'X' }, { name: 'Y' }] }), 'allow');
+// Phase 4 起，新增用藥必須攜帶安全檢查紀錄。這條原本斷言的是舊的寬鬆行為，
+// 現已改為「附上 safetyCheck 才允許」——規則變嚴，測試隨之記錄新的不變式。
+const SAFE_CHECK = { verdict: 'no-known-interaction', checkedAt: '2026-09-02T00:00:00Z', by: 'doctor' };
+await run('醫師新增用藥並附安全檢查紀錄',
+  () => updateDoc(doc(DOC(), 'patient_data/P001'), { medications: [{ name: 'X' }, { name: 'Y', safetyCheck: SAFE_CHECK }] }), 'allow');
 await run('核保員讀病歷', () => getDoc(doc(INS(), 'patient_data/P001')), 'allow');
+
+// ── 處方安全閘門（Phase 4 / 稽核報告 P1-1、P0-4）─────────────────────────
+// 前端的「必須先檢測才能開立」是流程控制，繞過畫面直接呼叫 SDK 就沒了。
+// 以下驗證資料層的獨立強制：無論由誰寫入，新增的用藥都必須可歸責。
+const RISK_CHECK = { verdict: 'risk', topSeverity: 'major', checkedAt: '2026-09-02T00:00:00Z', by: 'doctor' };
+const MED0 = { name: 'Warfarin' };
+
+await run('未附安全檢查紀錄即新增用藥（繞過檢測直接開藥）',
+  () => updateDoc(doc(DOC(), 'patient_data/P900'), { medications: [MED0, { name: '未檢測就開的藥' }] }), 'deny');
+
+await run('結論為 risk 但未附覆蓋理由（無記錄的一鍵覆蓋）',
+  () => updateDoc(doc(DOC(), 'patient_data/P900'), { medications: [MED0, { name: 'Aspirin', safetyCheck: RISK_CHECK }] }), 'deny');
+
+await run('覆蓋理由過短（形同未填）',
+  () => updateDoc(doc(DOC(), 'patient_data/P900'),
+    { medications: [MED0, { name: 'Aspirin', safetyCheck: { ...RISK_CHECK, overrideReason: 'ok' } }] }), 'deny');
+
+// admin 同樣受約束——「管理員繞過安全檢查開藥」不該是被允許的路徑
+await run('管理員亦不得未附安全檢查紀錄即新增用藥',
+  () => updateDoc(doc(ADM(), 'patient_data/P900'), { medications: [MED0, { name: 'admin 加的藥' }] }), 'deny');
+
+await run('安全檢查的 verdict 不在允許值域內',
+  () => updateDoc(doc(DOC(), 'patient_data/P900'),
+    { medications: [MED0, { name: 'X', safetyCheck: { verdict: 'safe', checkedAt: 'x', by: 'doctor' } }] }), 'deny');
+
+// 合法路徑不可被誤擋——閘門若把正常開立也擋住，醫師會繞道，防護等於不存在
+await run('附覆蓋理由的高風險處方可開立',
+  () => updateDoc(doc(DOC(), 'patient_data/P900'),
+    { medications: [MED0, { name: 'Aspirin', safetyCheck: { ...RISK_CHECK, overrideReason: '已知此交互作用，評估後臨床效益大於風險' } }] }), 'allow');
+
+await run('修改其他欄位而未動用藥清單，不受閘門限制',
+  () => updateDoc(doc(DOC(), 'patient_data/P900'), { assignedDoctor: 'doctor2' }), 'allow');
+
+await run('移除用藥（清單變短）不受閘門限制',
+  () => updateDoc(doc(DOC(), 'patient_data/P900'), { medications: [] }), 'allow');
+
+// ── 稽核軌跡（Phase 4 / 稽核報告 P1-5）───────────────────────────────────
+const LOGS = (db) => collection(db, 'audit_logs');
+const okLog = { actor: 'doctor', actorRole: 'doctor', action: 'prescribe', at: serverTimestamp() };
+
+await run('以自己的身分寫入稽核記錄',
+  () => addDoc(LOGS(DOC()), okLog), 'allow');
+
+// 冒名是稽核軌跡最致命的攻擊：能把自己的行為記到別人頭上，記錄就沒有證據價值
+await run('冒用他人身分寫入稽核記錄',
+  () => addDoc(LOGS(DOC()), { ...okLog, actor: 'admin' }), 'deny');
+
+await run('謊報自己的角色',
+  () => addDoc(LOGS(DOC()), { ...okLog, actorRole: 'admin' }), 'deny');
+
+// 用戶端自填時間即可偽造時序，讓「誰先誰後」失去意義
+await run('以用戶端時間取代伺服器時間戳',
+  () => addDoc(LOGS(DOC()), { ...okLog, at: new Date('2020-01-01') }), 'deny');
+
+await run('缺少動作代碼的稽核記錄',
+  () => addDoc(LOGS(DOC()), { actor: 'doctor', actorRole: 'doctor', at: serverTimestamp() }), 'deny');
+
+// 不可竄改：這是稽核軌跡之所以能當證據的根本
+await run('修改既有的稽核記錄',
+  () => updateDoc(doc(DOC(), 'audit_logs/existing'), { action: '改成別的' }), 'deny');
+
+await run('刪除既有的稽核記錄',
+  () => deleteDoc(doc(DOC(), 'audit_logs/existing')), 'deny');
+
+await run('管理員亦不得修改稽核記錄',
+  () => updateDoc(doc(ADM(), 'audit_logs/existing'), { action: 'x' }), 'deny');
+
+await run('管理員可讀取稽核記錄',
+  () => getDocs(LOGS(ADM())), 'allow');
+
+// 稽核記錄含其他使用者的操作軌跡，醫師不應能讀取全部
+await run('醫師不可讀取稽核記錄',
+  () => getDocs(LOGS(DOC())), 'deny');
+
+await run('病患不可讀取稽核記錄',
+  () => getDocs(LOGS(P001())), 'deny');
 
 // 對立面警告的重點：只寫 fhirPseudonym 的建檔（getOrCreate 對不存在文件的行為）
 // 若 size() 對缺欄位求值出錯，這一條會被誤擋 —— 那就是把合法使用者鎖在外面

@@ -586,8 +586,9 @@
                             </div>
                             <div class="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border-2 border-dashed border-amber-300">
                                 <div>
-                                    <h4 class="text-sm font-black text-title uppercase">自動攔截極高風險處方<span class="ml-2 text-[9px] font-black text-amber-700 bg-amber-100 px-2 py-1 rounded-lg normal-case tracking-normal">規劃中，尚未生效</span></h4>
-                                    <p class="text-[10px] font-bold text-slate-400 mt-1">預期行為：偵測到極高風險衝突時阻擋 MedicationRequest 提交。<strong class="text-amber-700">目前狀態：此開關尚未接入處方流程，開啟後不會產生任何攔截效果。</strong></p>
+                                    <h4 class="text-sm font-black text-title uppercase">自動攔截極高風險處方<span class="ml-2 text-[9px] font-black text-white bg-primary px-2 py-1 rounded-lg normal-case tracking-normal">已生效</span></h4>
+                                    <p class="text-[10px] font-bold text-slate-500 mt-1">啟用後，醫師端偵測到<strong>「重大」或「禁忌併用」</strong>等級的交互作用時，將無法送出處方；中度與輕微風險仍可在填寫具名理由後開立。攔截事件會寫入稽核軌跡，供評估門檻是否恰當。
+                                <br><span class="text-amber-700 font-black">限制：此攔截為醫師端的流程控制。資料層另有獨立強制——新增用藥必須攜帶安全檢查紀錄，覆蓋高風險時必須附具名理由，該規則無法由前端繞過。但「本次檢測結果是否屬實」目前尚無後端重算，列於 Phase 6。</span></p>
                                 </div>
                                 <label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" v-model="systemSettings.autoBlock" class="sr-only peer"><div class="w-14 h-8 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-slate-400 after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all shadow-inner border border-slate-300"></div></label>
                             </div>
@@ -767,6 +768,7 @@
     <script src="js/db-service.js"></script>
     <script src="js/mockData.js"></script>
     <script src="js/drug-catalog.js"></script>
+    <script src="js/audit.js"></script>
     <script src="js/auth.js"></script>
     <script>
         const { createApp, markRaw } = Vue;
@@ -1085,7 +1087,12 @@
                     this.editingUser.roleName = roles[this.editingUser.role];
                     this.mockUsers[idx] = this.editingUser;
                     this.showEditUserModal = false;
-                    this.triggerToast('資料已更新', `用戶 ${this.editingUser.name} 的權限已修改`);
+                    // 變更他人角色屬於高風險操作，必須留痕（P1-5）
+                    const a = await window.Audit.log(window.Audit.ACTIONS.USER_ROLE_CHANGE, this.editingUser.id,
+                        { role: this.editingUser.role, assignedDoctor: this.editingUser.assignedDoctor || null });
+                    this.triggerToast(a.ok ? '資料已更新' : '資料已更新，但稽核記錄失敗',
+                        a.ok ? `用戶 ${this.editingUser.name} 的權限已修改`
+                             : `用戶 ${this.editingUser.name} 的權限已修改，惟本次操作未能留下稽核記錄，請通報系統管理者`);
                 },
                 openPasswordModal() {
                     this.passwordForm = { current: '', next: '', confirm: '' };
@@ -1147,7 +1154,12 @@
                         user.status = newStatus;
                         user.statusName = newStatus === 'active' ? '正常' : '停用';
                         const label = newStatus === 'active' ? '已恢復正常' : '已停用，該帳號無法登入';
-                        this.triggerToast('狀態變更', `${user.name} ${label}`);
+                        // 停用／啟用帳號直接影響他人能否存取系統，屬於必須留痕的敏感操作（P1-5）
+                        const a = await window.Audit.log(window.Audit.ACTIONS.USER_DISABLE, user.id,
+                            { status: newStatus, role: user.role });
+                        this.triggerToast(a.ok ? '狀態變更' : '狀態已變更，但稽核記錄失敗',
+                            a.ok ? `${user.name} ${label}`
+                                 : `${user.name} ${label}；惟本次操作未能留下稽核記錄，請通報系統管理者`);
                     } catch (e) {
                         this.triggerToast('變更失敗', '請確認 Firestore 規則允許寫入 users');
                     }
@@ -1176,7 +1188,13 @@
                     const { fhirUrl, aiSensitivity, autoBlock, syncInterval, sessionTimeout } = this.systemSettings;
                     try {
                         await DbService.saveSystemSettings({ fhirUrl, aiSensitivity, autoBlock, syncInterval, sessionTimeout });
-                        this.triggerToast('設置已儲存', '系統核心參數已寫入 Firestore，重新整理後仍會保留');
+                        // autoBlock 直接影響醫師能否開立高風險處方，其變更必須可追溯：
+                        // 日後若發生用藥事件，需要能查出當時的攔截政策是誰在何時關掉的。
+                        const a = await window.Audit.log(window.Audit.ACTIONS.SETTINGS_CHANGE, 'admin_data/main',
+                            { autoBlock: autoBlock, sessionTimeout: sessionTimeout, syncInterval: syncInterval });
+                        this.triggerToast(a.ok ? '設置已儲存' : '設置已儲存，但稽核記錄失敗',
+                            a.ok ? '系統核心參數已寫入 Firestore，重新整理後仍會保留'
+                                 : '參數已寫入，惟本次變更未能留下稽核記錄，請通報系統管理者');
                     } catch (e) {
                         this.triggerToast('儲存失敗', '請確認 Firestore 規則允許寫入 admin_data');
                     }
@@ -1188,6 +1206,8 @@
                     const enabled = this.systemSettings.isMaintenanceMode;
                     try {
                         await DbService.setMaintenanceMode(enabled);
+                        // 維護模式會鎖住醫師、病患與保險端的存取，屬於影響全站可用性的操作
+                        await window.Audit.log(window.Audit.ACTIONS.MAINTENANCE_TOGGLE, 'admin_data/main', { enabled: enabled });
                         this.triggerToast(
                             enabled ? '維護模式已啟用' : '維護模式已解除',
                             enabled ? '醫師、患者、保險端已鎖定，僅管理員可存取' : '全站已恢復正常存取'

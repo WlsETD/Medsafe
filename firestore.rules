@@ -121,6 +121,45 @@ service cloud.firestore {
 
     // 病患資料：admin/doctor 可讀寫；保險核保員只能讀（核保用途，不得修改病歷）；
     // 病患本人可讀，但寫入僅限上列欄位
+    // ── 處方安全閘門（Phase 4 / 稽核報告 P1-1、P0-4）──────────────────────
+    //
+    // 前端的「必須先檢測才能開立」是流程控制，不是安全控制——會寫 patient_data 的人
+    // 大可繞過畫面直接呼叫 SDK。因此把「可以被規則驗證的部分」下沉到這裡強制執行。
+    //
+    // 規則能驗證的：每一筆新增的用藥都必須攜帶安全檢查紀錄；若該紀錄的結論是 risk，
+    // 就必須同時帶有具名的覆蓋理由。規則無法驗證的：那份檢查結果是否真實、是否對應
+    // 這次的用藥組合——那需要後端重算（Cloud Functions），已列於 Phase 6。
+    // 但即使只有這一層，「無聲地開立一筆高風險處方」在資料層已不再可能。
+
+    function newMedications() {
+      return request.resource.data.medications;
+    }
+    // 只在用藥清單「變長」時要求安全檢查紀錄。修改其他欄位、移除用藥、
+    // 或清單長度不變的整理動作都不受影響，避免規則擋住無關的正常操作。
+    function medicationsGrew() {
+      return newMedications() is list
+        && (resource.data.medications == null
+            || newMedications().size() > resource.data.medications.size());
+    }
+    function addedMed() {
+      return newMedications()[newMedications().size() - 1];
+    }
+    // 新增的用藥必須帶安全檢查紀錄。結論為 risk 時，覆蓋理由為必填——
+    // 這正是 CPOE 規範要求「重大警示的覆蓋必須留下具名理由」的資料層落實。
+    function addedMedIsAccountable() {
+      return addedMed().safetyCheck is map
+        && addedMed().safetyCheck.verdict in ['risk', 'unevaluable', 'no-known-interaction']
+        && addedMed().safetyCheck.checkedAt is string
+        && addedMed().safetyCheck.by is string
+        && (addedMed().safetyCheck.verdict != 'risk'
+            || (addedMed().safetyCheck.overrideReason is string
+                && addedMed().safetyCheck.overrideReason.size() >= 4));
+    }
+    // 用藥清單沒有變長時不設限；變長時每一筆新增都必須可歸責。
+    function prescriptionIsAccountable() {
+      return !medicationsGrew() || addedMedIsAccountable();
+    }
+
     match /patient_data/{username} {
       allow read: if isAdmin() || isDoctor() || isInsurance() || isOwnUsername(username);
       allow create: if isAdmin() || isDoctor()
@@ -129,9 +168,39 @@ service cloud.firestore {
       // 因此「求值錯誤必然拒絕」並不是保證，只是目前這條 OR 鏈剛好沒有為真的分支。
       // 少了守衛，日後任何人在此鏈加上一個新條件，都可能讓 resource 為 null 時的求值錯誤
       // 被 || 吸收而靜默放行，且斷言 allow/deny 的測試抓不到這種變化。
-      allow update: if resource != null && (isAdmin() || isDoctor()
+      // 新增用藥必須攜帶安全檢查紀錄（見上方 prescriptionIsAccountable）。
+      // 此條對 admin 同樣適用——「管理員繞過安全檢查開藥」不該是被允許的路徑。
+      allow update: if resource != null && prescriptionIsAccountable() && (isAdmin() || isDoctor()
         || (isOwnUsername(username) && patientOnlyTouchesOwnFields() && pseudonymNotOverwritten()));
       allow delete: if isAdmin();
+    }
+
+    // ── 稽核軌跡（Phase 4 / 稽核報告 P1-5）─────────────────────────────────
+    //
+    // 《個人資料保護法施行細則》第 12 條第 2 項第 4 款要求建立稽核機制，
+    // 《醫療機構電子病歷製作及管理辦法》要求記錄存取軌跡——這是法定必要條件。
+    //
+    // 本規則能保證的三件事：
+    //   一、不可竄改：update 與 delete 一律拒絕，寫下去就改不掉、刪不了。
+    //   二、不可冒名：actor 必須等於呼叫者自己的 username，且該 username 必須
+    //       與 Auth 簽發的 token.email 相符（ownsUsername），無法把行為記到別人頭上。
+    //   三、不可竄改時間：at 必須等於伺服器收到請求的時間，無法回填或造假時序。
+    //
+    // 本規則「不能」保證的一件事，必須誠實說明：無法保證每個動作都被記錄。
+    // 稽核記錄由前端主動寫入，惡意的呼叫端只要不寫就沒有記錄。
+    // 要達成「動作必然留痕」，必須由後端 trigger 在資料變更時自動寫入（Phase 6）。
+    // 因此目前的稽核軌跡足以支撐臨床可追溯性與事後調查，但不足以對抗蓄意的隱匿。
+    match /audit_logs/{doc} {
+      allow read: if isAdmin();
+      allow create: if isActive()
+        && request.resource.data.actor == profile().username
+        && ownsUsername(request.resource.data.actor)
+        && request.resource.data.actorRole == profile().role
+        && request.resource.data.at == request.time
+        && request.resource.data.action is string
+        && request.resource.data.action.size() > 0
+        && request.resource.data.action.size() <= 64;
+      allow update, delete: if false;
     }
 
     match /insurance_data/{doc} {

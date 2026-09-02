@@ -199,12 +199,25 @@ window.DbService = {
     });
   },
 
+  // 【回傳寫入結果，不再靜默假裝成功】（稽核報告 P1-2）
+  //
+  // 原本查無病歷時是一句 `if (!snap.exists) return;`——函式正常返回，呼叫端
+  // 無從分辨「已寫入病歷」與「根本沒有這份病歷」。醫師看到的是「開立成功」，
+  // 而病歷裡什麼都沒有；下次交互作用偵測時這個藥不存在，等同於偵測失效。
+  //
+  // 現在一律回傳 { persisted, reason }，由呼叫端據實告知醫師。
+  // 真正的錯誤（權限不足、網路失敗、被安全規則拒絕）仍然往上拋，不在此處吞掉。
   async addMedicationToPatient(username, medication) {
-    const snap = await window.db.collection('patient_data').doc(username).get();
-    if (!snap.exists) return;
+    const ref = window.db.collection('patient_data').doc(username);
+    const snap = await ref.get();
+    if (!snap.exists) return { persisted: false, reason: 'no-record' };
     const meds = snap.data().medications || [];
     meds.push(medication);
-    await window.db.collection('patient_data').doc(username).update({ medications: meds });
+    // 注意：此更新會被 Firestore 規則檢查——新增的用藥必須攜帶 safetyCheck，
+    // 結論為 risk 時還必須帶覆蓋理由。缺少時這裡會拋出 permission-denied，
+    // 那是正確行為，不可在此處捕捉後降級處理。
+    await ref.update({ medications: meds });
+    return { persisted: true };
   },
 
   // 病患目前指派的醫師（用查詢代替寫死名單），讓 demo 資料跟真實註冊的病患走同一套邏輯

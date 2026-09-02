@@ -77,6 +77,10 @@
 <body class="overflow-hidden">
     <div id="app" v-cloak class="flex h-screen w-screen overflow-hidden relative">
         <!-- Global Maintenance Lock -->
+        <!-- 維護狀態未能確認時的提示。不鎖站，但不隱瞞。 -->
+        <div v-if="maintenanceCheckFailed && !maintenanceMode" class="fixed top-0 inset-x-0 z-[998] bg-amber-500 text-white text-center text-[11px] font-black py-2 px-4">
+            ⚠️ 無法確認系統維護狀態，目前以「未維護」繼續使用。若畫面資料異常請重新整理。
+        </div>
         <div v-if="maintenanceMode" class="fixed inset-0 z-[999] bg-slate-950 flex items-center justify-center p-8 text-center">
             <div class="max-w-md">
                 <div class="w-16 h-16 mx-auto mb-6 rounded-2xl bg-danger/10 flex items-center justify-center text-danger">
@@ -528,9 +532,20 @@
                         </div>
                         <div class="flex gap-4">
                             <button @click="showPrescriptionModal = false; resetAiCheck()" class="flex-1 py-4 font-black text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest text-[10px]">Cancel</button>
-                            <p v-if="aiCheckStatus === 'idle'" class="text-[10px] font-bold text-amber-600 mb-2">本次未執行交互作用檢測。系統不會阻擋開立，也不會記錄此次未檢測的理由。</p>
-                            <button @click="submitPrescription" :disabled="aiCheckStatus === 'checking' || !newRx.drugName.trim() || !newRx.dosage.trim()" class="flex-[2] py-4 clinical-gradient text-white font-black rounded-3xl shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-xs disabled:opacity-50">
-                                {{ aiCheckStatus === 'risk' ? '已知悉風險，仍要開立' : '確認開立並同步 FHIR' }}
+                            <p v-if="aiCheckStatus === 'idle'" class="text-[10px] font-bold text-amber-600 mb-2">尚未執行交互作用檢測。安全檢查為開立處方之必要步驟，未檢測不得開立。</p>
+                            <!-- 攔截政策讀取失敗時必須讓醫師看見，不可靜默當作政策為關閉 -->
+                            <p v-if="autoBlockPolicyUnknown" class="text-[10px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2">⚠️ 無法讀取系統的處方攔截政策，本次未套用攔截。請留意此狀態並自行加強評估。</p>
+                            <p v-if="isBlockedByPolicy" class="text-[11px] font-black text-white bg-danger rounded-xl px-3 py-2 mb-2">系統已攔截此處方：管理端啟用了「自動攔截極高風險處方」，偵測到重大以上交互作用時不得開立。如臨床上確有必要，請聯繫管理者調整政策。</p>
+                            <p v-if="submitError" class="text-[11px] font-black text-white bg-danger rounded-xl px-3 py-2 mb-2">{{ submitError }}</p>
+                            <!-- 未執行交互作用檢測即不得開立（P1-1）。原本的 :disabled 沒有檢查 idle 狀態，
+                                 醫師可以從未執行安全檢查就直接開藥。
+                                 攔截政策生效時同樣禁用，且按鈕文字改為說明原因，
+                                 不讓醫師反覆點一個不會有反應的按鈕。 -->
+                            <button @click="submitPrescription" :disabled="submitting || aiCheckStatus === 'checking' || aiCheckStatus === 'idle' || isBlockedByPolicy || !newRx.drugName.trim() || !newRx.dosage.trim()" class="flex-[2] py-4 clinical-gradient text-white font-black rounded-3xl shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-xs disabled:opacity-50">
+                                {{ submitting ? '處理中…'
+                                   : (isBlockedByPolicy ? '系統政策已攔截，不得開立'
+                                   : (aiCheckStatus === 'idle' ? '請先執行安全檢查'
+                                   : (aiCheckStatus === 'risk' ? '填寫理由後開立' : '確認開立並同步 FHIR'))) }}
                             </button>
                         </div>
                     </div>
@@ -571,6 +586,50 @@
 
         <!-- Toast -->
         <transition name="fade">
+            <!-- 覆蓋交互作用警示的具名理由（Phase 4 / P1-1）
+                 修復前：偵測到風險時按鈕文字變成「無視 AI 警告並強制同步」，一鍵即可覆蓋——
+                 沒有二次確認、沒有理由、沒有記錄是誰在何時覆蓋了什麼警示。
+            
+                 採結構化選項而非純自由輸入：純自由欄位在實務上會被填成「asdf」，
+                 既無臨床意義也無法統計，等於換個形式的一鍵覆蓋。結構化選項可彙總分析，
+                 用來回答「哪一類警示最常被覆蓋、是否該調整門檻」——那才是警示疲勞的解法。 -->
+            <div v-if="showOverrideModal" role="dialog" aria-modal="true" class="fixed inset-0 z-[260] flex items-center justify-center p-4">
+                <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"></div>
+                <div class="relative bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+                    <div class="bg-danger px-10 py-7 text-white">
+                        <h3 class="text-lg font-black tracking-tight">覆蓋交互作用警示</h3>
+                        <p class="text-[11px] font-bold opacity-90 mt-1">本次操作將被記錄於稽核軌跡，包含您的帳號、時間、覆蓋理由與當時的檢測結果。稽核記錄一經寫入即無法修改或刪除。</p>
+                    </div>
+                    <div class="p-10 space-y-6">
+                        <div v-if="ddiResult && ddiResult.findings.length" class="rounded-2xl bg-slate-50 border border-slate-200 p-5 space-y-2">
+                            <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest">您正要覆蓋以下警示</p>
+                            <div v-for="(f, i) in ddiResult.findings" :key="'ov' + i" class="text-[11px] font-bold text-slate-700">
+                                <span class="font-black">[{{ f.severityZh }}]</span> {{ f.a.name_en }} × {{ f.b.name_en }}
+                            </div>
+                        </div>
+                        <div class="space-y-3">
+                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">覆蓋理由（必填）</label>
+                            <div class="space-y-2">
+                                <label v-for="r in overrideReasonOptions" :key="r" class="flex items-start gap-3 bg-slate-50 hover:bg-slate-100 rounded-2xl px-5 py-4 cursor-pointer transition-colors">
+                                    <input type="radio" :value="r" v-model="overrideReasonChoice" class="mt-1 accent-danger">
+                                    <span class="text-xs font-bold text-slate-700">{{ r }}</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div v-if="overrideReasonChoice === '其他'" class="space-y-2">
+                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">請說明（至少 4 個字）</label>
+                            <textarea v-model="overrideReasonNote" rows="3" placeholder="請具體說明覆蓋此警示的臨床理由" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-danger/30 focus:bg-white transition-all outline-none text-sm"></textarea>
+                        </div>
+                        <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">覆蓋警示不代表交互作用不存在。請確認已評估風險並將採取相應的監測或劑量調整。</p>
+                        <div class="flex gap-4 pt-2">
+                            <button @click="showOverrideModal = false" class="flex-1 py-4 font-black text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest text-[10px]">取消，不開立</button>
+                            <button @click="confirmOverride" :disabled="!overrideReasonText || submitting" class="flex-[2] py-4 bg-danger text-white font-black rounded-3xl shadow-xl shadow-danger/30 hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-xs disabled:opacity-40 disabled:hover:scale-100">
+                                {{ submitting ? '處理中…' : '確認覆蓋並開立' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div v-if="showToast" class="fixed bottom-10 right-10 z-[300] bg-slate-900 text-white px-8 py-5 rounded-3xl shadow-2xl border border-white/10 flex items-center gap-4 animate-fade-in text-left">
                 <div class="w-10 h-10 bg-success rounded-full flex items-center justify-center text-white shadow-lg"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg></div>
                 <div><div class="font-black text-sm uppercase tracking-widest text-left">{{ toastTitle }}</div><div class="text-xs text-slate-400 text-left">{{ toastMessage }}</div></div>
@@ -584,6 +643,7 @@
     <script src="js/mockData.js"></script>
     <script src="js/drug-catalog.js"></script>
     <script src="js/ddi-engine.js"></script>
+    <script src="js/audit.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/chatStore.js"></script>
     <script src="js/notify.js"></script>
@@ -604,7 +664,8 @@
                 return {
                     showPasswordModal: false, changingPassword: false, passwordError: '',
                     passwordForm: { current: '', next: '', confirm: '' },
-                    user, maintenanceMode: false, stats: docData.stats, recentPatients: docData.recentPatients,
+                    user, maintenanceMode: false,
+                    maintenanceCheckFailed: false, stats: docData.stats, recentPatients: docData.recentPatients,
                     selectedPatient: null, activeScenario: null, graphConflicts: [],
                     showFullScreenGraph: false, showToast: false, showMobileMenu: false,
                     toastTitle: '系統通知', toastMessage: '同步成功',
@@ -615,6 +676,27 @@
                     ddiRuleSource: 'local',
                     ddiRulesUnavailable: false,
                     ddiResult: null,
+                    // 處方安全閘門的狀態（Phase 4）
+                    showOverrideModal: false,
+                    overrideReasonChoice: '',
+                    // 固定的理由選項。詞彙固定才能彙總分析——
+                    // 「哪一類警示最常被覆蓋、是否該調整門檻」是警示疲勞的解法，
+                    // 而自由文字無法回答這個問題。
+                    overrideReasonOptions: [
+                        '已知此交互作用，評估後臨床效益大於風險',
+                        '將調整劑量並加強監測（如 INR、腎功能、肌肉症狀）',
+                        '病患已長期併用此組合且耐受良好',
+                        '已與藥師討論並取得同意',
+                        '病情緊急，暫無替代藥物',
+                        '其他'
+                    ],
+                    overrideReasonNote: '',
+                    submitting: false,
+                    submitError: '',
+                    // 管理端的「自動攔截極高風險處方」政策。過去此開關完全未接入處方流程（P0-4）。
+                    autoBlockEnabled: false,
+                    // 政策讀取失敗時為 true。詳見 created() 中關於 fail-open 的說明。
+                    autoBlockPolicyUnknown: false,
                     checkedPatientName: '',
                     checkedDrugName: '',
                     _aiCheckToken: 0,
@@ -635,6 +717,24 @@
                 }
             },
             computed: {
+                // 覆蓋理由的最終文字。結構化選項 + 必要時的補充說明。
+                // 選「其他」時必須實際寫出理由才算數——否則「其他」本身會變成
+                // 一個什麼都沒說的萬用出口，等於換個形式的一鍵覆蓋。
+                overrideReasonText() {
+                    if (!this.overrideReasonChoice) return '';
+                    if (this.overrideReasonChoice === '其他') {
+                        const note = (this.overrideReasonNote || '').trim();
+                        return note.length >= 4 ? '其他：' + note : '';
+                    }
+                    return this.overrideReasonChoice;
+                },
+                // 本次是否被管理端的攔截政策擋下。門檻為「重大」以上——
+                // 中度與輕微仍可在填寫理由後開立，避免把所有警示一律硬擋而造成警示疲勞。
+                isBlockedByPolicy() {
+                    if (!this.autoBlockEnabled) return false;
+                    const t = this.ddiResult ? this.ddiResult.topSeverity : null;
+                    return t === 'major' || t === 'contraindicated';
+                },
                 totalUnreadMessages() {
                     return this.conversations.reduce((sum, c) => sum + c.unread, 0);
                 },
@@ -647,11 +747,41 @@
                 }
             },
             async created() {
+                // 載入管理端的處方攔截政策。
+                //
+                // 【此處刻意 fail-open，理由必須寫清楚】
+                // 本報告通篇反對 fail-open，但那些情境的失效方向是「把未知說成安全」。
+                // 這裡不同：攔截政策是臨床流程約束，不是保護資料的安全控制。
+                // 若因一次網路失敗就攔下所有高風險處方，該開的藥開不了——
+                // 在臨床上，可用性失效同樣會傷害病人。
+                // 因此讀取失敗時不啟用攔截，但必須讓醫師看見「政策狀態未確認」，
+                // 不可靜默當作政策為關閉。
+                try {
+                    const st = await DbService.getSystemSettings();
+                    this.autoBlockEnabled = !!(st && st.autoBlock);
+                } catch (e) {
+                    console.error('處方攔截政策讀取失敗：', e);
+                    this.autoBlockPolicyUnknown = true;
+                }
                 this._charts = {};
                 await waitForAuthReady();
+                // 維護模式查詢失敗過去是一個空的 catch（稽核報告 P1-2）：查不到就當作
+                // 「沒有在維護」，使用者照樣進站——維護模式的目的因此完全落空。
+                //
+                // 這裡的取捨與處方攔截政策相同：先重試一次；仍失敗則不鎖站，但必須讓
+                // 使用者看見狀態未確認。理由是可用性失效在臨床系統同樣會傷人——
+                // 因一次網路抖動就把醫師鎖在病歷之外，代價高於讓人在維護期間看到舊資料。
+                // 但「因此就什麼都不說」是另一回事，那是把系統的不確定藏起來。
                 try {
                     this.maintenanceMode = await DbService.getMaintenanceMode();
-                } catch (e) {}
+                } catch (e) {
+                    try {
+                        this.maintenanceMode = await DbService.getMaintenanceMode();
+                    } catch (e2) {
+                        console.error('維護模式狀態讀取失敗（已重試一次）：', e2);
+                        this.maintenanceCheckFailed = true;
+                    }
+                }
                 if (this.maintenanceMode) return;
                 try {
                     const [docData, graphData] = await Promise.all([
@@ -884,19 +1014,112 @@
                     this._aiCheckToken++;
                     this.aiCheckStatus = 'idle';
                     this.ddiResult = null;
+                    // 覆蓋理由不可沿用到下一次開立——那會讓一個為 A 藥填寫的理由
+                    // 被靜默套用到 B 藥上，稽核記錄因此失真。
+                    this.overrideReasonChoice = '';
+                    this.overrideReasonNote = '';
+                    this.showOverrideModal = false;
+                    this.submitError = '';
                     this.newRx = { drugName: '', dosage: '', instruction: '' };
                     this.ddiRulesUnavailable = false;
                 },
-                async submitPrescription() {
+                // ── 處方安全閘門（Phase 4 / 稽核報告 P1-1、P0-4、P1-2、P1-5）─────────────
+                //
+                // 修復前這個函式做了四件危險的事：
+                //   一、完全不檢查是否執行過交互作用檢測，未檢測即可開立
+                //   二、偵測到風險時一鍵即可覆蓋，無理由、無記錄、無二次確認
+                //   三、先把藥加進畫面並關閉視窗，「之後」才嘗試寫入資料庫
+                //   四、寫入失敗被 catch (e) {} 吞掉，醫師看到的仍是「開立成功」
+                //
+                // 第三與第四點合在一起，造成的結果是：醫師確信藥已開立並記錄，實際上病歷中
+                // 沒有這筆資料；下次交互作用偵測時這個藥不存在，等同於偵測失效。
+                submitPrescription() {
+                    // 閘門一：必須先執行過交互作用檢測。
+                    // 這是流程控制而非安全控制——真正的強制在 Firestore 規則（新增用藥必須
+                    // 攜帶 safetyCheck），繞過畫面直接呼叫 SDK 一樣會被資料層擋下。
+                    if (this.aiCheckStatus === 'idle') {
+                        return this.triggerToast('請先執行交互作用檢查', '安全檢查為開立處方之必要步驟，未檢測不得開立');
+                    }
+                    if (this.aiCheckStatus === 'checking') return;
+
+                    // 閘門二：管理端啟用「自動攔截極高風險處方」時，重大以上風險一律不得開立。
+                    // 此開關過去完全未實作，UI 卻承諾會攔截——一個宣稱會攔截危險處方卻什麼都不做的
+                    // 開關，比沒有這個開關更危險，它讓管理者與醫師誤以為已有防護（P0-4）。
+                    if (this.isBlockedByPolicy) {
+                        // 被攔截同樣要留痕：管理者需要知道這道政策實際擋下了什麼，
+                        // 才能判斷門檻設得是否恰當。只擋不記，等於看不見自己的政策效果。
+                        window.Audit.log(window.Audit.ACTIONS.DDI_BLOCKED,
+                            this.selectedPatient ? this.selectedPatient.id : null, this.buildSafetyCheck(null));
+                        return this.triggerToast('系統已攔截此處方',
+                            '管理端已啟用「自動攔截極高風險處方」，偵測到重大以上交互作用時不得開立。如臨床上確有必要，請聯繫管理者調整政策。');
+                    }
+
+                    // 閘門三：偵測到風險時，必須填寫具名的覆蓋理由才能繼續。
+                    // CPOE 規範要求重大警示的覆蓋留下具名理由，這是可追溯性與警示疲勞研究的關鍵控制點。
+                    // 採「結構化選項 + 必要時補充說明」而非純自由輸入——純自由欄位在實務上會被填成
+                    // 「asdf」，既無臨床意義也無法統計，等於換個形式的一鍵覆蓋。
+                    if (this.aiCheckStatus === 'risk' && !this.overrideReasonText) {
+                        this.showOverrideModal = true;
+                        return;
+                    }
+                    return this.doSubmitPrescription();
+                },
+
+                // 覆蓋理由填妥後由此進入實際開立流程
+                confirmOverride() {
+                    if (!this.overrideReasonText) return;
+                    this.showOverrideModal = false;
+                    return this.doSubmitPrescription();
+                },
+
+                // 本次開立所依據的安全檢查結論。這份紀錄會與用藥一起存入病歷，
+                // 且 Firestore 規則要求它必須存在——「無聲地開立一筆高風險處方」在資料層已不可能。
+                buildSafetyCheck(overrideReason) {
+                    const r = this.ddiResult;
+                    return {
+                        verdict: r ? r.verdict : 'no-known-interaction',
+                        topSeverity: r ? r.topSeverity : null,
+                        findingCount: r ? r.findings.length : 0,
+                        unevaluableCount: r ? r.unevaluable.length : 0,
+                        pairsChecked: r ? r.pairsChecked : 0,
+                        ruleCount: this.ddiRuleCount,
+                        ruleSource: this.ddiRuleSource,
+                        // 知識庫降級時做的決策，日後回看必須看得出當時涵蓋範圍已縮小
+                        rulesDegraded: !!this.ddiRulesUnavailable,
+                        // 具體命中哪幾組，供事後調查與品質檢討
+                        findings: r ? r.findings.map(f => ({ a: f.a.atc, b: f.b.atc, severity: f.severity })) : [],
+                        by: this.user ? this.user.username : '',
+                        checkedAt: new Date().toISOString(),
+                        overrideReason: overrideReason || null
+                    };
+                },
+
+                async doSubmitPrescription() {
+                    if (this.submitting) return;
+                    this.submitting = true;
+                    this.submitError = '';
                     const pid = this.selectedPatient.id;
-                    // 解析出藥物身分供後續比對使用。解析不到時明確為 null——
-                    // 那代表「本系統不認得這個藥」，Phase 3 的引擎必須據此拒絕判定為安全，
-                    // 而不是當作沒有交互作用（見 js/drug-catalog.js 與稽核報告 P1-12）。
+                    const isOverride = this.aiCheckStatus === 'risk';
+                    const safetyCheck = this.buildSafetyCheck(isOverride ? this.overrideReasonText : null);
+
+                    // 覆蓋高風險警示時，稽核記錄先寫、且寫不成就不開立。
+                    // 一個無法被追溯的覆蓋，正是 P1-1 要消滅的東西——若允許「稽核失敗但照樣開立」，
+                    // 就等於留了一條隨時可用的無痕通道。順序上先記錄「意圖」而非「結果」，
+                    // 是為了讓覆蓋這個決策本身無論後續成敗都必然留痕。
+                    if (isOverride) {
+                        const a = await window.Audit.log(window.Audit.ACTIONS.DDI_OVERRIDE, pid, safetyCheck);
+                        if (!a.ok) {
+                            this.submitting = false;
+                            this.submitError = '無法寫入稽核記錄，因此不予開立。覆蓋交互作用警示必須留下可追溯的記錄，請稍後重試或聯繫管理者。';
+                            return;
+                        }
+                    }
+
+                    // 藥物身分。解析不到時明確為 null——代表「本系統不認得這個藥」，
+                    // 而不是當作沒有交互作用（js/drug-catalog.js、P1-12）。
                     //
                     // id 與 atc 是兩件事：id 是「這一列是哪一列」（渲染用，必須唯一），
                     // atc 是「這是哪一種藥」（比對用，可能與病患既有用藥相同）。
-                    // 兩者不可互相取代——醫師開出病患已在服用的同一種藥時，
-                    // 兩列的 atc 會相同，那正是重複用藥要偵測的情況，不是渲染錯誤。
                     const rxDrug = window.DrugCatalog ? window.DrugCatalog.resolve(this.newRx.drugName) : null;
                     const newMed = {
                         id: 'rx-' + Date.now(),
@@ -904,16 +1127,52 @@
                         name_en: this.newRx.drugName,
                         name_zh: this.newRx.drugName,
                         hospital: '本院 (醫師開立)',
-                        conflict: this.aiCheckStatus === 'risk',
+                        conflict: isOverride,
                         dosage: this.newRx.dosage,
-                        freq: this.newRx.instruction || '依醫囑'
+                        freq: this.newRx.instruction || '依醫囑',
+                        safetyCheck: safetyCheck
                     };
+
+                    // 【順序已修正】先寫入病歷，成功後才更新畫面。
+                    // 原本相反：先把藥加進清單並關閉視窗，之後才嘗試寫入，且失敗被靜默吞掉，
+                    // 醫師因此確信藥已開立，而病歷裡什麼都沒有（P1-2）。
+                    let persisted = false;
+                    try {
+                        const res = await DbService.addMedicationToPatient(pid, newMed);
+                        persisted = !!(res && res.persisted);
+                    } catch (e) {
+                        console.error('處方寫入病歷失敗：', e);
+                        this.submitting = false;
+                        this.submitError = '處方寫入病歷失敗，未完成開立。請確認網路連線後重試；若持續失敗請聯繫系統管理者。（' + (e && e.code ? e.code : 'unknown') + '）';
+                        window.Audit.log(window.Audit.ACTIONS.PRESCRIBE_FAILED, pid,
+                            { drug: this.newRx.drugName, error: String((e && e.code) || e) });
+                        return;
+                    }
+
+                    const audit = await window.Audit.log(window.Audit.ACTIONS.PRESCRIBE, pid,
+                        { drug: this.newRx.drugName, atc: newMed.atc, dosage: this.newRx.dosage,
+                          persisted: persisted, safetyCheck: safetyCheck });
+
+                    // 寫入成功才更新畫面
                     if (!Array.isArray(this.extraPrescriptions[pid])) this.extraPrescriptions[pid] = [];
                     this.extraPrescriptions[pid].push(newMed);
                     this.showPrescriptionModal = false;
+                    this.submitting = false;
 
-                    try { await DbService.addMedicationToPatient(pid, newMed); } catch (e) { /* 非既有 Firestore 病患文件，略過雲端寫入 */ }
+                    // 病歷未實際寫入時不可說「開立成功」。示範資料的病患沒有雲端病歷，
+                    // 這種情況必須說清楚，否則醫師會以為紀錄已留存。
+                    if (!persisted) {
+                        this.triggerToast('處方未存入病歷',
+                            '此病患在資料庫中沒有病歷文件（示範資料），本次處方僅顯示於畫面，重新整理後即消失。');
+                    } else if (!audit.ok) {
+                        this.triggerToast('處方已開立，但稽核記錄失敗',
+                            '處方已寫入病歷，惟本次操作未能留下稽核記錄，請通報系統管理者。');
+                    } else {
+                        this.triggerToast('開立成功', '處方已寫入病歷並留存稽核記錄');
+                    }
 
+                    // FHIR 同步為次要動作：失敗不影響已寫入的病歷，但仍須據實告知，
+                    // 不可再宣稱「本地已保留」——那是記憶體變數，重新整理即消失。
                     try {
                         const deid = DbService.fhirDeid;
                         const pseudo = await deid.getOrCreate(pid);
@@ -931,13 +1190,15 @@
                                 // 沒有開立者與開立時間的處方，在臨床與法律上皆不成立
                                 requester: { display: '本院醫師（展示用，未帶入真實執業執照號碼）' },
                                 authoredOn: new Date().toISOString().slice(0, 10),
-                                dosageInstruction: [{ text: `${this.newRx.dosage}，${this.newRx.instruction || ''}` }]
+                                dosageInstruction: [{ text: this.newRx.dosage + '，' + (this.newRx.instruction || '') }]
                             })
                         });
                         if (!res.ok) throw new Error('HTTP ' + res.status);
-                        this.triggerToast('開立成功', '處方已以化名同步至 HAPI FHIR 伺服器 (MedicationRequest)');
                     } catch (e) {
-                        this.triggerToast('本地已保留', '處方已加入清單，但同步 FHIR 伺服器失敗，請稍後重試');
+                        console.error('FHIR 同步失敗：', e);
+                        this.triggerToast('FHIR 同步失敗',
+                            persisted ? '處方已寫入本院病歷，但未能同步至 FHIR 伺服器。'
+                                      : '處方既未寫入病歷，也未能同步至 FHIR 伺服器。');
                     }
                     this.resetAiCheck();
                 },
