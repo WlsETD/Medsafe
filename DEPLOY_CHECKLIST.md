@@ -225,6 +225,57 @@ firebase firestore:rules:get > firestore.rules.deployed.bak
 
 ---
 
+## 六之二、2026-09-02 首次執行本清單時實際踩到的問題
+
+三個都是「照著清單走才會發現」的類型，記錄下來供下次參考。
+
+### 一、`.git/` 整個目錄被公開
+
+部署訊息顯示 `found 423 files`，而專案實際只有 52 個檔案——差額就是 `.git`。
+實測 `.git/config` 與 `.git/HEAD` 皆回 200：完整的提交歷史可被任何人下載。
+
+原因是 ignore 清單只有 `**/.*`。該樣式匹配「檔名以點開頭」的檔案，
+**不匹配「位於點目錄之下」的檔案**——`.gitignore` 被擋下了，`.git/config` 沒有。
+
+已補上 `**/.*/**`、`.git/**`、`.firebase/**`。修正後檔案數 423 → 37。
+
+> **判斷部署範圍是否正確，看 `found N files` 這個數字。**
+> 它與你預期的檔案數差很多時，一定有東西不該在裡面。
+
+### 二、部署後整站掛掉——新 HTML 配舊 JS
+
+部署完成後開啟病患端，畫面顯示「系統維護中」全屏遮罩，
+但 Firestore 中 `maintenanceMode` 明確是 `false`。
+
+實際情況是 **Vue 根本沒有掛載**，樣板未經 `v-if` 處理即以原始 HTML 呈現，
+維護中的區塊因此裸露出來——那個畫面不是狀態，是殘骸。
+主控台唯一的錯誤是 `ReferenceError: mountWhenAuthorized is not defined`。
+
+根本原因是 Firebase Hosting 對靜態資源的預設 `Cache-Control: max-age=3600`。
+部署前一小時內造訪過的瀏覽器，快取了舊版 `js/auth.js`；
+部署後 HTML 重新取得（新版），JS 仍是快取中的舊版，新 HTML 呼叫舊 JS 裡
+不存在的函式，整站掛掉。**任何一小時內來過的訪客都會遇到，且每次部署都會重演。**
+
+已在 `firebase.json` 加入 `headers`：HTML/JS/JSON 一律 `no-cache`
+（不是「不快取」，是「用之前先問伺服器」，內容沒變回 304），
+`service-worker.js` 同樣 `no-cache`，圖片與字型維持長期快取。
+
+### 三、正式資料比測試資料「髒」，導致本地測不出來的錯
+
+病患端藥箱把華法林與阿斯匹靈標為綠色的「未發現」，
+但同一頁的摘要正確地說它們有重大交互作用——同一畫面兩種相反結論。
+
+原因是安全標示以 `med.atc` 當比對鍵，而**正式 Firestore 的用藥資料是舊種子，
+沒有 `atc` 欄位**。引擎本身靠藥名解析所以照樣找得到，但比對鍵是 `undefined`。
+本地測不出來，因為 `mockData` 已於 Phase 2 補上 `atc`——**測試資料比正式資料更完整**。
+
+已改為以引擎回傳的 `entries` 索引對齊，不依賴任何欄位是否存在。
+
+> 這類盲點只有實際打開正式站才看得到。
+> 本清單第三節「每一項都要親手點過」不是形式，就是為了抓這種東西。
+
+---
+
 ## 七、最後一次確認（按下 deploy 之前）
 
 - [ ] `git status` 乾淨，commit 正確
@@ -232,7 +283,9 @@ firebase firestore:rules:get > firestore.rules.deployed.bak
 - [ ] 已備份線上規則（`firestore.rules.deployed.bak`）
 - [ ] 確認使用 `--only firestore:rules,hosting`（兩者一起）
 - [ ] 部署後：9 個應公開的檔案全為 200
-- [ ] 部署後：8 個不該公開的檔案全為 404（含 `DEPLOY_CHECKLIST.md`、`tests/`、`node_modules/`）
+- [ ] 部署後：8 個不該公開的檔案全為 404（含 `DEPLOY_CHECKLIST.md`、`tests/`、`node_modules/`、**`.git/config`**）
+- [ ] 部署訊息中的 `found N files` 與預期相符（本專案應為 37 左右，非數百）
+- [ ] 部署後以**硬重新整理**（Ctrl+Shift+R）確認，再以一般重新整理確認一次
 - [ ] 部署後：四個角色各以**無痕視窗**登入一次
 - [ ] 部署後：主控台無 `permission-denied`
 - [ ] 部署後：`patient01` 首頁的綜合維他命**不是**綠色的「安全」
