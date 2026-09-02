@@ -5,9 +5,10 @@
   "type": "module",
   "description": "MedSafe 的迴歸測試：Firestore 安全規則（唯一真正的存取控制邊界）與藥物身分解析（跨院比對的地基）。兩者改動後務必執行。",
   "scripts": {
-    "test": "npm run test:catalog && npm run test:rules",
+    "test": "npm run test:catalog && npm run test:ddi && npm run test:rules",
     "test:catalog": "node tests/drug-catalog.test.mjs",
-    "test:rules": "firebase emulators:exec --only firestore --project medsafe-rules-test \"node tests/firestore-rules.test.mjs\""
+    "test:rules": "firebase emulators:exec --only firestore --project medsafe-rules-test \"node tests/firestore-rules.test.mjs\"",
+    "test:ddi": "node tests/ddi-engine.test.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",

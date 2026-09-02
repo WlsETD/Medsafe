@@ -449,7 +449,7 @@
                             <textarea v-model="newRx.instruction" rows="3" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-primary/20 focus:bg-white transition-all outline-none" placeholder="輸入詳細服用方法與警語..."></textarea>
                         </div>
 
-                        <div class="rounded-3xl p-6 transition-all duration-500 border-2" :class="aiCheckStatus === 'idle' ? 'bg-slate-50 border-slate-100' : (aiCheckStatus === 'checking' ? 'bg-primary/5 border-primary/10' : (aiCheckStatus === 'unknown' ? 'bg-slate-50 border-slate-200' : 'bg-danger/5 border-danger/20'))">
+                        <div class="rounded-3xl p-6 transition-all duration-500 border-2" :class="aiCheckStatus === 'idle' ? 'bg-slate-50 border-slate-100' : (aiCheckStatus === 'checking' ? 'bg-primary/5 border-primary/10' : (aiCheckStatus === 'risk' ? 'bg-danger/5 border-danger/20' : (aiCheckStatus === 'unevaluable' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200')))">
                             <div v-if="aiCheckStatus === 'idle'" class="flex flex-col items-center gap-3">
                                 <button @click="startAiCheck" :disabled="!newRx.drugName.trim()" class="px-10 py-3 bg-primary text-white font-black rounded-xl hover:scale-105 transition-all text-xs shadow-lg shadow-primary/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100">啟動 AI 安全檢測</button>
                                 <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">{{ newRx.drugName.trim() ? '比對跨院 FHIR 處方紀錄' : '請先輸入藥品名稱' }}</p>
@@ -458,21 +458,64 @@
                                 <div class="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                                 <p class="text-[10px] font-black text-primary animate-pulse uppercase tracking-widest">Scanning FHIR Records...</p>
                             </div>
-                            <div v-else-if="aiCheckStatus === 'unknown'" class="flex items-start gap-4 animate-fade-in">
-                                <div class="w-12 h-12 bg-slate-400 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
-                                <div>
-                                    <h4 class="font-black text-slate-600 text-sm tracking-tighter uppercase italic">No Known Interaction Found</h4>
-                                    <p v-if="ddiRulesUnavailable" class="text-[11px] font-black text-white bg-danger rounded-xl px-3 py-2 mt-1">⚠️ 雲端規則庫讀取失敗，本次僅以離線內建規則比對，涵蓋範圍顯著縮小，請勿據此判斷安全性。</p>
-                                    <p class="text-[11px] font-bold text-slate-600 mt-1">本系統知識庫（共 {{ ddiRuleCount }} 組規則{{ ddiRuleSource === 'local' ? '，離線內建' : '' }}）未發現 {{ checkedDrugName }} 與 {{ checkedPatientName }} 現有用藥的已知交互作用。</p>
-                                    <p class="text-[11px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2">⚠️ 本結果不代表用藥安全，不可取代醫師與藥師之專業判斷。知識庫涵蓋範圍有限，且僅以藥品英文名稱比對。</p>
+                            <!-- 檢測結果。三種結論分別呈現，其中 unevaluable 是 Phase 3 新增的「第三種答案」：
+                                 系統無從得知，既不是有風險、也不是沒風險。原本的二元呈現會把它併入
+                                 「未發現交互作用」，那正是 P0-3 的 fail-open 換個位置重演。 -->
+                            <div v-else class="animate-fade-in space-y-4">
+
+                                <!-- 知識庫降級最優先顯示：在涵蓋範圍已縮小的前提下，下方任何結論都要打折扣 -->
+                                <p v-if="ddiRulesUnavailable" class="text-[11px] font-black text-white bg-danger rounded-xl px-3 py-2">⚠️ 雲端規則庫讀取失敗，本次僅以離線內建規則比對，涵蓋範圍顯著縮小，請勿據此判斷安全性。</p>
+
+                                <!-- 一、查到的交互作用。逐條列出成因與處置建議——
+                                     只說「有風險」而不說「怎麼辦」，等於把問題原封不動丟回給醫師。 -->
+                                <div v-if="ddiResult && ddiResult.findings.length" class="space-y-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-12 h-12 bg-danger rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-danger/20"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
+                                        <div>
+                                            <h4 class="font-black text-danger text-sm tracking-tighter uppercase italic">Known Interaction{{ ddiResult.findings.length > 1 ? 's' : '' }} Detected</h4>
+                                            <p class="text-[11px] font-bold text-slate-600">在 {{ checkedPatientName }} 的用藥組合中發現 {{ ddiResult.findings.length }} 組已知交互作用。</p>
+                                        </div>
+                                    </div>
+                                    <div v-for="(f, i) in ddiResult.findings" :key="'f' + i" class="rounded-2xl border-2 p-4 space-y-2" :class="f.severityClass">
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <span class="text-[9px] font-black uppercase tracking-widest bg-white/70 rounded-lg px-2 py-1">{{ f.severityZh }}</span>
+                                            <span v-if="f.severityUnknown" class="text-[9px] font-black uppercase tracking-widest bg-white/70 rounded-lg px-2 py-1">嚴重度未分級</span>
+                                <span class="text-[9px] font-black uppercase tracking-widest rounded-lg px-2 py-1" :class="f.involvesNew ? 'bg-white text-danger' : 'bg-white/50'">{{ f.involvesNew ? '涉及本次開立' : '既有用藥之間' }}</span>
+                                            <span class="text-xs font-black tracking-tight">{{ f.a.name_en }}（{{ f.a.name_zh }}） × {{ f.b.name_en }}（{{ f.b.name_zh }}）</span>
+                                        </div>
+                                        <p class="text-[11px] font-bold leading-relaxed">{{ f.effect }}</p>
+                                        <p v-if="f.recommendation" class="text-[11px] font-bold leading-relaxed bg-white/60 rounded-xl px-3 py-2"><span class="font-black">處置建議：</span>{{ f.recommendation }}</p>
+                                        <!-- 出處與複核日期直接顯示給醫師。臨床指引會改版（本系統的 Metformin × 顯影劑
+                                             一條就曾因此過時），醫師有權知道這條建議的依據與新舊。 -->
+                                        <p v-if="f.source" class="text-[9px] font-bold opacity-70">依據：{{ f.source }}<span v-if="f.reviewedOn">　·　{{ f.reviewedOn }} 複核</span></p>
+                                    </div>
                                 </div>
-                            </div>
-                            <div v-else class="flex items-start gap-4 animate-fade-in">
-                                <div class="w-12 h-12 bg-danger rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-danger/20"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
-                                <div>
-                                    <h4 class="font-black text-danger text-sm tracking-tighter uppercase italic">High Risk Conflict Detected</h4>
-                                    <p class="text-[11px] font-bold text-slate-600 mt-1">{{ checkedDrugName }} 與 {{ checkedPatientName }} 現有處方存在已知交互作用，請謹慎評估。</p>
-                                    <p class="text-[11px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2">⚠️ 本警示為臨床決策輔助資訊，不可取代醫師與藥師之專業判斷。</p>
+
+                                <!-- 二、無法評估的藥。這一段的存在本身就是安全設計：
+                                     沒有它，這些藥會被靜默併入「未發現交互作用」。 -->
+                                <div v-if="ddiResult && ddiResult.unevaluable.length" class="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 space-y-2">
+                                    <h4 class="text-xs font-black text-amber-800 tracking-tight">{{ ddiResult.unevaluable.length }} 項藥物無法評估</h4>
+                                    <p class="text-[11px] font-bold text-amber-800 leading-relaxed">以下藥物未納入本次比對。這<span class="font-black">不代表它們安全</span>，而是代表本系統無從得知。</p>
+                                    <div v-for="(u, i) in ddiResult.unevaluable" :key="'u' + i" class="bg-white/70 rounded-xl px-3 py-2">
+                                        <p class="text-[11px] font-black text-amber-900">{{ u.entry.raw || u.entry.name_en }}</p>
+                                        <p class="text-[11px] font-bold text-amber-800 leading-relaxed mt-0.5">{{ u.reason }}</p>
+                                    </div>
+                                </div>
+
+                                <!-- 三、查無記載。措辭必須守住「知識庫未收錄」與「臨床上安全」的區別（P0-3）。 -->
+                                <div v-if="ddiResult && ddiResult.verdict === 'no-known-interaction'" class="flex items-start gap-4">
+                                    <div class="w-12 h-12 bg-slate-400 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+                                    <div>
+                                        <h4 class="font-black text-slate-600 text-sm tracking-tighter uppercase italic">No Known Interaction Found</h4>
+                                        <p class="text-[11px] font-bold text-slate-600 mt-1">本系統知識庫未收錄 {{ checkedPatientName }} 這組用藥之間的交互作用。</p>
+                                    </div>
+                                </div>
+
+                                <!-- 涵蓋範圍。任何結論都必須連同「這個結論建立在多大的比對範圍上」一起呈現，
+                                     否則醫師無從判斷該給它多少信任。 -->
+                                <div class="border-t border-slate-200 pt-3 space-y-2">
+                                    <p class="text-[10px] font-bold text-slate-500 leading-relaxed">本次以 WHO ATC 碼比對 {{ checkedPatientName }} 的 {{ ddiResult ? ddiResult.entries.length : 0 }} 種用藥（含本次擬開立的 {{ checkedDrugName }}）共 {{ ddiResult ? ddiResult.pairsChecked : 0 }} 組兩兩配對，知識庫共 {{ ddiRuleCount }} 組規則{{ ddiRuleSource === 'local' ? '，離線內建' : '' }}。比對範圍包含現有用藥彼此之間，不限於本次新開立的藥。</p>
+                                    <p class="text-[11px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">⚠️ 本結果為臨床決策輔助資訊，不可取代醫師與藥師之專業判斷。知識庫涵蓋範圍有限，未收錄不等於不存在。</p>
                                 </div>
                             </div>
                         </div>
@@ -540,6 +583,7 @@
     <script src="js/db-service.js"></script>
     <script src="js/mockData.js"></script>
     <script src="js/drug-catalog.js"></script>
+    <script src="js/ddi-engine.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/chatStore.js"></script>
     <script src="js/notify.js"></script>
@@ -570,6 +614,7 @@
                     ddiRuleCount: 0,
                     ddiRuleSource: 'local',
                     ddiRulesUnavailable: false,
+                    ddiResult: null,
                     checkedPatientName: '',
                     checkedDrugName: '',
                     _aiCheckToken: 0,
@@ -767,6 +812,8 @@
                     return themes[name] || { card: 'bg-slate-50 border-slate-100', bar: 'bg-slate-400', text: 'text-slate-600', dot: 'bg-slate-300' };
                 },
                 scenarioFor(p) { return (p && (p.name === '劉建國' || p.id === 'patient01')) ? 'A' : 'B'; },
+                // 交互作用檢測。實際比對邏輯在 js/ddi-engine.js，本函式只負責
+                // 蒐集輸入、處理非同步的競態、以及把結果交給畫面。
                 async startAiCheck() {
                     if (this.aiCheckStatus === 'checking') return;
                     // 世代標記：重入鎖只擋「狀態仍是 checking」，但 resetAiCheck() 會把狀態改回 idle
@@ -775,37 +822,22 @@
                     const token = ++this._aiCheckToken;
                     this.aiCheckStatus = 'checking';
                     this.ddiRulesUnavailable = false;
-                    // 在 await 之前固定住受檢對象，避免等待期間醫師切換病患，
-                    // 導致「用 A 病患的用藥算出結論、卻掛上 B 病患的姓名」
+                    // 在 await 之前固定住全部輸入，避免等待期間醫師切換病患或改動藥名，
+                    // 導致「用 A 的資料算出結論、卻掛上 B 的姓名」
                     const patientAtCheck = this.selectedPatient;
-                    // 受檢的藥名同樣必須在 await 前固定：檢測期間輸入框未鎖定，
-                    // 若等待後才讀 newRx，會出現「用舊藥名比對、卻顯示新藥名」
                     const drugNameAtCheck = this.newRx.drugName;
-                    const drug = drugNameAtCheck.trim().toLowerCase();
-                    const currentNames = this.currentMeds.map(m => (m.name_en || '').toLowerCase());
+                    const currentAtCheck = this.currentMeds.slice();
 
                     // 本地內建規則一律納入，雲端 ddi_rules 為「補充」而非「取代」——
                     // 若讓雲端整批覆蓋，雲端未收錄的組合（如 Warfarin–Amiodarone）會突然不再被偵測，
-                    // 反而比修復前更危險，且會與同頁的交互作用關係圖互相矛盾
-                    const keyOf = (a, b) => [a, b].sort().join('|');
-                    const seen = new Set();
-                    const pairs = [];
-                    const addPair = (a, b) => {
-                        const x = (a || '').trim().toLowerCase(), y = (b || '').trim().toLowerCase();
-                        if (!x || !y) return;
-                        const k = keyOf(x, y);
-                        if (seen.has(k)) return;
-                        seen.add(k);
-                        pairs.push([x, y]);
-                    };
-                    (window.mockData.graphData.links || []).forEach(l => addPair(l.source, l.target));
+                    // 反而比修復前更危險，且會與同頁的交互作用關係圖互相矛盾。
+                    const localRules = (window.mockData.ddiRules || []).concat(window.mockData.graphData.links || []);
                     // 等待期間一律只寫區域變數：對 this 的寫入若發生在世代守衛之前，
-                    // 已被取消的檢測仍會把自己的失敗狀態蓋到後續成功的檢測上
-                    let cloudOk = false, loadFailed = false;
+                    // 已被取消的檢測仍會把自己的失敗狀態蓋到後續成功的檢測上。
+                    let cloudRules = [], cloudOk = false, loadFailed = false;
                     try {
-                        const rules = await DbService.getDdiRules();
-                        (rules || []).forEach(r => addPair(r.drugA, r.drugB));
-                        // 來源以「讀取是否成功」判定，不可用「配對數是否增加」——
+                        cloudRules = (await DbService.getDdiRules()) || [];
+                        // 來源以「讀取是否成功」判定，不可用「規則數是否增加」——
                         // 雲端規則若恰好全與本地重複，讀取其實成功卻會被誤標為離線
                         cloudOk = true;
                     } catch (e) {
@@ -815,23 +847,43 @@
                     // 這次檢測已被取消或被更新的檢測取代，整批結果作廢，不得寫回畫面
                     if (token !== this._aiCheckToken) return;
 
+                    // 【Phase 3 的核心改變】
+                    // 評估對象是「現有用藥 + 本次擬開立的藥」的完整集合，比對其中所有兩兩組合，
+                    // 而不是只比「新藥 vs 每一個現有藥」。
+                    //
+                    // 修復前，示範病患 P004 同時服用的 Warfarin、Aspirin、Amiodarone 之間
+                    // 已存在兩組重大交互作用，但除非醫師剛好要開第四種藥，系統從頭到尾不會提起——
+                    // 病患早已身處風險中，畫面上卻一片平靜。
+                    const meds = currentAtCheck.concat([{ name_en: drugNameAtCheck }]);
+                    const result = window.DdiEngine.analyze(meds, localRules.concat(cloudRules));
+
+                    // 標記哪幾組涉及本次擬開立的藥。醫師問的是「這個新藥能不能開」，
+                    // 若把既有用藥之間的問題與新藥造成的問題混在一起呈現，等於沒有回答他的問題。
+                    // 兩者都要顯示，但必須分得清楚。
+                    const newDrug = window.DrugCatalog ? window.DrugCatalog.resolve(drugNameAtCheck) : null;
+                    for (const f of result.findings) {
+                        f.involvesNew = !!newDrug && (f.a.atc === newDrug.atc || f.b.atc === newDrug.atc);
+                    }
+
                     // 知識庫讀取失敗必須讓醫師知道，不可靜默降級後照常顯示結論
                     this.ddiRulesUnavailable = loadFailed;
                     this.ddiRuleSource = cloudOk ? 'cloud' : 'local';
-                    this.ddiRuleCount = pairs.length;
+                    this.ddiRuleCount = result.ruleCount;
                     this.checkedPatientName = patientAtCheck ? patientAtCheck.name : '病患';
                     this.checkedDrugName = drugNameAtCheck;
+                    this.ddiResult = result;
 
-                    const hasConflict = pairs.some(([a, b]) =>
-                        (a === drug && currentNames.includes(b)) || (b === drug && currentNames.includes(a))
-                    );
-                    // 查無衝突只代表「知識庫未收錄」，不等於臨床上安全，故狀態命名為 unknown 而非 safe
-                    this.aiCheckStatus = hasConflict ? 'risk' : 'unknown';
+                    // 三種結論，不是兩種。unevaluable 代表「系統無從得知」，
+                    // 併入 unknown 就會讓成分不明的複方與系統不認得的藥被靜默當成
+                    // 「未發現交互作用」（稽核報告 P0-3、P1-12）。
+                    this.aiCheckStatus = result.verdict === 'risk' ? 'risk'
+                                       : (result.verdict === 'unevaluable' ? 'unevaluable' : 'unknown');
                 },
                 resetAiCheck() {
                     // 推進世代，讓任何飛行中的檢測結果失效
                     this._aiCheckToken++;
                     this.aiCheckStatus = 'idle';
+                    this.ddiResult = null;
                     this.newRx = { drugName: '', dosage: '', instruction: '' };
                     this.ddiRulesUnavailable = false;
                 },

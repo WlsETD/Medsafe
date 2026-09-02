@@ -8,7 +8,8 @@
 // 忘記加版本號，等於該次修補（包含安全性修補）永遠送不出去。
 // v2：Phase 1 帳號安全修補（js/auth.js 角色驗證改寫、js/db-service.js 本地頭像）
 // v3：Phase 2 藥物身分基礎建設（新增 js/drug-catalog.js，js/mockData.js 改用 ATC 碼）
-const CACHE_VERSION = 'medsafe-static-v3';
+// v4：Phase 3 交互作用引擎（新增 js/ddi-engine.js，dashboard.html 改接 ATC 比對）
+const CACHE_VERSION = 'medsafe-static-v4';
 
 const PRECACHE_URLS = [
   './index.html',
@@ -24,6 +25,7 @@ const PRECACHE_URLS = [
   './js/chatStore.js',
   './js/db-service.js',
   './js/drug-catalog.js',
+  './js/ddi-engine.js',
   './js/firebase-config.js',
   './js/mockData.js',
   './js/notify.js',

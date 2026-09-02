@@ -14,9 +14,62 @@ window.mockData = {
   ],
 
   // DDI 交互規則（供 admin.html 用戶管理頁與 seed.html 使用）
+  // 交互作用規則庫（離線內建）。雲端 ddi_rules 為「補充」而非「取代」——
+  // 見 dashboard.html 的說明。比對由 js/ddi-engine.js 以 ATC 碼進行，非藥名字串。
+  //
+  // 【每條規則都必須帶 source 與 reviewedOn】
+  // 原因見下方 Metformin × 顯影劑那條：它原本寫「可能誘發乳酸中毒，需停藥」，
+  // 但 ACR 現行指引早已改為「eGFR ≥30 不需停藥」，2025 年連 30–44 的暫停建議也取消了。
+  // 一條沒有出處的規則無從複核，而臨床指引會變、變了不會有人通知你。
+  // 無條件叫糖尿病患停藥本身就是傷害（高血糖），錯誤的警示與漏掉的警示都會害人。
+  //
+  // 本規則庫僅涵蓋目錄中 9 種藥物之間有實證記載的組合，共 5 條。
+  // 未列出的組合代表「本知識庫未收錄」，不代表「已確認無交互作用」——
+  // 這個區別由引擎的 verdict 與 UI 措辭共同守住（P0-3）。
   ddiRules: [
-    { drugA: 'Warfarin', drugB: 'Aspirin', atcA: 'B01AA03', atcB: 'B01AC06', severity: '極高風險', severityClass: 'bg-red-100 text-danger border-red-200', effect: '增加出血風險，需監控 INR 指標。' },
-    { drugA: 'Metformin', drugB: 'Iodinated', atcA: 'A10BA02', atcB: 'V08A', severity: '高風險', severityClass: 'bg-orange-100 text-warning border-orange-200', effect: '可能誘發乳酸中毒，需停藥。' }
+    {
+      drugA: 'Warfarin', drugB: 'Aspirin', atcA: 'B01AA03', atcB: 'B01AC06',
+      severity: 'major',
+      effect: '併用顯著提高出血風險（包含胃腸道出血與顱內出血）。Aspirin 抑制血小板功能並可能損傷胃黏膜，與 Warfarin 的抗凝作用相加。',
+      recommendation: '除有明確適應症（如機械瓣膜、近期急性冠心症）外應避免併用。若必須併用，需嚴密監測 INR 與出血徵兆，並評估加用氫離子幫浦阻斷劑保護胃黏膜。',
+      source: 'ACC/AHA 抗栓治療指引；製造商仿單交互作用章節',
+      reviewedOn: '2026-09-02'
+    },
+    {
+      drugA: 'Warfarin', drugB: 'Amiodarone', atcA: 'B01AA03', atcB: 'C01BD01',
+      severity: 'major',
+      effect: 'Amiodarone 抑制 CYP2C9，減緩 Warfarin 代謝，使血中濃度與 INR 顯著上升，出血風險增加。此作用起效慢、消退更慢（Amiodarone 半衰期可達數十天），停藥後影響仍會持續數週。',
+      recommendation: '開始併用時通常需將 Warfarin 劑量下調約 30–50%，並在起始後數週內密集監測 INR。Amiodarone 停用後亦須持續追蹤 INR，不可立即回復原劑量。',
+      source: '製造商仿單交互作用章節；CYP2C9 抑制之藥動學文獻',
+      reviewedOn: '2026-09-02'
+    },
+    {
+      drugA: 'Amiodarone', drugB: 'Atorvastatin', atcA: 'C01BD01', atcB: 'C10AA05',
+      severity: 'moderate',
+      effect: 'Amiodarone 抑制 CYP3A4，提高 Atorvastatin 血中濃度，增加肌肉毒性（肌病變、橫紋肌溶解）風險。年長者、腎功能或肝功能不佳者風險較高。',
+      recommendation: '併用時建議 Atorvastatin 每日劑量不超過 20 mg，並衛教病患留意不明原因的肌肉疼痛、無力或深色尿。必要時改用不經 CYP3A4 代謝的 statin（如 pravastatin、rosuvastatin）。',
+      source: 'AHA 科學聲明「Statin 與其他藥物之臨床顯著交互作用之處理建議」（Circulation, 2016）',
+      reviewedOn: '2026-09-02'
+    },
+    {
+      // 【本條為修正後版本】原內容為「可能誘發乳酸中毒，需停藥」，已不符現行指引。
+      drugA: 'Metformin', drugB: 'Iodinated', atcA: 'A10BA02', atcB: 'V08A',
+      severity: 'moderate',
+      effect: '顯影劑若造成急性腎損傷，可能使 Metformin 蓄積而誘發乳酸中毒。乳酸中毒罕見但可致命；然而在腎功能正常者身上，此風險極低。',
+      recommendation: '依 ACR 指引分兩種情況：eGFR ≥30 且無急性腎損傷者，靜脈注射顯影劑前後「均不需」停用 Metformin，亦無強制複驗腎功能之必要；eGFR <30、已有急性腎損傷，或接受可能造成腎動脈栓塞之動脈導管檢查者，應於檢查前後停用 Metformin 48 小時，待腎功能複評後再恢復。請確認病患的 eGFR 後再決定。',
+      source: 'ACR Manual on Contrast Media（含 2025 年更新：原 eGFR 30–44 需停藥之建議已取消）',
+      reviewedOn: '2026-09-02'
+    },
+    {
+      // 分寸很重要：這條的正確訊息是「維持穩定並監測」，不是「危險、應避免」。
+      // 把輕微交互作用講成重大，會導致病患自行停用營養補充品或恐慌，同樣是傷害。
+      drugA: 'Warfarin', drugB: 'Multivitamin', atcA: 'B01AA03', atcB: 'A11A',
+      severity: 'minor',
+      effect: '綜合維他命中的維生素 K1 會拮抗 Warfarin 的抗凝作用而降低 INR。市售產品的維生素 K1 含量通常低於足以影響抗凝的劑量，但已有病例報告顯示穩定服用 Warfarin 的病患在開始服用綜合維他命後 INR 下降。反之，突然停用亦可能使 INR 上升。',
+      recommendation: '不需禁止併用，但維生素 K 的攝取量應維持穩定，勿忽然開始或忽然停用。開始或停用時應通知醫師並加密監測 INR。請攜帶實際產品向藥師確認其維生素 K 含量。',
+      source: 'Drugs.com 專業版交互作用專論（vitamin K × warfarin）；維生素 K1 綜合維他命對 INR 影響之臨床研究',
+      reviewedOn: '2026-09-02'
+    }
   ],
 
   // 管理員端數據
