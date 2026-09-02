@@ -14,7 +14,7 @@
     <link rel="icon" type="image/png" href="images/LOGO.png">
     <!-- CDNs -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/vue@3.5.42/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -179,9 +179,9 @@
                                 <div class="inline-flex items-center gap-2 bg-turquoise text-navy px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest mb-6 shadow-glow">AI Underwriting Core</div>
                                 <h1 class="text-3xl md:text-5xl font-black mb-8 leading-tight italic tracking-tighter">INTELLIGENT RISK<br><span class="text-turquoise uppercase">Surveillance</span></h1>
                                 <div class="grid grid-cols-3 gap-4 md:gap-8 border-t border-white/10 pt-8">
-                                    <div class="text-left"><div class="text-xl md:text-3xl font-black text-white">94.2%</div><div class="text-[8px] md:text-[9px] font-black uppercase tracking-widest opacity-60">Safety Rate</div></div>
-                                    <div class="text-left border-l border-white/10 pl-4 md:pl-8"><div class="text-xl md:text-3xl font-black text-golden">892</div><div class="text-[8px] md:text-[9px] font-black uppercase tracking-widest opacity-60">Claims/D</div></div>
-                                    <div class="text-left border-l border-white/10 pl-4 md:pl-8"><div class="text-xl md:text-3xl font-black text-turquoise">NT$ 2.4M</div><div class="text-[8px] md:text-[9px] font-black uppercase tracking-widest opacity-60">Discounts</div></div>
+                                    <div class="text-left"><div class="text-xl md:text-3xl font-black text-white">{{ consentedCount }}</div><div class="text-[8px] md:text-[9px] font-black uppercase tracking-widest opacity-60">已授權保戶</div></div>
+                                    <div class="text-left border-l border-white/10 pl-4 md:pl-8"><div class="text-xl md:text-3xl font-black text-golden">{{ avgSafetyScoreText }}</div><div class="text-[8px] md:text-[9px] font-black uppercase tracking-widest opacity-60">平均安全評分</div></div>
+                                    <div class="text-left border-l border-white/10 pl-4 md:pl-8"><div class="text-xl md:text-3xl font-black text-turquoise">{{ needsCareCount }}</div><div class="text-[8px] md:text-[9px] font-black uppercase tracking-widest opacity-60">需關懷保戶</div></div>
                                 </div>
                             </div>
                             <div id="heroAreaChart" class="h-48 md:h-64 bg-white/5 rounded-[32px] md:rounded-[40px] border border-white/10 p-6 md:p-8 backdrop-blur-sm text-left"></div>
@@ -816,6 +816,25 @@
                 }
             },
             computed: {
+                // 首屏的三個數字改為實際計算（稽核報告 P0-8 的同類問題）。
+                //
+                // 原本是「94.2% Safety Rate / 892 Claims/D / NT$ 2.4M Discounts」——
+                // 三個都是寫死的常數，而系統既沒有理賠件數的資料源，也沒有保費折扣的計算。
+                // 病患端的虛構內容已在 P0-8 清除，核保端當時漏掉了。
+                //
+                // 現在三個數字都來自「已授權本公司的保戶摘要」，沒有資料時顯示破折號，
+                // 不用 0 充數——0 位保戶與「還沒載入」是兩回事。
+                avgSafetyScoreText() {
+                    const scores = this.topSafeUsers
+                        .map(u => u.scoreValue).filter(v => typeof v === 'number');
+                    if (!scores.length) return '—';
+                    return String(Math.round(scores.reduce((a, b) => a + b, 0) / scores.length));
+                },
+                // 有交互作用警示的保戶數。核保實務上這是最需要優先處理的一群，
+                // 也是本系統唯一能提供、而傳統核保拿不到的資訊。
+                needsCareCount() {
+                    return this.topSafeUsers.filter(u => (u.alertCount || 0) > 0).length;
+                },
                 sortedCustomers() {
                     let list = this.topSafeUsers.filter(u => u.name.includes(this.customerSearch) || u.id.includes(this.customerSearch));
                     // 用 scoreValue 排序（score 在資料不足時是顯示用的 '—'），無分數者排最後
@@ -1118,6 +1137,7 @@
                         discount: score === null ? '待評估' : 'NT$ ' + (score * 25).toLocaleString(),
                         // 摘要中不含健康摘要自由文字：那是病歷內容，非核保必要欄位
                         reason: `用藥 ${medCount} 筆、警示 ${alerts} 筆`,
+                        alertCount: alerts,
                         // 資料為病患自述，核保端必須看得出來（見 firestore.rules 的說明）
                         attested: true,
                         consentExpiresAt: p.consentExpiresAt || null,

@@ -16,7 +16,8 @@
 // v9：P0-7 藥品安全標示改由引擎即時計算（移除 mockData 中寫死的 status/color/icon）
 // v10：P0-8 首頁摘要／AI 分析／回診日期改由實際資料計算
 // v11：修正藥品安全標示在缺少 atc 欄位的正式資料上失效
-const CACHE_VERSION = 'medsafe-static-v11';
+// v12：Vue 改用生產版建置；核保端首屏數字改為實際計算
+const CACHE_VERSION = 'medsafe-static-v12';
 
 const PRECACHE_URLS = [
   './index.html',
