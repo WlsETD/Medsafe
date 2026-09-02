@@ -724,11 +724,17 @@
                     showChatModal: false,
                     chatMessages: [],
                     chatInput: '',
+                    // 四張 KPI 卡原本是 1250 / 450 / 12 / 98.5%，並附上「+12% 上月」
+                    //「負載正常」「優於平均」等趨勢標籤——全部是寫死的常數，
+                    // 而系統既沒有歷史資料可比較，也沒有跨醫師的基準可以說「優於平均」。
+                    //
+                    // 改為由這位醫師實際指派到的病患即時計算（見 created 中的 refreshKpis）。
+                    // 趨勢標籤一併移除：沒有歷史就不該有趨勢。
                     kpis: [
-                        { label: '總收治病患', value: docData.stats.totalPatients, icon: Icons.Users, bg: 'bg-primary', trend: '+12% 上月' },
-                        { label: '待核簽處方', value: docData.stats.activePrescriptions, icon: Icons.Clipboard, bg: 'bg-accent', trend: '負載正常' },
-                        { label: '交互作用預警', value: docData.stats.conflictAlerts, icon: Icons.Shield, bg: 'bg-danger', trend: '需立即審閱' },
-                        { label: '用藥安全指數', value: docData.stats.safetyRate + '%', icon: Icons.Chart, bg: 'bg-success', trend: '優於平均' },
+                        { label: '收治病患', value: 0, icon: Icons.Users, bg: 'bg-primary', trend: '' },
+                        { label: '追蹤中用藥', value: 0, icon: Icons.Clipboard, bg: 'bg-accent', trend: '' },
+                        { label: '交互作用預警', value: 0, icon: Icons.Shield, bg: 'bg-danger', trend: '' },
+                        { label: '待確認品項', value: 0, icon: Icons.Chart, bg: 'bg-success', trend: '' },
                     ]
                 }
             },
@@ -812,12 +818,10 @@
                         window.mockData.doctor = docData;
                         this.stats = docData.stats;
                         this.recentPatients = docData.recentPatients;
-                        this.kpis = [
-                            { label: '總收治病患', value: docData.stats.totalPatients, icon: Icons.Users, bg: 'bg-primary', trend: '+12% 上月' },
-                            { label: '待核簽處方', value: docData.stats.activePrescriptions, icon: Icons.Clipboard, bg: 'bg-accent', trend: '負載正常' },
-                            { label: '交互作用預警', value: docData.stats.conflictAlerts, icon: Icons.Shield, bg: 'bg-danger', trend: '需立即審閱' },
-                            { label: '用藥安全指數', value: docData.stats.safetyRate + '%', icon: Icons.Chart, bg: 'bg-success', trend: '優於平均' },
-                        ];
+                        // 此處原本會用 doctor_data.stats 中的 1250 / 450 / 12 / 98.5% 覆寫 kpis。
+                        // 那些值是寫死的常數，且這段在下方「以真實病患重算 KPI」之前執行——
+                        // 留著會把算好的真值蓋回假值，而且是在載入成功時才蓋，
+                        // 也就是「資料讀得越順利，畫面越假」。已移除，KPI 一律由實際病患計算。
                     }
                     if (graphData) {
                         window.mockData.graphData = graphData;
@@ -861,6 +865,23 @@
                                 lastCheck: (p.stats && p.stats.lastSync) || '-'
                             };
                         });
+
+                        // KPI 在同一個迴圈的資料上算完：這裡是唯一同時握有
+                        // 「這位醫師的病患清單」與「每位病患完整用藥」的地方。
+                        // 分開再查一次不但多一輪請求，兩份數字還可能對不起來。
+                        let medTotal = 0, findingTotal = 0, unevalTotal = 0;
+                        for (const p of realPatients) {
+                            const r = window.DdiEngine.analyze(p.medications || [], _rules);
+                            medTotal += (p.medications || []).length;
+                            findingTotal += r.findings.length;
+                            unevalTotal += r.unevaluable.length;
+                        }
+                        this.kpis[0].value = realPatients.length;
+                        this.kpis[1].value = medTotal;
+                        this.kpis[2].value = findingTotal;
+                        // 「待確認品項」是成分不明或系統不認得的藥。這個數字在別的系統看不到，
+                        // 因為別的系統會把它們算進「安全」裡（見稽核報告 P0-7）。
+                        this.kpis[3].value = unevalTotal;
                     }
                 } catch (e) {
                     console.error('Firestore patients-by-doctor error:', e);

@@ -19,7 +19,8 @@
 // v12：Vue 改用生產版建置；核保端首屏數字改為實際計算
 // v13：管理端 KPI 與核保端趨勢圖改為實算／誠實空狀態
 // v14：修正初次進入醫師端時交互作用關係圖不顯示
-const CACHE_VERSION = 'medsafe-static-v14';
+// v15：醫師端 KPI 改為由實際指派病患計算
+const CACHE_VERSION = 'medsafe-static-v15';
 
 const PRECACHE_URLS = [
   './index.html',
