@@ -143,7 +143,7 @@
                      :class="['px-6 py-4 flex items-center gap-4 cursor-pointer patient-card border-r-4 border-transparent', selectedPatient && selectedPatient.id === p.id ? 'sidebar-active' : 'text-slate-400']">
                     <div class="relative shrink-0">
                         <div class="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center font-bold text-white shadow-inner">{{ p.name[0] }}</div>
-                        <div :class="['absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-sidebar', p.status === '安全' ? 'bg-success' : 'bg-danger']"></div>
+                        <div :class="['absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-sidebar', p.status === '未發現' ? 'bg-success' : (p.status === '待確認' ? 'bg-amber-400' : 'bg-danger')]"></div>
                     </div>
                     <div class="flex-1 overflow-hidden">
                         <div class="text-sm font-bold truncate">{{ p.name }}</div>
@@ -830,14 +830,37 @@
                     // 讓 demo 病患與病患端自助註冊的帳號走同一套資料
                     const realPatients = await DbService.getPatientsByDoctor(this.user.username);
                     if (realPatients && realPatients.length > 0) {
-                        this.recentPatients = realPatients.map(p => ({
-                            id: p.username,
-                            name: (p.profile && p.profile.name) || p.username,
-                            status: (p.ddiAlerts && p.ddiAlerts.length > 0)
-                                ? (p.ddiAlerts.some(a => a.severity === '極高風險') ? '危險' : '警告')
-                                : '安全',
-                            lastCheck: (p.stats && p.stats.lastSync) || '-'
-                        }));
+                        // 病患狀態改由交互作用引擎即時計算（稽核報告 P0-3）。
+                        //
+                        // 修復前是：有警示就標危險或警告，沒有警示就標「安全」。
+                        // 那個 else 分支是整個系統最常見的錯誤形狀——把「知識庫沒查到」
+                        // 說成「這位病患安全」。而且它讀的是 ddiAlerts 這個已儲存的欄位，
+                        // 若病患的用藥變動而未重算，狀態就會停留在舊結論上。
+                        //
+                        // 現在直接以目前的用藥清單重算，並多出一種狀態：
+                        // 用藥中有成分不明的複方或系統不認得的藥時標「待確認」，
+                        // 而非混入「未發現」。
+                        const _rules = (window.mockData.ddiRules || [])
+                            .concat((window.mockData.graphData || {}).links || []);
+                        this.recentPatients = realPatients.map(p => {
+                            const r = window.DdiEngine.analyze(p.medications || [], _rules);
+                            let status;
+                            if (r.findings.length) {
+                                status = (r.topSeverity === 'major' || r.topSeverity === 'contraindicated')
+                                    ? '危險' : '警告';
+                            } else if (r.unevaluable.length) {
+                                status = '待確認';
+                            } else {
+                                // 刻意不叫「安全」：那是臨床斷言，本系統無從保證
+                                status = '未發現';
+                            }
+                            return {
+                                id: p.username,
+                                name: (p.profile && p.profile.name) || p.username,
+                                status: status,
+                                lastCheck: (p.stats && p.stats.lastSync) || '-'
+                            };
+                        });
                     }
                 } catch (e) {
                     console.error('Firestore patients-by-doctor error:', e);

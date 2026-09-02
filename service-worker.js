@@ -13,7 +13,8 @@
 // v6：P1-6 病患同意機制（保險端改讀 patient_summaries，patient/insurance 頁面改版）
 // v7：P1-4 醫病對話改由 Firestore 承載（js/chatStore.js 全檔改寫）
 // v8：Phase 5 FHIR 連線層（新增 js/fhir-client.js，逾時中止與 Base URL 設定生效）
-const CACHE_VERSION = 'medsafe-static-v8';
+// v9：P0-7 藥品安全標示改由引擎即時計算（移除 mockData 中寫死的 status/color/icon）
+const CACHE_VERSION = 'medsafe-static-v9';
 
 const PRECACHE_URLS = [
   './index.html',

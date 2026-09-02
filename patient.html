@@ -299,8 +299,8 @@
                             <div v-for="med in medications.slice(0, 4)" :key="med.atc"
                                  @click="openMedDetail(med)"
                                  class="card-hover p-6 rounded-3xl bg-white border border-gray-100 flex gap-5 text-left cursor-pointer">
-                                <div :class="['w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0', med.color === 'danger' ? 'bg-red-50 text-danger' : 'bg-mint text-primary']">
-                                    <svg v-if="med.icon === 'shield-exclamation'" xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <div :class="['w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0', safetyOf(med).tone === 'danger' ? 'bg-red-50 text-danger' : (safetyOf(med).tone === 'warn' ? 'bg-amber-50 text-amber-600' : 'bg-mint text-primary')]">
+                                    <svg v-if="safetyOf(med).tone !== 'ok'" xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                     </svg>
                                     <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -310,8 +310,8 @@
                                 <div class="flex-1 min-w-0 text-left">
                                     <div class="flex justify-between items-start mb-1 text-left text-left">
                                         <span class="text-lg font-black text-title truncate text-left">{{ med.zhName }}</span>
-                                        <span :class="['text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter shrink-0', med.color === 'danger' ? 'bg-red-50 text-danger' : 'bg-mint text-primary']">
-                                            {{ med.status }}
+                                        <span :class="['text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter shrink-0', safetyOf(med).tone === 'danger' ? 'bg-red-50 text-danger' : (safetyOf(med).tone === 'warn' ? 'bg-amber-50 text-amber-700' : 'bg-mint text-primary')]">
+                                            {{ safetyOf(med).label }}
                                         </span>
                                     </div>
                                     <div class="text-xs font-bold text-lightText mb-2 uppercase text-left truncate">{{ med.name }} • {{ med.dosage }}</div>
@@ -562,7 +562,7 @@
                                 </thead>
                                 <tbody>
                                     <tr v-for="med in medications" :key="med.atc" class="bg-bgMain rounded-[32px] group transition-all hover:bg-white hover:shadow-xl hover:-translate-y-1 text-left text-left">
-                                        <td class="py-8 pl-10 rounded-l-[32px] border-l-8 text-left" :class="med.color === 'danger' ? 'border-danger' : 'border-primary'">
+                                        <td class="py-8 pl-10 rounded-l-[32px] border-l-8 text-left" :class="safetyOf(med).tone === 'danger' ? 'border-danger' : (safetyOf(med).tone === 'warn' ? 'border-amber-400' : 'border-primary')">
                                             <div class="font-black text-xl text-title leading-none mb-1 text-left">{{ med.zhName }}</div>
                                             <div class="text-[11px] font-black text-lightText uppercase tracking-widest text-left">{{ med.name }}</div>
                                         </td>
@@ -574,8 +574,8 @@
                                             {{ med.hospital }}
                                         </td>
                                         <td class="py-8 rounded-r-[32px] pr-10 text-right">
-                                            <span :class="['px-5 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-sm shrink-0', med.color === 'danger' ? 'bg-red-50 text-danger border border-red-100' : 'bg-mint text-primary border border-primary/10']">
-                                                {{ med.status }}
+                                            <span :class="['px-5 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-sm shrink-0', safetyOf(med).tone === 'danger' ? 'bg-red-50 text-danger border border-red-100' : (safetyOf(med).tone === 'warn' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-mint text-primary border border-primary/10')]">
+                                                {{ safetyOf(med).label }}
                                             </span>
                                         </td>
                                     </tr>
@@ -770,6 +770,7 @@
     <script src="js/db-service.js"></script>
     <script src="js/mockData.js"></script>
     <script src="js/drug-catalog.js"></script>
+    <script src="js/ddi-engine.js"></script>
     <script src="js/fhir-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/chatStore.js"></script>
@@ -853,6 +854,37 @@
                 }
             },
             computed: {
+                // 每一筆用藥的安全標示（稽核報告 P0-3、P1-12）。
+                //
+                // 修復前，status／color／icon 是 mockData 中逐筆手寫的常數：
+                // 綜合維他命被寫成綠色的「安全」，而交互作用引擎對 A11A 的答案
+                // 是「無法評估」（成分因產品而異，可能含維生素 K 而拮抗華法林）。
+                // 畫面與引擎各說各話，且畫面說的是比較危險的那一種。
+                //
+                // 現在一律由引擎計算，且區分三種狀態而非兩種：
+                //   風險   —— 與其他用藥有已知交互作用
+                //   待確認 —— 成分不明或系統不認得，無從判斷（不可說成安全）
+                //   未發現 —— 知識庫未收錄此藥的交互作用
+                //
+                // 最後一種刻意不叫「安全」：那是臨床斷言，本系統無從保證。
+                medSafety() {
+                    const out = {};
+                    if (!window.DdiEngine || !this.medications) return out;
+                    const rules = (window.mockData.ddiRules || [])
+                        .concat((window.mockData.graphData || {}).links || []);
+                    const r = window.DdiEngine.analyze(this.medications, rules);
+                    for (const med of this.medications) {
+                        const key = med.atc || med.name_en || med.name;
+                        const inFinding = r.findings.some(f => f.a.atc === med.atc || f.b.atc === med.atc);
+                        const uneval = r.unevaluable.some(u => u.entry.atc === med.atc
+                            || u.entry.raw === (med.name_en || med.name));
+                        out[key] = inFinding
+                            ? { label: '風險', tone: 'danger' }
+                            : (uneval ? { label: '待確認', tone: 'warn' }
+                                      : { label: '未發現', tone: 'ok' });
+                    }
+                    return out;
+                },
                 // 授權給保險端的是年齡「級距」而非精確年齡——
                 // 精確年齡配合其他欄位可用於反推身分，級距則不能。
                 myAgeBand() {
@@ -1139,6 +1171,12 @@
                 // 因此失敗時把畫面上的勾選狀態一併還原，讓畫面與實際儲存的狀態一致，
                 // 並明確告知。寧可讓病患看到「同步失敗，請重試」，也不要讓他相信一個假的已完成。
                 // ── 資料授權（稽核報告 P1-6）────────────────────────────────
+                // 取某一筆用藥的安全標示。查不到時一律回「待確認」而非「未發現」——
+                // 計算失敗與「查無交互作用」是兩回事，預設值必須落在保守的那一邊。
+                safetyOf(med) {
+                    const key = med.atc || med.name_en || med.name;
+                    return this.medSafety[key] || { label: '待確認', tone: 'warn' };
+                },
                 consentState(c) {
                     if (c.revokedAt) return '已撤回';
                     const ms = c.expiresAt && c.expiresAt.toMillis ? c.expiresAt.toMillis() : 0;

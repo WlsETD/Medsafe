@@ -154,12 +154,12 @@ window.mockData = {
       lastSync: '5 分鐘前'
     },
     medications: [
-      { atc: 'B01AA03', name: 'Warfarin', zhName: '華法林', dosage: '5mg', freq: '每日一次 (晚)', category: '抗凝血劑', status: '風險', color: 'danger', icon: 'shield-exclamation', hospital: '台大醫院' },
-      { atc: 'B01AC06', name: 'Aspirin', zhName: '阿斯匹靈', dosage: '100mg', freq: '每日一次 (早)', category: '非類固醇消炎藥', status: '風險', color: 'danger', icon: 'shield-exclamation', hospital: '長庚醫院' },
-      { atc: 'A10BA02', name: 'Metformin', zhName: '二甲雙胍', dosage: '500mg', freq: '每日兩次 (飯後)', category: '降血糖藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '榮總醫院' },
-      { atc: 'C09AA03', name: 'Lisinopril', zhName: '賴諾普利', dosage: '10mg', freq: '每日一次 (早)', category: '降血壓藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '台大醫院' },
-      { atc: 'A11CC05', name: 'Vitamin D3', zhName: '維生素 D3', dosage: '1000IU', freq: '每日一次', category: '營養補充', status: '安全', color: 'success', icon: 'check-circle', hospital: '馬偕醫院' },
-      { atc: 'A11A', name: 'Multivitamin', zhName: '綜合維他命', dosage: '1錠', freq: '每日一次', category: '營養補充', status: '安全', color: 'success', icon: 'check-circle', hospital: '台大醫院' }
+      { atc: 'B01AA03', name: 'Warfarin', zhName: '華法林', dosage: '5mg', freq: '每日一次 (晚)', category: '抗凝血劑', hospital: '台大醫院' },
+      { atc: 'B01AC06', name: 'Aspirin', zhName: '阿斯匹靈', dosage: '100mg', freq: '每日一次 (早)', category: '非類固醇消炎藥', hospital: '長庚醫院' },
+      { atc: 'A10BA02', name: 'Metformin', zhName: '二甲雙胍', dosage: '500mg', freq: '每日兩次 (飯後)', category: '降血糖藥', hospital: '榮總醫院' },
+      { atc: 'C09AA03', name: 'Lisinopril', zhName: '賴諾普利', dosage: '10mg', freq: '每日一次 (早)', category: '降血壓藥', hospital: '台大醫院' },
+      { atc: 'A11CC05', name: 'Vitamin D3', zhName: '維生素 D3', dosage: '1000IU', freq: '每日一次', category: '營養補充', hospital: '馬偕醫院' },
+      { atc: 'A11A', name: 'Multivitamin', zhName: '綜合維他命', dosage: '1錠', freq: '每日一次', category: '營養補充', hospital: '台大醫院' }
     ],
     ddiAlerts: [
       { 
@@ -194,9 +194,9 @@ window.mockData = {
       },
       stats: { activeMeds: 3, aiChecksToday: 8, lastSync: '10 分鐘前' },
       medications: [
-        { atc: 'A10BA02', name: 'Metformin', zhName: '二甲雙胍', dosage: '500mg', freq: '每日兩次 (飯後)', category: '降血糖藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '榮總醫院' },
-        { atc: 'C09AA03', name: 'Lisinopril', zhName: '賴諾普利', dosage: '10mg', freq: '每日一次 (早)', category: '降血壓藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '台大醫院' },
-        { atc: 'C10AA05', name: 'Atorvastatin', zhName: '阿托伐他汀', dosage: '20mg', freq: '睡前一次', category: '降血脂藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '馬偕醫院' }
+        { atc: 'A10BA02', name: 'Metformin', zhName: '二甲雙胍', dosage: '500mg', freq: '每日兩次 (飯後)', category: '降血糖藥', hospital: '榮總醫院' },
+        { atc: 'C09AA03', name: 'Lisinopril', zhName: '賴諾普利', dosage: '10mg', freq: '每日一次 (早)', category: '降血壓藥', hospital: '台大醫院' },
+        { atc: 'C10AA05', name: 'Atorvastatin', zhName: '阿托伐他汀', dosage: '20mg', freq: '睡前一次', category: '降血脂藥', hospital: '馬偕醫院' }
       ],
       ddiAlerts: [],
       aiInsights: [
@@ -219,9 +219,9 @@ window.mockData = {
       },
       stats: { activeMeds: 3, aiChecksToday: 10, lastSync: '25 分鐘前' },
       medications: [
-        { atc: 'A10BA02', name: 'Metformin', zhName: '二甲雙胍', dosage: '500mg', freq: '每日兩次 (飯後)', category: '降血糖藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '榮總醫院' },
-        { atc: 'C09AA03', name: 'Lisinopril', zhName: '賴諾普利', dosage: '10mg', freq: '每日一次 (早)', category: '降血壓藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '台大醫院' },
-        { atc: 'C10AA05', name: 'Atorvastatin', zhName: '阿托伐他汀', dosage: '20mg', freq: '睡前一次', category: '降血脂藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '馬偕醫院' }
+        { atc: 'A10BA02', name: 'Metformin', zhName: '二甲雙胍', dosage: '500mg', freq: '每日兩次 (飯後)', category: '降血糖藥', hospital: '榮總醫院' },
+        { atc: 'C09AA03', name: 'Lisinopril', zhName: '賴諾普利', dosage: '10mg', freq: '每日一次 (早)', category: '降血壓藥', hospital: '台大醫院' },
+        { atc: 'C10AA05', name: 'Atorvastatin', zhName: '阿托伐他汀', dosage: '20mg', freq: '睡前一次', category: '降血脂藥', hospital: '馬偕醫院' }
       ],
       ddiAlerts: [],
       aiInsights: [
@@ -244,9 +244,9 @@ window.mockData = {
       },
       stats: { activeMeds: 3, aiChecksToday: 9, lastSync: '18 分鐘前' },
       medications: [
-        { atc: 'A10BA02', name: 'Metformin', zhName: '二甲雙胍', dosage: '500mg', freq: '每日兩次 (飯後)', category: '降血糖藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '榮總醫院' },
-        { atc: 'C09AA03', name: 'Lisinopril', zhName: '賴諾普利', dosage: '10mg', freq: '每日一次 (早)', category: '降血壓藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '台大醫院' },
-        { atc: 'C10AA05', name: 'Atorvastatin', zhName: '阿托伐他汀', dosage: '20mg', freq: '睡前一次', category: '降血脂藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '馬偕醫院' }
+        { atc: 'A10BA02', name: 'Metformin', zhName: '二甲雙胍', dosage: '500mg', freq: '每日兩次 (飯後)', category: '降血糖藥', hospital: '榮總醫院' },
+        { atc: 'C09AA03', name: 'Lisinopril', zhName: '賴諾普利', dosage: '10mg', freq: '每日一次 (早)', category: '降血壓藥', hospital: '台大醫院' },
+        { atc: 'C10AA05', name: 'Atorvastatin', zhName: '阿托伐他汀', dosage: '20mg', freq: '睡前一次', category: '降血脂藥', hospital: '馬偕醫院' }
       ],
       ddiAlerts: [],
       aiInsights: [
@@ -269,10 +269,10 @@ window.mockData = {
       },
       stats: { activeMeds: 4, aiChecksToday: 14, lastSync: '3 分鐘前' },
       medications: [
-        { atc: 'B01AA03', name: 'Warfarin', zhName: '華法林', dosage: '5mg', freq: '每日一次 (晚)', category: '抗凝血劑', status: '風險', color: 'danger', icon: 'shield-exclamation', hospital: '台大醫院' },
-        { atc: 'B01AC06', name: 'Aspirin', zhName: '阿斯匹靈', dosage: '100mg', freq: '每日一次 (早)', category: '非類固醇消炎藥', status: '風險', color: 'danger', icon: 'shield-exclamation', hospital: '長庚醫院' },
-        { atc: 'C01BD01', name: 'Amiodarone', zhName: '胺碘酮', dosage: '200mg', freq: '每日一次', category: '抗心律不整藥', status: '風險', color: 'danger', icon: 'shield-exclamation', hospital: '成大醫院' },
-        { atc: 'A10BA02', name: 'Metformin', zhName: '二甲雙胍', dosage: '500mg', freq: '每日兩次 (飯後)', category: '降血糖藥', status: '安全', color: 'success', icon: 'check-circle', hospital: '榮總醫院' }
+        { atc: 'B01AA03', name: 'Warfarin', zhName: '華法林', dosage: '5mg', freq: '每日一次 (晚)', category: '抗凝血劑', hospital: '台大醫院' },
+        { atc: 'B01AC06', name: 'Aspirin', zhName: '阿斯匹靈', dosage: '100mg', freq: '每日一次 (早)', category: '非類固醇消炎藥', hospital: '長庚醫院' },
+        { atc: 'C01BD01', name: 'Amiodarone', zhName: '胺碘酮', dosage: '200mg', freq: '每日一次', category: '抗心律不整藥', hospital: '成大醫院' },
+        { atc: 'A10BA02', name: 'Metformin', zhName: '二甲雙胍', dosage: '500mg', freq: '每日兩次 (飯後)', category: '降血糖藥', hospital: '榮總醫院' }
       ],
       ddiAlerts: [
         {
