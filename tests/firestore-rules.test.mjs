@@ -17,6 +17,10 @@ await env.withSecurityRulesDisabled(async ctx => {
   await setDoc(doc(db, 'user_roles/uidDoc'),  { username: 'doctor', name: '李醫師', role: 'doctor', status: 'active' });
   await setDoc(doc(db, 'user_roles/uidIns'),  { username: 'insurance01', name: '核保', role: 'insurance', status: 'active' });
   await setDoc(doc(db, 'user_roles/uidAtk'),  { username: 'atk', name: 'x', role: 'patient', status: 'active' });
+  // 縱深防禦測試用：一份「uidForged 自稱 username 為 P001」的偽造身分索引。
+  // 假設它已經以某種方式被寫進資料庫（舊版規則時期的殘留、或日後某條規則出現缺口），
+  // 用來驗證 isOwnUsername() 的第二道 token.email 檢查是否真的能獨立擋下。
+  await setDoc(doc(db, 'user_roles/uidForged'), { username: 'P001', name: '冒充者', role: 'patient', status: 'active' });
   await setDoc(doc(db, 'patient_data/P001'), {
     profile: { id: 'P001', name: '張小泉' },
     stats: { safetyScore: null },
@@ -32,6 +36,14 @@ const P001 = () => ctxFor('uidP001', 'p001@medsafe.local').firestore();
 const ATK  = () => ctxFor('uidAtk',  'atk@medsafe.local').firestore();
 const DOC  = () => ctxFor('uidDoc',  'doctor@medsafe.local').firestore();
 const INS  = () => ctxFor('uidIns',  'insurance01@medsafe.local').firestore();
+// 尚未建立 user_roles 的全新註冊者。每個測試各用一個 uid——
+// 一旦某個測試在該 uid 上建檔成功，後續對同一份文件的寫入就會變成 update
+// 而非 create，測到的將是另一條規則。
+const NEW1 = () => ctxFor('uidNew1', 'newbie1@medsafe.local').firestore();
+const NEW2 = () => ctxFor('uidNew2', 'newbie2@medsafe.local').firestore();
+const NEW3 = () => ctxFor('uidNew3', 'newbie3@medsafe.local').firestore();
+const NEW4 = () => ctxFor('uidNew4', 'newbie4@medsafe.local').firestore();
+const FORGED = () => ctxFor('uidForged', 'forged@medsafe.local').firestore();
 
 const results = [];
 const run = async (name, fn, expect) => {
@@ -76,6 +88,40 @@ await run('攻擊者 create 自帶 ddiAlerts 的文件',
   }), 'deny');
 await run('攻擊者 create 到別人的 username',
   () => setDoc(doc(ATK(), 'patient_data/P002'), { profile: { id: 'P002' } }), 'deny');
+
+
+// --- P0-1 核心：user_roles 的身分宣告 ---
+// 稽核報告 P0-1 的攻擊腳本第一步就在這裡：註冊任一帳號後，把自己的 username
+// 宣告成受害者的，讓後續每一條 isOwnUsername() 都誤認自己是對方。
+// patient_data 的規則測得再密都沒有意義——攻擊者是以「合法本人」的身分走進來的。
+// 這一組測試是整份報告驗收標準指名要跑的那個腳本。
+await run('攻擊者註冊時宣告他人的 username（P0-1 攻擊腳本第 2 步）',
+  () => setDoc(doc(NEW1(), 'user_roles/uidNew1'),
+    { username: 'P001', name: 'x', role: 'patient', status: 'active' }), 'deny');
+
+await run('攻擊者自助註冊為 admin（垂直提權）',
+  () => setDoc(doc(NEW2(), 'user_roles/uidNew2'),
+    { username: 'newbie2', name: 'x', role: 'admin', status: 'active' }), 'deny');
+
+await run('攻擊者寫入他人 uid 的身分索引',
+  () => setDoc(doc(NEW3(), 'user_roles/uidDoc'),
+    { username: 'newbie3', name: 'x', role: 'patient', status: 'active' }), 'deny');
+
+await run('攻擊者以 users 文件佔用他人 username',
+  () => setDoc(doc(NEW1(), 'users/P001'),
+    { uid: 'uidNew1', name: 'x', role: 'patient', status: 'active' }), 'deny');
+
+// 縱深防禦：就算偽造的身分索引真的存在於資料庫中，isOwnUsername() 仍要求
+// token.email 對得上 username——Auth 簽發的 email 前端改不了，所以病歷依然讀不到。
+// 這條測的是「單一防線失守後系統是否仍然安全」，而不是「防線有沒有失守」。
+await run('偽造的 user_roles 仍無法讀取他人病歷（token.email 第二道防線）',
+  () => getDoc(doc(FORGED(), 'patient_data/P001')), 'deny');
+
+// 合法路徑不可被誤擋：username 與 Auth email 一致的正常自助註冊必須成功，
+// 否則上面那些 deny 只是因為規則把所有人都擋光了。
+await run('合法自助註冊（username 與 Auth email 一致）',
+  () => setDoc(doc(NEW4(), 'user_roles/uidNew4'),
+    { username: 'newbie4', name: '新使用者', role: 'patient', status: 'active' }), 'allow');
 
 // 第 18 條：`allow update` 必須保有 resource != null 守衛。
 //

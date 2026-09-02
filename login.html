@@ -201,6 +201,14 @@
                         <input type="text" v-model="regName" name="name" autocomplete="name" placeholder="請輸入真實姓名" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-2.5 px-5 outline-none transition-all font-medium">
                     </div>
                     <div>
+                        <label class="block text-sm font-bold text-title mb-1">身分證字號</label>
+                        <input type="text" v-model="regNationalId" name="national-id" autocomplete="off" data-lpignore="true" spellcheck="false" maxlength="10" placeholder="例如 A123456789" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-2.5 px-5 outline-none transition-all font-medium uppercase">
+                        <p class="text-[11px] font-bold text-content/70 mt-1 leading-relaxed">
+                            僅在您的裝置上檢核格式與檢查碼，<span class="text-primary">不會被儲存或傳送至伺服器</span>。
+                            本欄位無法確認號碼是否屬於本人，完整實名核驗為規劃中項目。
+                        </p>
+                    </div>
+                    <div>
                         <label class="block text-sm font-bold text-title mb-1">帳號</label>
                         <input type="text" v-model="regUsername" name="new-username" autocomplete="username" placeholder="英數字、底線，3-20 字元" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-2.5 px-5 outline-none transition-all font-medium">
                     </div>
@@ -305,6 +313,7 @@
     <script src="js/db-service.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/mockData.js"></script>
+    <script src="js/utils.js"></script>
     <script>
         const { createApp } = Vue;
         createApp({
@@ -313,7 +322,7 @@
                     mode: 'login',
                     slideDir: 'slide-left',
                     username: '', password: '', error: '', loading: false,
-                    regName: '', regUsername: '', regPassword: '', regPasswordConfirm: '', agreeTerms: false, showTermsModal: false,
+                    regName: '', regNationalId: '', regUsername: '', regPassword: '', regPasswordConfirm: '', agreeTerms: false, showTermsModal: false,
                     // 全 4 個角色都顯示以完整展示系統功能。
                     // doctor、patient01、insurance01：展示帳號，一鍵登入，供評審快速走完跨端流程。
                     // admin：唯一具備停用帳號、改動系統設定、維護模式等破壞性權限的角色，
@@ -335,6 +344,8 @@
             methods: {
                 switchMode(m) {
                     if (m === this.mode) return;
+                    // 離開註冊表單即清除身分證字號，不讓它在使用者放棄後仍留在記憶體與畫面上
+                    if (m !== 'register') this.regNationalId = '';
                     this.slideDir = m === 'register' ? 'slide-left' : 'slide-right';
                     this.mode = m;
                     this.error = '';
@@ -405,6 +416,19 @@
                     if (password.length < 6) { this.error = '密碼至少需要 6 碼'; return; }
                     if (password !== this.regPasswordConfirm) { this.error = '兩次輸入的密碼不一致'; return; }
                     if (!this.agreeTerms) { this.error = '請先閱讀並勾選同意使用者條款'; return; }
+
+                    // 身分證字號只在此處被讀取與檢核，之後不會傳入 registerPatient()、
+                    // 不會寫入 Firestore、不會出現在任何請求中。刻意不做「是否已註冊過」的
+                    // 查重：查重需要把號碼或其雜湊存下來，而純前端的雜湊金鑰必然公開，
+                    // 5,200 萬組合法號碼在單執行緒下約 69 秒即可反查完畢，等同明文保存。
+                    // 詳見 js/utils.js 的說明。
+                    const idCheck = window.validateNationalId(this.regNationalId);
+                    if (!idCheck.valid) {
+                        this.error = idCheck.reason === 'checksum'
+                            ? '身分證字號檢查碼不正確，請確認是否輸入錯誤'
+                            : '請輸入正確格式的身分證字號（1 個英文字母 + 9 碼數字）';
+                        return;
+                    }
 
                     this.loading = true;
                     try {
