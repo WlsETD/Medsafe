@@ -76,14 +76,14 @@ window.mockData = {
   admin: {
     maintenanceMode: false,
     stats: {
-      totalUsers: 4500,
-      totalHospitals: 24,
-      systemUptime: '99.9%',
-      securityAlerts: 0,
-      totalDdiRules: 12450,
-      aiAnalyticsCount: 8920,
-      todayApiCalls: 15620,
-      dataStorageAmount: '2.4 TB'
+      // 以下統計原本是 4500 使用者／24 家醫院／99.9% 稼動率／12450 條規則／
+      // 8920 次分析／15620 次 API／2.4 TB——全部是寫死的常數，且沒有任何資料源。
+      // 其中「12450 條 DDI 規則」最誇張：系統實際只有 5 條內建規則，
+      // 把核心資產誇大了 2500 倍。
+      //
+      // 管理端的四張卡已全部改為實算（規則數、帳號數、目錄品項、稽核事件數），
+      // 這些欄位不再被任何頁面讀取，保留空物件以免既有 Firestore 文件結構出錯。
+      securityAlerts: 0
     },
     aiTrendData: [450, 590, 820, 710, 950, 1100, 1280],
     ddiRiskLevels: [120, 85, 45, 10],

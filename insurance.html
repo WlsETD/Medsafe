@@ -1228,23 +1228,19 @@
                 },
                 initCharts() {
                     this.destroyCharts();
-                    const hEl = document.getElementById('heroAreaChart'); 
+                    // 首屏原本有一條「趨勢預測」曲線，資料是寫死的 [25,22,18,15,12,10,8]——
+                    // 一條必然下降、看起來很專業的線，而系統從未保存任何歷史資料，
+                    // 也沒有任何預測模型。它連「展示數據」的標示都沒有。
+                    //
+                    // 正確做法是不畫，並說明為什麼不畫。一張假的趨勢圖比沒有圖更糟：
+                    // 沒有圖只是少了一個功能，假的圖是在陳述一件不存在的事實。
+                    const hEl = document.getElementById('heroAreaChart');
                     if (hEl) {
-                        this._charts.hero = echarts.init(hEl);
-                        this._charts.hero.setOption({
-                            xAxis: { type: 'category', show: false, data: ['1','2','3','4','5','6','7'] },
-                            yAxis: { type: 'value', show: false },
-                            series: [{
-                                name: '趨勢預測',
-                                data: [25,22,18,15,12,10,8],
-                                type: 'line',
-                                smooth: true,
-                                areaStyle: { color: 'rgba(29,211,176,0.1)' },
-                                itemStyle: { color: '#1DD3B0' },
-                                symbol: 'none'
-                            }],
-                            grid: { left: 0, right: 0, top: 0, bottom: 0 }
-                        });
+                        hEl.innerHTML = '<div class="h-full flex flex-col items-center justify-center text-center px-6">'
+                            + '<p class="text-[11px] font-black text-white/50 uppercase tracking-widest">尚未累積歷史資料</p>'
+                            + '<p class="text-[10px] font-bold text-white/30 mt-2 leading-relaxed max-w-md">'
+                            + '本系統目前不保存每日核保指標的歷史紀錄，故無趨勢可呈現。'
+                            + '待指標留存機制上線後，此處將顯示實際的歷史變化。</p></div>';
                     }
                     const tEl = document.getElementById('claimsTrendChart');
                     if (tEl) {

@@ -17,7 +17,8 @@
 // v10：P0-8 首頁摘要／AI 分析／回診日期改由實際資料計算
 // v11：修正藥品安全標示在缺少 atc 欄位的正式資料上失效
 // v12：Vue 改用生產版建置；核保端首屏數字改為實際計算
-const CACHE_VERSION = 'medsafe-static-v12';
+// v13：管理端 KPI 與核保端趨勢圖改為實算／誠實空狀態
+const CACHE_VERSION = 'medsafe-static-v13';
 
 const PRECACHE_URLS = [
   './index.html',
