@@ -548,8 +548,9 @@
                                     <div v-if="rxResolved" class="text-[10px] font-bold text-primary">
                                         ✓ 已對應 {{ rxResolved.name_zh }}（{{ rxResolved.atc }}），會納入交互作用比對
                                     </div>
-                                    <div v-else class="text-[10px] font-bold text-amber-600 leading-relaxed">
-                                        ⚠️ 此藥名不在系統目錄中。仍可開立，但<strong>不會參與交互作用比對</strong>——檢測結果的「未發現」不涵蓋這個藥。
+                                    <div v-else class="text-[10px] font-bold text-danger leading-relaxed">
+                                        ⛔ 此藥名不在系統目錄中，<strong>無法開立</strong>。系統無法取得其 ATC 身分，因此不能將它納入交互作用比對——若允許開立，這筆用藥會永遠不被檢查，而後續每次檢測仍會回報「未發現」。<br>
+                                        請從上方選單挑選，或請管理員先將此藥加入藥物目錄。
                                     </div>
                                 </div>
                             </div>
@@ -565,8 +566,12 @@
 
                         <div class="rounded-3xl p-6 transition-all duration-500 border-2" :class="aiCheckStatus === 'idle' ? 'bg-slate-50 border-slate-100' : (aiCheckStatus === 'checking' ? 'bg-primary/5 border-primary/10' : (aiCheckStatus === 'risk' ? 'bg-danger/5 border-danger/20' : (aiCheckStatus === 'unevaluable' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200')))">
                             <div v-if="aiCheckStatus === 'idle'" class="flex flex-col items-center gap-3">
-                                <button @click="startAiCheck" :disabled="!newRx.drugName.trim()" class="px-10 py-3 bg-primary text-white font-black rounded-xl hover:scale-105 transition-all text-xs shadow-lg shadow-primary/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100">啟動 AI 安全檢測</button>
-                                <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">{{ newRx.drugName.trim() ? '比對跨院 FHIR 處方紀錄' : '請先輸入藥品名稱' }}</p>
+                                <!-- 目錄外的藥不得開立：本系統只保有目錄內藥物的 ATC 身分，
+                                     目錄外的藥無法參與交互作用比對。允許開立等於在病歷裡
+                                     放進一筆系統永遠檢查不到的用藥，而後續每一次檢測
+                                     都會在不涵蓋它的情況下回報「未發現」。 -->
+                                <button @click="startAiCheck" :disabled="!newRx.drugName.trim() || !rxResolved" class="px-10 py-3 bg-primary text-white font-black rounded-xl hover:scale-105 transition-all text-xs shadow-lg shadow-primary/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100">啟動 AI 安全檢測</button>
+                                <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">{{ !newRx.drugName.trim() ? '請先輸入藥品名稱' : (rxResolved ? '比對跨院 FHIR 處方紀錄' : '此藥不在目錄中，無法開立') }}</p>
                             </div>
                             <div v-else-if="aiCheckStatus === 'checking'" class="flex flex-col items-center gap-3 py-4">
                                 <div class="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
@@ -1520,6 +1525,23 @@
 
                 async doSubmitPrescription() {
                     if (this.submitting) return;
+
+                    // 【目錄外的藥不得開立】
+                    // 按鈕的 disabled 只是介面提示，不是控制點——檢測完成後醫師仍可回頭
+                    // 改動藥名，且任何人都能在 DevTools 直接呼叫本函式。因此真正的守門
+                    // 必須放在這裡，與「前端流程控制不等於安全控制」是同一個道理（P1-1）。
+                    //
+                    // 為什麼是硬擋而不是警告後放行：系統只認得目錄內藥物的 ATC 身分。
+                    // 放進一筆解析不到的用藥，等於在病歷裡留下一個永遠不會被檢查的品項，
+                    // 而之後每一次交互作用檢測都會在不涵蓋它的情況下回報結果。
+                    // 那正是 P0-3 反覆修過的形狀：把「沒查」呈現成「沒事」。
+                    if (!this.rxResolved) {
+                        this.submitError = '「' + (this.newRx.drugName || '').trim() + '」不在系統藥物目錄中，無法開立。'
+                            + '系統無法取得其 ATC 身分，也就無法將它納入交互作用比對；'
+                            + '若允許開立，這筆用藥將永遠不會被檢查。請改從選單挑選，或請管理員先將此藥加入目錄。';
+                        return;
+                    }
+
                     this.submitting = true;
                     this.submitError = '';
                     const pid = this.selectedPatient.id;
@@ -1539,17 +1561,20 @@
                         }
                     }
 
-                    // 藥物身分。解析不到時明確為 null——代表「本系統不認得這個藥」，
-                    // 而不是當作沒有交互作用（js/drug-catalog.js、P1-12）。
+                    // 走到這裡時解析必然成功（上方的守門已擋下目錄外的藥），
+                    // 因此 atc 一定存在，這筆用藥必然能參與往後的交互作用比對。
                     //
                     // id 與 atc 是兩件事：id 是「這一列是哪一列」（渲染用，必須唯一），
                     // atc 是「這是哪一種藥」（比對用，可能與病患既有用藥相同）。
-                    const rxDrug = window.DrugCatalog ? window.DrugCatalog.resolve(this.newRx.drugName) : null;
+                    const rxDrug = this.rxResolved;
                     const newMed = {
                         id: 'rx-' + Date.now(),
-                        atc: rxDrug ? rxDrug.atc : null,
-                        name_en: this.newRx.drugName,
-                        name_zh: this.newRx.drugName,
+                        atc: rxDrug.atc,
+                        // 存目錄的正規名稱而非醫師輸入的字串。醫師可能輸入「可邁丁」或
+                        // 「warfarin sodium」，兩者指的是同一種藥；病歷與跨院顯示若沿用
+                        // 原始輸入，同一種成分會在不同院所呈現成不同的藥名。
+                        name_en: rxDrug.name_en,
+                        name_zh: rxDrug.name_zh,
                         hospital: '本院 (醫師開立)',
                         conflict: isOverride,
                         dosage: this.newRx.dosage,
