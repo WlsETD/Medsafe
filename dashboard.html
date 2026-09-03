@@ -137,7 +137,15 @@
             </div>
 
             <div class="flex-1 overflow-y-auto py-4">
-                <div class="px-6 mb-4 hidden lg:block"><h4 class="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">跨院病患即時列表</h4></div>
+                <div class="px-6 mb-4 hidden lg:block">
+                    <h4 class="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">跨院病患即時列表</h4>
+                    <!-- 遷移期的誠實揭露：清單目前混合兩種來源（掛號／舊制指派欄位）。
+                         不標示的話，看起來會像新制已經全面生效。 -->
+                    <p v-if="legacyPatientCount" class="text-[9px] font-bold text-amber-400/80 mt-1.5 leading-relaxed">
+                        其中 {{ legacyPatientCount }} 位尚無掛號紀錄，係依舊制指派欄位列入
+                    </p>
+                    <p v-if="patientLoadWarning" class="text-[9px] font-bold text-danger mt-1.5 leading-relaxed">{{ patientLoadWarning }}</p>
+                </div>
                 <div v-for="p in recentPatients" :key="p.id" 
                      @click="switchToPatient(p); showMobileMenu = false"
                      :class="['px-6 py-4 flex items-center gap-4 cursor-pointer patient-card border-r-4 border-transparent', selectedPatient && selectedPatient.id === p.id ? 'sidebar-active' : 'text-slate-400']">
@@ -150,7 +158,10 @@
                         <!-- 顯示的是病歷號，不是身分證字號。診間畫面上不放跨系統的
                              直接識別符——臨床上用不到，外洩代價卻極高。
                              需要區分同名病患時應加出生年月日。 -->
-                        <div class="text-[10px] font-medium opacity-50 uppercase tracking-wider">{{ p.id }}</div>
+                        <div class="text-[10px] font-medium opacity-50 uppercase tracking-wider">
+                            {{ p.id }}
+                            <span v-if="p.source === 'legacy'" class="ml-1 normal-case opacity-70">· 未掛號</span>
+                        </div>
                         <!-- 今日服藥回報（病患自述）。沒設提醒的病患不顯示，
                              否則畫面上會出現一排需要逐一排除的灰點。 -->
                         <div v-if="adherenceTodayFor(p)" class="flex items-center gap-1.5 mt-1">
@@ -482,8 +493,8 @@
                                         <p class="text-xs font-bold">無偵測到衝突</p>
                                     </div>
                                     <div v-else class="space-y-4">
-                                        <div v-for="cf in graphConflicts" :key="cf.source + cf.target" class="p-4 rounded-2xl bg-danger/10 border border-danger/20 animate-fade-in group">
-                                            <div class="text-[10px] font-black text-white mb-1">{{ cf.source }} × {{ cf.target }}</div>
+                                        <div v-for="(cf, ci) in graphConflicts" :key="'gc' + ci" class="p-4 rounded-2xl bg-danger/10 border border-danger/20 animate-fade-in group">
+                                            <div class="text-[10px] font-black text-white mb-1">{{ drugLabel(cf.source) }} × {{ drugLabel(cf.target) }}</div>
                                             <p v-if="cf.effect" class="text-[9px] text-slate-300 leading-tight mb-2">{{ cf.effect }}</p>
                                             <div v-if="cf.recommendation" class="text-[8px] font-black text-warning italic">處理建議：{{ cf.recommendation }}</div>
                                             <div v-else-if="cf.detailLevel === 'severity-only'" class="text-[8px] font-black text-warning italic">僅有嚴重度分級，機轉與處置請另行查證</div>
@@ -871,6 +882,10 @@
                     // 明白告知那些藥無法比對交互作用，而不是禁止輸入。
                     drugPickerOpen: false,
                     adherenceOpenDay: null,
+                    // 遷移期狀態：尚未有掛號紀錄、僅靠舊制 assignedDoctor 進到清單的病患數，
+                    // 以及病患清單載入不完整時的警告
+                    legacyPatientCount: 0,
+                    patientLoadWarning: '',
                     aiCheckStatus: 'idle',
                     ddiRuleCount: 0,
                     ddiRuleSource: 'local',
@@ -1201,9 +1216,32 @@
                     console.error('Firestore load error:', e);
                 }
                 try {
-                    // 查詢真正指派給目前登入醫師的病患，取代寫死的 recentPatients 清單，
-                    // 讓 demo 病患與病患端自助註冊的帳號走同一套資料
-                    const realPatients = await DbService.getPatientsByDoctor(this.user.username);
+                    // ── 病患清單的兩個來源（遷移期）────────────────────────────
+                    //
+                    // 新制：掛號（appointments）。掛號這個動作本身就是授權事件，
+                    //       權限跟著就診事實走，會診／代班／轉診都能自然表達。
+                    // 舊制：patient_data.assignedDoctor 靜態欄位。既有病患只有這個。
+                    //
+                    // 遷移期兩者並存，且**必須標示來源**。直接切成只讀掛號，
+                    // 既有病患會從醫師清單上整批消失；而靜默 fallback 到舊制，
+                    // 則會讓人以為新制已經生效——兩者都是把系統狀態說錯。
+                    // 標示出來，醫師才知道哪些病患還沒有正式的就診紀錄。
+                    const apptResult = await DbService.getPatientsByAppointment(this.user.username);
+                    // 有掛號卻查無病歷：資料不一致，不可靜默略過——
+                    // 那會讓清單少一位病患，而少了誰完全看不出來
+                    if (apptResult.failed.length) {
+                        console.error('掛號指向的病歷讀取失敗：', apptResult.failed);
+                        this.patientLoadWarning = `有 ${apptResult.failed.length} 位掛號病患的病歷無法讀取，清單並不完整。`;
+                    }
+                    const byAppt = apptResult.patients.map(p => ({ ...p, _source: 'appointment' }));
+                    const apptNames = byAppt.map(p => p.username);
+
+                    const legacy = (await DbService.getPatientsByDoctor(this.user.username))
+                        .filter(p => apptNames.indexOf(p.username) === -1)
+                        .map(p => ({ ...p, _source: 'legacy' }));
+                    this.legacyPatientCount = legacy.length;
+
+                    const realPatients = byAppt.concat(legacy);
                     if (realPatients && realPatients.length > 0) {
                         // 病患狀態改由交互作用引擎即時計算（稽核報告 P0-3）。
                         //
@@ -1238,6 +1276,8 @@
                                 // 【必須帶上實際用藥】交互作用檢測與關係圖都以此為輸入。
                                 // 修復前這裡把 medications 丟掉了，下游只好去讀寫死的情境藥單。
                                 medications: p.medications || [],
+                                // 這位病患是怎麼進到清單裡的：掛號（新制）或 assignedDoctor（舊制）
+                                source: p._source,
                                 // 服藥回報（病患自述）。同樣必須在這裡帶上——
                                 // 這是唯一一次讀到完整病歷的地方，漏掉就只能再查一次
                                 reminders: p.reminders || [],
@@ -1843,6 +1883,15 @@
                     this.loadConversations();
                     this.$nextTick(() => this.scrollDoctorChat());
                 },
+                // D3 forceLink 會就地將 link 的 source/target 從字串 ID 替換成完整的節點物件。
+                // 雖然 graphConflicts 已使用獨立物件（不被 D3 覆寫），但若 Service Worker
+                // 快取了舊版 JS 而載入新版 HTML，source/target 仍可能是節點物件。
+                // 此方法讓模板在兩種情況下都能正確顯示藥名。
+                drugLabel(v) {
+                    if (typeof v === 'string') return v;
+                    if (v && typeof v === 'object') return v.name_zh || v.name_en || v.label || v.id || '';
+                    return String(v);
+                },
                 triggerToast(t, m) { this.toastTitle = t; this.toastMessage = m; this.showToast = true; setTimeout(() => this.showToast = false, 3000); },
                 toggleFullScreenGraph() {
                     this.showFullScreenGraph = !this.showFullScreenGraph;
@@ -1881,18 +1930,29 @@
                     });
 
                     const idOf = (entry, idx) => entry.atc || entry.raw || ("unknown-" + idx);
+                    const labelOf = (entry) => entry.name_zh || entry.name_en || entry.raw;
                     // 未分級的也要畫進圖裡。圖與下方警示清單若各說各話，
                     // 醫師會看到一組藥在清單中被提及、在圖上卻是安全的白線——
                     // 那比兩邊都不提更容易誤導。它們的標籤已是「未分級」，分得出來。
-                    const conflicts = result.findings.concat(result.ungraded).map(f => ({
-                        source: idOf(f.a, 0), target: idOf(f.b, 0),
+                    const rawConflicts = result.findings.concat(result.ungraded);
+
+                    // graphConflicts 供 Vue 模板顯示，必須與傳給 D3 的 links 使用不同物件。
+                    // D3 forceLink 會就地（in-place）將 link.source / link.target 從字串 ID
+                    // 替換為完整的節點物件參照；若 graphConflicts 與 links 共用同一批物件，
+                    // 模板的 {{ cf.source }} 就會渲染出整包 JSON 而非藥名。
+                    this.graphConflicts = rawConflicts.map(f => ({
+                        source: labelOf(f.a), target: labelOf(f.b),
                         conflict: true, severity: f.severity, severityZh: f.severityZh,
                         effect: f.effect, recommendation: f.recommendation,
-                        // 一併帶上，否則關係圖旁的說明會對 DDInter 的規則
-                        // 顯示「處理建議：」後面接一片空白（同 findings 清單的問題）
                         detailLevel: f.detailLevel
                     }));
-                    this.graphConflicts = conflicts;
+
+                    // 傳給 D3 的 links 各自獨立，source/target 為節點 ID（ATC 碼），
+                    // 被 D3 mutate 也不影響 graphConflicts。
+                    const conflicts = rawConflicts.map(f => ({
+                        source: idOf(f.a, 0), target: idOf(f.b, 0),
+                        conflict: true, severity: f.severity, severityZh: f.severityZh
+                    }));
                     // 節點的紅色與否，由它是否出現在任何一條衝突連線中決定——
                     // 而不是由資料自帶的旗標決定。圖上的顏色因此必然與引擎的結論一致。
                     for (const nd of nodes) {

@@ -421,6 +421,69 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ── 掛號：醫病關係的來源 ────────────────────────────────────────────
+    //
+    // 【為什麼要有這個集合】
+    // 原本病患由 patient_data.assignedDoctor 一個靜態欄位決定歸屬，
+    // 而自助註冊者一律預設為展示帳號 doctor。正式環境不可如此。
+    //
+    // 兩個曾被考慮而否決的替代方案：
+    //   一、管理員逐一指派 —— 每筆註冊都要人工介入，不具擴充性。保留為例外後路。
+    //   二、醫師搜尋全院病患自行指派 —— 這需要給每位醫師一份可查詢的全院病患索引，
+    //       正是「醫護違規查詢名人病歷」的技術前提。該方案不是有 S-1 的風險，
+    //       而是把 S-1 制度化成正式功能。
+    //
+    // 採用的方案是：掛號這個動作本身就是授權事件。權限跟著就診事實走，
+    // 而非跟著一個靜態欄位——會診是再建一筆、代班是換 participant、
+    // 轉診是建立指向接手醫師的新筆。這正是先前判定
+    //「assignedDoctor 等值比對會鎖死代班與會診醫師」的解法。
+    //
+    // 【誠實的限制】規則無法驗證 doctor 欄位確實是一位醫師。
+    // user_roles 以 uid 為鍵，規則無法由 username 反查角色。
+    // 病患理論上可掛號給一個不存在的 username——該筆掛號不會出現在任何人的清單中，
+    // 屬於無害的髒資料。要真正驗證需另立 username → role 的索引集合。
+    match /appointments/{aid} {
+      // 病患讀自己的掛號；醫師只讀得到指向自己的那些。
+      // 醫師端的 list 查詢必須自帶 where(doctor == 自己) 才會通過。
+      allow read: if isActive() && (
+        isAdmin()
+        || (resource != null && isOwnUsername(resource.data.patient))
+        || (resource != null && isDoctor() && resource.data.doctor == profile().username)
+      );
+
+      // 掛號：只能替自己掛。status 與 createdAt 不可由呼叫端自訂——
+      // 否則病患可直接建立一筆 status 為「已完成」的就診紀錄，
+      // 那是在病歷中捏造一次不曾發生的診療。
+      allow create: if isActive() && (
+        isAdmin()
+        || (isOwnUsername(request.resource.data.patient)
+            && request.resource.data.doctor is string
+            && request.resource.data.doctor.size() > 0
+            && request.resource.data.doctor.size() <= 64
+            && request.resource.data.status == 'booked'
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.scheduledAt is timestamp
+            && request.resource.data.keys().hasOnly(
+                 ['patient', 'patientName', 'doctor', 'doctorName', 'department',
+                  'scheduledAt', 'status', 'createdAt', 'note'])
+           )
+      );
+
+      // 取消或更新狀態：病患本人、該筆的醫師，或 admin。
+      // 只能動狀態相關欄位——不可事後改掛給別的醫師，
+      // 那等於把一次已發生的就診轉記到他人名下。
+      allow update: if isActive() && resource != null
+        && (isAdmin()
+            || isOwnUsername(resource.data.patient)
+            || (isDoctor() && resource.data.doctor == profile().username))
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'updatedAt', 'note']);
+
+      // 就診紀錄不可刪除——與 audit_logs、conversations 同樣的理由：
+      // 能被單方面抹除的紀錄，在爭議發生時沒有證據價值。
+      allow delete: if false;
+    }
+
     match /insurance_data/{doc} {
       allow read, write: if isAdmin() || isInsurance();
     }

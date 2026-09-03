@@ -140,6 +140,12 @@
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
                         <span>健康首頁</span>
                     </button>
+                    <button @click="activeView = 'appointments'; showMobileMenu = false"
+                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all text-left', activeView === 'appointments' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        <span class="flex-1">我的掛號</span>
+                        <span v-if="upcomingAppointments.length" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary text-white shrink-0">{{ upcomingAppointments.length }}</span>
+                    </button>
                     <button @click="activeView = 'consent'; showMobileMenu = false"
                             :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all text-left', activeView === 'consent' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
@@ -433,6 +439,81 @@
                     </div>
                 </div>
             </section>
+            <!-- ── 我的掛號 ─────────────────────────────────────────────────
+                 掛號建立醫病關係。原本自助註冊的病患一律預設指派給展示帳號，
+                 正式環境不可如此；改為由病患掛號產生，權限跟著就診事實走。 -->
+            <section v-show="activeView === 'appointments'" class="animate-fade-in text-left">
+                <div class="flex items-center gap-3 mb-6">
+                    <span class="w-1.5 h-7 bg-primary rounded-full"></span>
+                    <h2 class="text-2xl font-black text-title tracking-tight">我的掛號</h2>
+                </div>
+
+                <div class="bg-white rounded-[40px] p-8 sm:p-10 shadow-sm space-y-6">
+                    <div class="bg-bgMain rounded-[28px] p-6">
+                        <p class="text-sm font-black text-title mb-2">掛號後，該名醫師才看得到您的用藥資料</p>
+                        <p class="text-xs font-bold text-lightText leading-relaxed">
+                            醫師的病患清單由掛號紀錄產生。未掛號時，醫師端不會出現您的資料；
+                            完診或取消後，該次就診關係即結束。
+                        </p>
+                    </div>
+
+                    <div v-if="apptError" class="text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-2xl px-4 py-3">{{ apptError }}</div>
+
+                    <!-- 新增掛號 -->
+                    <div class="border-t border-slate-100 pt-6 space-y-4">
+                        <p class="text-[10px] font-black text-lightText uppercase tracking-widest">新增掛號</p>
+                        <div class="flex flex-wrap items-end gap-4">
+                            <div class="flex-1 min-w-[160px] space-y-2">
+                                <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">科別</label>
+                                <select v-model="newAppt.department" class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-4 font-black text-title text-sm outline-none">
+                                    <option>一般內科</option><option>心臟內科</option><option>新陳代謝科</option>
+                                    <option>神經內科</option><option>家庭醫學科</option>
+                                </select>
+                            </div>
+                            <div class="flex-1 min-w-[160px] space-y-2">
+                                <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">醫師帳號</label>
+                                <input v-model="newAppt.doctor" type="text" placeholder="如 doctor"
+                                       class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-5 font-bold text-title text-sm focus:border-primary/20 focus:bg-white outline-none transition-all">
+                            </div>
+                            <div class="flex-1 min-w-[160px] space-y-2">
+                                <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">就診日期</label>
+                                <input v-model="newAppt.date" type="date"
+                                       class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-4 font-bold text-title text-sm outline-none">
+                            </div>
+                            <button @click="bookAppointment" :disabled="apptBusy || !newAppt.doctor.trim() || !newAppt.date"
+                                    class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">掛號</button>
+                        </div>
+                        <!-- 規則無法由 username 反查角色（user_roles 以 uid 為鍵），
+                             因此系統驗不了輸入的帳號是否真的是醫師。據實說明，不假裝驗證過。 -->
+                        <p class="text-[10px] font-bold text-lightText leading-relaxed px-1">
+                            系統目前無法驗證所填帳號是否為執業醫師；填錯時該筆掛號不會出現在任何醫師的清單中。
+                        </p>
+                    </div>
+
+                    <!-- 掛號清單 -->
+                    <div class="border-t border-slate-100 pt-6 space-y-3">
+                        <p class="text-[10px] font-black text-lightText uppercase tracking-widest">掛號紀錄</p>
+                        <div v-if="!myAppointments.length" class="text-xs font-bold text-lightText bg-bgMain rounded-2xl px-5 py-6 text-center">
+                            尚無掛號紀錄。掛號後，該名醫師才會在其病患清單中看到您。
+                        </div>
+                        <div v-for="a in myAppointments" :key="a.id" class="flex flex-wrap items-center justify-between gap-4 bg-bgMain rounded-2xl px-5 py-4">
+                            <div>
+                                <p class="text-sm font-black text-title">{{ a.department }}　{{ a.doctorName || a.doctor }}</p>
+                                <p class="text-[11px] font-bold" :class="apptIsActive(a) ? 'text-primary' : 'text-lightText'">
+                                    {{ apptStatusText(a.status) }}<span v-if="apptDateText(a)"> · {{ apptDateText(a) }}</span>
+                                </p>
+                            </div>
+                            <button v-if="apptIsActive(a)" @click="cancelAppointment(a)" :disabled="apptBusy"
+                                    class="px-6 py-2.5 rounded-xl bg-danger text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40">取消掛號</button>
+                        </div>
+                    </div>
+
+                    <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 leading-relaxed">
+                        取消掛號後，該名醫師即無法再從掛號紀錄看到您的資料。掛號與取消的紀錄會保存，不會被刪除。
+                    </p>
+                </div>
+            </section>
+
             <!-- 資料授權（稽核報告 P1-6）
                  修復前，保險端可讀取每一位病患的完整用藥史，病患既不知情也無從拒絕。
                  現在改為：預設不提供，病患主動授權後才提供，且只提供核保所需的最小欄位。 -->
@@ -825,8 +906,13 @@
                     _username: user.username || 'patient01',
                     // 資料授權（P1-6）
                     myConsents: [],
-                    // 側欄的檢視切換。資料授權獨立成一個檢視，不再是首頁底部的區塊。
+                    // 側欄的檢視切換。資料授權與掛號各自獨立成一個檢視。
                     activeView: 'home',
+                    // 掛號（醫病關係的來源）
+                    myAppointments: [],
+                    newAppt: { department: '一般內科', doctor: '', date: '' },
+                    apptBusy: false,
+                    apptError: '',
                     consentInsurer: '',
                     consentDays: 90,
                     consentBusy: false,
@@ -1140,6 +1226,11 @@
                     const summary = DbService.buildUnderwritingSummary(this._username, { profile: this.profile });
                     return summary.ageBand;
                 },
+                // 進行中的掛號（已預約或已報到）。側欄數字用它——
+                // 「現在有哪位醫師看得到我的資料」不該需要點進去才知道。
+                upcomingAppointments() {
+                    return (this.myAppointments || []).filter(a => this.apptIsActive(a));
+                },
                 // 目前仍然有效的授權（未撤回、未到期）。側欄的數字用它，
                 // 讓「現在有幾個人讀得到我的資料」不必點進去才知道。
                 activeConsents() {
@@ -1195,6 +1286,9 @@
                 if (this.maintenanceMode) return;
                 try {
                     await this.loadConsents();
+                    // 掛號決定哪位醫師看得到自己的資料，與授權同屬「誰在看我」的資訊，
+                    // 一併於進站時載入，讓側欄的兩個數字都是實際狀態
+                    await this.loadAppointments();
                     // 對話改由 Firestore 承載，必須先初始化才能收發（P1-4）
                     this.chatReady = await window.chatStore.init('patient', this._username);
                     // FHIR Base URL 改為實際讀取管理端設定（Phase 5）。
@@ -1516,6 +1610,82 @@
                     return window.DrugCatalog
                         ? window.DrugCatalog.medDisplayName(med)
                         : { zh: (med && (med.name_zh || med.zhName)) || '', en: (med && (med.name_en || med.name)) || '' };
+                },
+
+                // ── 掛號 ──────────────────────────────────────────────────────
+                apptIsActive(a) {
+                    return DbService.appointments.ACTIVE.indexOf(a && a.status) !== -1;
+                },
+                apptStatusText(s) {
+                    return ({ booked: '已預約', arrived: '已報到', finished: '已完診', cancelled: '已取消' })[s] || s || '—';
+                },
+                // scheduledAt 是 Firestore Timestamp；剛寫入時本地物件可能還是字串或 Date，
+                // 三種形狀都要處理，否則新掛的那一筆會顯示成空白
+                apptDateText(a) {
+                    const v = a && a.scheduledAt;
+                    if (!v) return '';
+                    const d = v.toDate ? v.toDate() : new Date(v);
+                    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+                },
+                async loadAppointments() {
+                    try {
+                        const list = await DbService.appointments.byPatient(this._username);
+                        // 進行中的排在前面，其餘依日期新到舊
+                        list.sort((x, y) => {
+                            const ax = this.apptIsActive(x) ? 0 : 1, ay = this.apptIsActive(y) ? 0 : 1;
+                            if (ax !== ay) return ax - ay;
+                            return String(this.apptDateText(y)).localeCompare(String(this.apptDateText(x)));
+                        });
+                        this.myAppointments = list;
+                    } catch (e) {
+                        console.error('掛號讀取失敗：', e);
+                        // 讀不到不可顯示成「沒有掛號」——那兩件事對病患的意義完全不同
+                        this.apptError = '掛號紀錄讀取失敗，以下清單可能不完整，請重新整理後再確認。';
+                    }
+                },
+                async bookAppointment() {
+                    if (this.apptBusy) return;
+                    const doctor = (this.newAppt.doctor || '').trim();
+                    if (!doctor || !this.newAppt.date) return;
+                    this.apptBusy = true;
+                    this.apptError = '';
+                    try {
+                        await DbService.appointments.create({
+                            patient: this._username,
+                            patientName: (this.profile && this.profile.name) || this._username,
+                            doctor,
+                            doctorName: doctor,
+                            department: this.newAppt.department,
+                            scheduledAt: this.newAppt.date
+                        });
+                        this.newAppt = { department: '一般內科', doctor: '', date: '' };
+                        await this.loadAppointments();
+                        this.triggerToast('掛號完成', `${doctor} 醫師現在可以看到您的用藥資料`);
+                    } catch (e) {
+                        console.error('掛號失敗：', e);
+                        this.apptError = '掛號失敗，未建立任何紀錄。請確認網路後再試。';
+                    } finally {
+                        this.apptBusy = false;
+                    }
+                },
+                async cancelAppointment(a) {
+                    if (this.apptBusy) return;
+                    if (!confirm(`取消 ${a.department} 的掛號？\n\n取消後，${a.doctorName || a.doctor} 醫師將無法再從掛號紀錄看到您的資料。`)) return;
+                    this.apptBusy = true;
+                    const before = a.status;
+                    a.status = 'cancelled';
+                    try {
+                        await DbService.appointments.setStatus(a.id, 'cancelled');
+                        this.triggerToast('已取消掛號', '該名醫師已無法再從掛號紀錄看到您的資料');
+                    } catch (e) {
+                        // 還原畫面：取消沒有成功，醫師其實仍看得到——
+                        // 顯示成已取消會讓病患誤以為存取已經被收回
+                        a.status = before;
+                        console.error('取消掛號失敗：', e);
+                        this.apptError = '取消失敗，該筆掛號仍然有效，對方目前仍可看到您的資料。請重試。';
+                    } finally {
+                        this.apptBusy = false;
+                    }
                 },
 
                 slotKey(reminder) { return DbService.adherence.slotKey(reminder); },

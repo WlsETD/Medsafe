@@ -584,6 +584,64 @@ await run('adherenceLog 夾帶 medications 一併寫入',
     medications: [{ name: '自己加的' }]
   }), 'deny');
 
+// ── 掛號：醫病關係的來源 ────────────────────────────────────────────────
+//
+// 掛號這個動作本身就是授權事件。這批測試釘住的是「誰能建立、誰看得到、
+// 誰能改」——尤其是「病患不能替別人掛號」與「不能事後改掛給別的醫師」。
+// 後者若失守，等於能把一次已發生的就診轉記到他人名下。
+await env.withSecurityRulesDisabled(async ctx => {
+  const db = ctx.firestore();
+  const future = Timestamp.fromDate(new Date(Date.now() + 7 * 86400000));
+  await setDoc(doc(db, 'appointments/AP1'), {
+    patient: 'P001', patientName: '張小泉', doctor: 'doctor', doctorName: '李醫師',
+    department: '心臟內科', scheduledAt: future, status: 'booked', createdAt: new Date(), note: ''
+  });
+  await setDoc(doc(db, 'appointments/AP2'), {
+    patient: 'atk', patientName: 'x', doctor: 'otherdoc', doctorName: '他院醫師',
+    department: '一般內科', scheduledAt: future, status: 'booked', createdAt: new Date(), note: ''
+  });
+});
+
+const apptDoc = (extra) => Object.assign({
+  patient: 'P001', patientName: '張小泉', doctor: 'doctor', doctorName: '李醫師',
+  department: '一般內科', scheduledAt: Timestamp.fromDate(new Date(Date.now() + 86400000)),
+  status: 'booked', createdAt: serverTimestamp(), note: ''
+}, extra || {});
+
+// 合法路徑
+await run('掛號 病患替自己掛號',
+  () => setDoc(doc(P001(), 'appointments/新1'), apptDoc()), 'allow');
+await run('掛號 病患讀自己的掛號', () => getDoc(doc(P001(), 'appointments/AP1')), 'allow');
+await run('掛號 醫師讀指向自己的掛號', () => getDoc(doc(DOC(), 'appointments/AP1')), 'allow');
+await run('掛號 醫師以 where(doctor==自己) 列出',
+  () => getDocs(query(collection(DOC(), 'appointments'), where('doctor', '==', 'doctor'))), 'allow');
+await run('掛號 病患取消自己的掛號',
+  () => updateDoc(doc(P001(), 'appointments/AP1'), { status: 'cancelled' }), 'allow');
+
+// 攻擊路徑
+await run('掛號 病患替他人掛號',
+  () => setDoc(doc(P001(), 'appointments/新2'), apptDoc({ patient: 'atk' })), 'deny');
+// status 若可自訂，病患能直接建立一筆「已完診」——在病歷中捏造不曾發生的診療
+await run('掛號 病患自訂 status 為已完診',
+  () => setDoc(doc(P001(), 'appointments/新3'), apptDoc({ status: 'finished' })), 'deny');
+// createdAt 必須等於伺服器時間，不可回填造假時序
+await run('掛號 病患回填 createdAt',
+  () => setDoc(doc(P001(), 'appointments/新4'), apptDoc({ createdAt: Timestamp.fromDate(new Date(0)) })), 'deny');
+await run('掛號 夾帶白名單外欄位',
+  () => setDoc(doc(P001(), 'appointments/新5'), apptDoc({ priority: 'vip' })), 'deny');
+await run('掛號 醫師讀他人掛號（未指向自己）',
+  () => getDoc(doc(DOC(), 'appointments/AP2')), 'deny');
+await run('掛號 醫師不受限地列舉全部掛號',
+  () => getDocs(collection(DOC(), 'appointments')), 'deny');
+await run('掛號 病患讀他人的掛號', () => getDoc(doc(P001(), 'appointments/AP2')), 'deny');
+// 事後改掛給別的醫師 == 把一次就診轉記到他人名下
+await run('掛號 病患事後改掛給其他醫師',
+  () => updateDoc(doc(P001(), 'appointments/AP1'), { doctor: 'otherdoc' }), 'deny');
+await run('掛號 核保端讀取掛號', () => getDoc(doc(INS(), 'appointments/AP1')), 'deny');
+// 就診紀錄不可刪除：能被單方面抹除的紀錄沒有證據價值
+await run('掛號 病患刪除掛號紀錄', () => deleteDoc(doc(P001(), 'appointments/AP1')), 'deny');
+await run('掛號 管理員刪除掛號紀錄', () => deleteDoc(doc(ADM(), 'appointments/AP1')), 'deny');
+
 console.log('');
 for (const r of results) console.log(r[0].padEnd(5), r[1], r[2] ? '\n      ' + r[2] : '');
 const failed = results.filter(r => r[0] === 'FAIL');

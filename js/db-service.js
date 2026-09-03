@@ -279,6 +279,85 @@ window.DbService = {
     return snap.docs.map(d => ({ username: d.id, ...d.data() }));
   },
 
+  // ── 掛號（醫病關係的來源）────────────────────────────────────────────
+  //
+  // 見 firestore.rules 的 appointments 一節：掛號這個動作本身就是授權事件。
+  // 醫師的病患清單由此產生，而不是由 patient_data.assignedDoctor 這個靜態欄位決定。
+  appointments: {
+    // 掛號狀態。'booked' 已預約、'arrived' 已報到、'finished' 已完診、'cancelled' 已取消。
+    // 只有 booked 與 arrived 算「進行中的就診」，也就是醫師清單要顯示的對象。
+    ACTIVE: ['booked', 'arrived'],
+
+    async create({ patient, patientName, doctor, doctorName, department, scheduledAt, note }) {
+      const ref = await window.db.collection('appointments').add({
+        patient, patientName: patientName || patient,
+        doctor, doctorName: doctorName || doctor,
+        department: department || '一般內科',
+        scheduledAt: window.firebase.firestore.Timestamp.fromDate(new Date(scheduledAt)),
+        status: 'booked',
+        // 規則要求等於伺服器時間，前端無法回填或造假時序
+        createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+        note: note || ''
+      });
+      return ref.id;
+    },
+
+    // 醫師端：只查指向自己的掛號。
+    // 刻意不在查詢中串 where(status) + orderBy(scheduledAt)——那需要複合索引，
+    // 而索引未建立時查詢會直接失敗。資料量小，篩選與排序在前端做即可。
+    async byDoctor(doctorUsername) {
+      const snap = await window.db.collection('appointments')
+        .where('doctor', '==', doctorUsername).get();
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    },
+
+    async byPatient(patientUsername) {
+      const snap = await window.db.collection('appointments')
+        .where('patient', '==', patientUsername).get();
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    },
+
+    async setStatus(id, status) {
+      await window.db.collection('appointments').doc(id).update({
+        status,
+        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+  },
+
+  // 醫師的病患清單：由進行中的掛號決定，而非 assignedDoctor 靜態欄位。
+  //
+  // 【為什麼要逐筆讀病歷而不是一次查詢】
+  // 掛號集合只有 username，病歷在另一個集合。Firestore 沒有 join，
+  // 因此必須逐筆取回。同一位病患可能有多筆掛號，先去重再讀，
+  // 否則同一份病歷會被讀取多次，且清單上會出現重複的人。
+  //
+  // 讀取失敗的那一筆不可靜默略過——那會讓醫師的清單少一位病患，
+  // 而少了誰完全看不出來。改為回報，由呼叫端決定如何呈現。
+  async getPatientsByAppointment(doctorUsername) {
+    const appts = await this.appointments.byDoctor(doctorUsername);
+    const active = appts.filter(a => this.appointments.ACTIVE.indexOf(a.status) !== -1);
+    const usernames = [];
+    for (const a of active) {
+      if (a.patient && usernames.indexOf(a.patient) === -1) usernames.push(a.patient);
+    }
+    const patients = [], failed = [];
+    for (const u of usernames) {
+      try {
+        const snap = await window.db.collection('patient_data').doc(u).get();
+        if (snap.exists) {
+          patients.push({ username: u, ...snap.data() });
+        } else {
+          // 有掛號但查無病歷：資料不一致，必須讓呼叫端知道
+          failed.push({ username: u, reason: 'no-record' });
+        }
+      } catch (e) {
+        failed.push({ username: u, reason: (e && e.code) || 'error' });
+      }
+    }
+    return { patients, failed, appointments: active };
+  },
+
   async assignDoctorToPatient(username, doctorUsername, doctorName) {
     await window.db.collection('patient_data').doc(username).set(
       { assignedDoctor: doctorUsername, assignedDoctorName: doctorName },
