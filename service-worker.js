@@ -29,7 +29,14 @@
 //      但醫師端與病患端都沒有載入，只有管理後台拿來顯示統計數字
 // v22：藥物目錄 26→60 種（全數對照 WHO 官方索引查證），DDInter 可用規則 236→1,565 條；
 //      並更正 glipizide 誤收「瑪爾胰」（實為 glimepiride 商品名）的藥物身分錯誤
-const CACHE_VERSION = 'medsafe-static-v22';
+// v23：服藥回報改為逐日記錄。此版**必須**升號，不可省略——
+//      patient.html 在 data() 就呼叫 DbService.adherence.dayKey()，
+//      而 js/ 走 stale-while-revalidate：不升號的話，回訪使用者第一次載入
+//      會拿到新的 HTML 配上舊的 db-service.js，adherence 為 undefined 而整頁崩潰。
+//      升號會在 activate 時刪除舊快取，強制回網路取新檔。
+//      （這正是上方註解所說「版本號退化為加速手段」的例外：
+//        跨檔案的 API 變更仍然需要它。）
+const CACHE_VERSION = 'medsafe-static-v23';
 
 const PRECACHE_URLS = [
   './index.html',
