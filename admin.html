@@ -827,6 +827,25 @@
                         </div>
                         <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Severity</label><select v-model="newRule.severity" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold focus:border-primary/20 outline-none transition-all"><option value="極高風險">極高風險</option><option value="高風險">高風險</option></select></div>
                         <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Clinical Effect</label><textarea v-model="newRule.effect" rows="3" placeholder="說明交互作用與臨床風險..." class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold focus:border-primary/20 outline-none transition-all"></textarea></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">處置建議 <span class="text-slate-300 normal-case">（選填）</span></label><textarea v-model="newRule.recommendation" rows="2" placeholder="醫師該怎麼做。留白時醫師端會顯示「本知識庫未收錄處置建議」" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold focus:border-primary/20 outline-none transition-all"></textarea></div>
+
+                        <!-- 【出處為必填】（稽核報告 P1-13）
+                             規則列表對沒有出處的規則顯示「⚠️ 此規則未標註出處，無從複核」，
+                             但這張表單原本根本沒有出處欄位——管理員新增的每一條規則
+                             都會永久帶著那個警告，且無法消除。
+                             系統宣告了一個要求卻不提供滿足它的途徑，結果是警告疲勞，
+                             而 P1-13 當初正是為了避免這件事。 -->
+                        <div class="pt-2 border-t border-slate-100 space-y-6">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">依據出處 <span class="text-danger normal-case">（必填）</span></label>
+                                <input v-model="newRule.source" type="text" placeholder="如：ACC/AHA 抗栓治療指引；製造商仿單交互作用章節" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold focus:border-primary/20 outline-none transition-all">
+                                <p class="text-[10px] text-slate-400 font-bold mt-2 leading-relaxed">臨床指引會改版，而改版不會有人通知你。沒有出處的規則無從複核——內建規則庫中的 Metformin × 顯影劑就是實例：原本寫「需停藥」，而 ACR 現行指引已改為 eGFR ≥30 不需停藥。</p>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">複核日期</label>
+                                <input v-model="newRule.reviewedOn" type="date" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold focus:border-primary/20 outline-none transition-all">
+                            </div>
+                        </div>
                     </div>
                     <div class="p-8 bg-slate-50 flex gap-4 border-t border-slate-100">
                         <button @click="showAddRuleModal = false; newRuleError = ''" class="flex-1 py-4 font-black text-slate-400 uppercase text-[10px]">Cancel</button>
@@ -997,7 +1016,9 @@
                     toastTitle: '', toastMsg: '', toastTone: 'ok', toastTimer: null,
                     newUser: { name: '', role: 'doctor', email: '', hospital: '' },
                     newUserError: '',
-                    newRule: { drugA: '', drugB: '', severity: '高風險', effect: '' },
+                    // reviewedOn 預設為今天：管理員此刻查證了出處才新增這條規則，
+                    // 今天就是它最後被複核的日期。留白反而是不實陳述。
+                    newRule: { drugA: '', drugB: '', severity: '高風險', effect: '', recommendation: '', source: '', reviewedOn: new Date().toISOString().slice(0, 10) },
                     newRuleError: '',
                     editingUser: {},
                     // 系統設置相關
@@ -1274,12 +1295,23 @@
                 toggleNotifications() { this.showNotifications = !this.showNotifications; },
                 markAllAsRead() { this.notifications.forEach(n => n.read = true); },
                 async deleteRule(id) {
-                    if (!confirm('確定刪除規則 #' + id + '？')) return;
+                    // 確認視窗原本只顯示流水號。管理員無從得知 #7 是哪一組藥，
+                    // 等於在沒有資訊的情況下確認一個臨床影響明確的動作。
+                    const target = (this.mockRules || []).find(r => r.id === id || r.id === String(id));
+                    const label = target ? `${target.drugA} × ${target.drugB}` : '#' + id;
+                    if (!confirm(`確定刪除規則「${label}」？\n\n刪除後，醫師端與病患端都不會再對這組藥提出警示。`)) return;
                     try {
                         await DbService.deleteDdiRule(String(id));
                         this.mockRules = this.mockRules.filter(r => r.id !== id && r.id !== String(id));
                         this.refreshRuleCountKpi();
-                        this.triggerToast('已刪除', '規則已從資料庫移除');
+                        // 刪除規則會讓系統從此對某組藥保持沉默，臨床影響比新增更直接，
+                        // 卻原本完全沒有留痕。（P1-5）
+                        const audit = await window.Audit.log(window.Audit.ACTIONS.DDI_RULE_CHANGE, String(id),
+                            { op: 'delete', drugA: target ? target.drugA : null, drugB: target ? target.drugB : null });
+                        this.triggerToast(audit.ok ? '已刪除' : '已刪除，但稽核記錄失敗',
+                            audit.ok ? `「${label}」已從 DDI 知識庫移除`
+                                     : `「${label}」已移除，惟本次操作未能留下稽核記錄，請通報系統管理者`,
+                            audit.ok ? 'ok' : 'warn');
                     } catch (e) {
                         this.triggerToast('刪除失敗', '請稍後再試', 'error');
                     }
@@ -1599,6 +1631,30 @@
                         this.newRuleError = '藥品 A、藥品 B 與交互作用說明為必填欄位';
                         return;
                     }
+                    // 出處為必填（P1-13）。規則列表會對沒有出處的規則顯示
+                    // 「無從複核」的警告，若這裡不強制填寫，那個警告就永遠無法消除，
+                    // 管理員很快會學會忽略它——而它警示的是真正需要處理的事。
+                    if (!this.newRule.source.trim()) {
+                        this.newRuleError = '請填寫依據出處。臨床指引會改版，沒有出處的規則日後無從複核，也無法判斷是否已經過時。';
+                        return;
+                    }
+                    // 同一組藥不可重複建立。允許重複會讓同一組合出現多筆規則，
+                    // 而其中一筆過時、另一筆已更新時，醫師看到哪一筆取決於資料順序。
+                    const a = this.newRule.drugA.trim().toLowerCase();
+                    const b = this.newRule.drugB.trim().toLowerCase();
+                    if (a === b) {
+                        this.newRuleError = '藥品 A 與藥品 B 不可為同一種藥。';
+                        return;
+                    }
+                    const dup = (this.mockRules || []).some(r => {
+                        const ra = (r.drugA || '').trim().toLowerCase();
+                        const rb = (r.drugB || '').trim().toLowerCase();
+                        return (ra === a && rb === b) || (ra === b && rb === a);
+                    });
+                    if (dup) {
+                        this.newRuleError = `「${this.newRule.drugA.trim()} × ${this.newRule.drugB.trim()}」已有規則（含反向組合）。請改為刪除舊規則後重建，避免同一組藥出現兩筆互相矛盾的記載。`;
+                        return;
+                    }
                     const severityClasses = {
                         '極高風險': 'bg-red-100 text-danger border-red-200',
                         '高風險': 'bg-orange-100 text-warning border-orange-200'
@@ -1608,16 +1664,28 @@
                         drugB: this.newRule.drugB.trim(),
                         severity: this.newRule.severity,
                         severityClass: severityClasses[this.newRule.severity],
-                        effect: this.newRule.effect.trim()
+                        effect: this.newRule.effect.trim(),
+                        source: this.newRule.source.trim(),
+                        reviewedOn: this.newRule.reviewedOn || new Date().toISOString().slice(0, 10)
                     };
+                    // 空字串會讓「有這個欄位但沒內容」與「沒有這個欄位」混為一談，
+                    // 下游只能靠 falsy 判斷，因此乾脆不寫入
+                    const rec = this.newRule.recommendation.trim();
+                    if (rec) rule.recommendation = rec;
                     try {
                         const id = await DbService.addDdiRule(rule);
                         this.mockRules.push({ id, ...rule });
                         this.refreshRuleCountKpi();
-                        this.newRule = { drugA: '', drugB: '', severity: '高風險', effect: '' };
+                        this.newRule = { drugA: '', drugB: '', severity: '高風險', effect: '', recommendation: '', source: '', reviewedOn: new Date().toISOString().slice(0, 10) };
                         this.newRuleError = '';
                         this.showAddRuleModal = false;
-                        this.triggerToast('規則已新增', `規則已寫入 DDI 知識庫`);
+                        // 知識庫變更會直接影響醫師端的交互作用判斷，屬於必須留痕的操作（P1-5）
+                        const audit = await window.Audit.log(window.Audit.ACTIONS.DDI_RULE_CHANGE, id,
+                            { op: 'add', drugA: rule.drugA, drugB: rule.drugB, severity: rule.severity, source: rule.source });
+                        this.triggerToast(audit.ok ? '規則已新增' : '規則已新增，但稽核記錄失敗',
+                            audit.ok ? `${rule.drugA} × ${rule.drugB} 已寫入 DDI 知識庫`
+                                     : `${rule.drugA} × ${rule.drugB} 已寫入，惟本次操作未能留下稽核記錄，請通報系統管理者`,
+                            audit.ok ? 'ok' : 'warn');
                     } catch (e) {
                         this.newRuleError = '儲存失敗：' + (e.message || e);
                     }
