@@ -351,17 +351,48 @@
                                 </div>
 
                                 <div v-else class="flex gap-1.5">
-                                    <div v-for="d in adherenceDays" :key="d.key" class="flex-1 text-center"
+                                    <div v-for="d in adherenceDays" :key="d.key" class="flex-1 text-center cursor-pointer"
+                                         @click="adherenceOpenDay = d.key"
                                          :title="d.key + '（' + (d.state === 'none' ? '無回報記錄' : d.taken + '/' + d.total + ' 項') + '）'">
                                         <div :class="['h-9 rounded-lg flex items-center justify-center text-[9px] font-black transition-all',
                                                       d.state === 'full' ? 'bg-primary text-white' :
                                                       d.state === 'partial' ? 'bg-amber-400 text-white' :
                                                       d.state === 'zero' ? 'bg-slate-300 text-white' :
                                                       'bg-slate-100 text-slate-300',
-                                                      d.isToday ? 'ring-2 ring-accent ring-offset-1' : '']">
+                                                      adherenceSelectedDay && adherenceSelectedDay.key === d.key ? 'ring-2 ring-accent ring-offset-1' :
+                                                      (d.isToday ? 'ring-1 ring-slate-300 ring-offset-1' : '')]">
                                             {{ d.state === 'none' ? '—' : d.taken + '/' + d.total }}
                                         </div>
                                         <div class="text-[8px] font-bold text-slate-400 mt-1">{{ d.weekday }}</div>
+                                    </div>
+                                </div>
+
+                                <!-- 逐項明細：醫師需要知道的是「漏的是哪一項」，不是「漏了幾項」。
+                                     漏掉晚上的抗凝血劑與漏掉早上的維他命，處置完全不同。 -->
+                                <div v-if="adherenceHasSchedule && adherenceSelectedDay" class="mt-3 p-3 bg-white border border-slate-200 rounded-xl">
+                                    <div class="flex items-baseline justify-between mb-2">
+                                        <span class="text-[10px] font-black text-slate-600">{{ adherenceSelectedDay.key }}{{ adherenceSelectedDay.isToday ? '（今日）' : '' }}</span>
+                                        <span class="text-[9px] font-bold text-slate-400">點選上方色塊可切換日期</span>
+                                    </div>
+
+                                    <div v-if="adherenceSelectedDay.state === 'none'" class="text-[10px] font-bold text-slate-400 leading-relaxed">
+                                        當日無回報記錄。病患未於該日開啟系統回報，不代表未服藥。
+                                    </div>
+
+                                    <div v-else class="space-y-1.5">
+                                        <div v-for="(it, i) in adherenceSelectedDay.items" :key="i" class="flex items-center gap-2">
+                                            <span :class="['w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-[8px] font-black text-white',
+                                                           it.done ? 'bg-primary' : 'bg-slate-300']">{{ it.done ? '✓' : '·' }}</span>
+                                            <span class="text-[10px] font-black text-slate-500 w-10 shrink-0">{{ it.time }}</span>
+                                            <span :class="['text-[10px] font-bold flex-1', it.done ? 'text-slate-600' : 'text-slate-400']">{{ it.text }}</span>
+                                            <span v-if="!it.done" class="text-[9px] font-black text-amber-600 shrink-0">未回報</span>
+                                        </div>
+                                        <!-- schedule 是後加的欄位。舊記錄沒有它，此時只列得出已回報的項目。
+                                             不可拿現在的排程回頭套用到過去某一天——那會把
+                                             「當時沒有這個藥」誤呈現成「當時漏了這個藥」。 -->
+                                        <div v-if="!adherenceSelectedDay.scheduleKnown" class="text-[9px] font-bold text-slate-400 pt-1.5 mt-1 border-t border-slate-100 leading-relaxed">
+                                            此日期早於本功能記錄排程之前，僅列出已回報的項目；當日完整排程無從得知，未列出者不代表漏服。
+                                        </div>
                                     </div>
                                 </div>
                                 <div v-if="adherenceHasSchedule" class="mt-3 p-3 bg-slate-50 rounded-xl">
@@ -834,6 +865,7 @@
                     // 因為醫師本來就可能開立目錄以外的藥；系統該做的是
                     // 明白告知那些藥無法比對交互作用，而不是禁止輸入。
                     drugPickerOpen: false,
+                    adherenceOpenDay: null,
                     aiCheckStatus: 'idle',
                     ddiRuleCount: 0,
                     ddiRuleSource: 'local',
@@ -967,9 +999,21 @@
                     // 對齊 DbService.computeSafetyScore 的形狀：把引擎的分級結果
                     // 轉成該函式認得的 severity 字樣，而不是另外實作一套算法——
                     // 兩套算法會在某個邊界上給出不同的分數，而使用者無從得知該信哪個。
+                    //
+                    // 【對應必須依 SEVERITY_ALIASES，不可自行想像】
+                    // ddi-engine 的正規化表把「極高風險」與「高風險」都對應到 major，
+                    // 「中風險」「中度」才是 moderate。先前這裡把 moderate 寫成「高風險」，
+                    // 等於把中度交互作用當成重大來扣分（-20 而非 -8）——
+                    // DDInter 有大量 moderate 記載，五筆就足以把分數壓到 0，
+                    // 於是「5 筆中度」與「5 筆禁忌」在畫面上看起來完全一樣。
+                    // 分數飽和在 0 的那一刻，它就不再提供任何資訊。
+                    //
+                    // 已知的既有問題：computeSafetyScore 對「極高風險」扣 35、「高風險」扣 20，
+                    // 但引擎認為這兩個字樣是同一級。此處沿用該函式的字彙以保持跨頁一致，
+                    // 並以 contraindicated / major 分別對應之，維持排序上的區別。
                     const alerts = r.findings.map(f => ({
-                        severity: (f.severity === 'contraindicated' || f.severity === 'major')
-                            ? '極高風險' : (f.severity === 'moderate' ? '高風險' : '中風險')
+                        severity: f.severity === 'contraindicated' ? '極高風險'
+                                : (f.severity === 'major' ? '高風險' : '中風險')
                     }));
                     return DbService.computeSafetyScore(meds, alerts);
                 },
@@ -1001,15 +1045,44 @@
                         else if (total > 0 && taken >= total) state = 'full';
                         else if (taken > 0) state = 'partial';
                         else state = 'zero';
+                        // 逐項明細。醫師真正需要的不是「2/3」，而是「漏的是哪一項」——
+                        // 漏掉晚上的抗凝血劑與漏掉早上的維他命，處置完全不同。
+                        //
+                        // schedule 是後來才加的欄位。舊記錄沒有它，此時只列得出
+                        // 已回報的項目，並明白標示當日排程未被記錄，
+                        // 不可拿現在的排程回頭套用到過去某一天——那會把
+                        // 「當時沒有這個藥」誤呈現成「當時漏了這個藥」。
+                        const takenKeys = (rec && Array.isArray(rec.taken))
+                            ? rec.taken.map(t => DbService.adherence.slotKey(t)) : [];
+                        let items = [], scheduleKnown = false;
+                        if (rec && Array.isArray(rec.schedule)) {
+                            scheduleKnown = true;
+                            items = rec.schedule.map(s => ({
+                                time: s.time, text: s.text,
+                                done: takenKeys.indexOf(DbService.adherence.slotKey(s)) !== -1
+                            }));
+                        } else if (rec && Array.isArray(rec.taken)) {
+                            items = rec.taken.map(t => ({ time: t.time, text: t.text, done: true }));
+                        }
+                        items.sort((a, b) => String(a.time).localeCompare(String(b.time)));
+
                         out.push({
                             key: key,
                             label: (d.getMonth() + 1) + '/' + d.getDate(),
                             weekday: ['日', '一', '二', '三', '四', '五', '六'][d.getDay()],
                             isToday: key === todayKey,
-                            total: total, taken: taken, state: state
+                            total: total, taken: taken, state: state,
+                            items: items, scheduleKnown: scheduleKnown
                         });
                     }
                     return out;
+                },
+                // 目前展開的那一天。預設展開今天——醫師最常要看的就是今天。
+                adherenceSelectedDay() {
+                    const days = this.adherenceDays;
+                    if (!days.length) return null;
+                    const k = this.adherenceOpenDay;
+                    return days.find(d => d.key === k) || days.find(d => d.isToday) || null;
                 },
                 // 有回報的天數 / 7。刻意不叫「遵從率」——
                 // 那個詞會被讀成「有幾成的藥吃了」，而這裡量的是「有幾天回報過」。

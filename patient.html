@@ -1495,7 +1495,15 @@
                     } else {
                         taken.splice(at, 1);
                     }
-                    const record = { total: this.reminders.length, taken: taken };
+                    // schedule 記下「那天原本要吃哪些」。只存 taken 的話，
+                    // 事後看到 2/3 推不出漏的是哪一項——而漏掉晚上的華法林
+                    // 與漏掉早上的維他命，臨床意義完全不同。
+                    // 排程日後被醫師調整時，舊記錄仍描述得出當天的實際情形。
+                    const record = {
+                        total: this.reminders.length,
+                        schedule: this.reminders.map(r => ({ time: r.time, text: r.text })),
+                        taken: taken
+                    };
                     this.adherenceLog = Object.assign({}, this.adherenceLog, { [day]: record });
 
                     try {
