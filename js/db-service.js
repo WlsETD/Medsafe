@@ -378,7 +378,19 @@ window.DbService = {
       // 授予失敗時掛號已存在但醫師看不到——失效方向是「看不到」，
       // 而非「不該看卻看得到」，這是可接受的方向。錯誤仍往上拋，
       // 由呼叫端據實告知，不可靜默當作成功。
-      await this._grantRelation(patient, doctor);
+      //
+      // 但「據實告知」需要呼叫端分得出是哪一段失敗的：add 失敗時確實沒有
+      // 留下任何紀錄，授予失敗時掛號已經寫進資料庫了。兩者對病患的下一步
+      // 完全不同（前者要重掛，後者重掛只會多出一筆），因此把階段標在錯誤上。
+      try {
+        await this._grantRelation(patient, doctor);
+      } catch (e) {
+        const err = new Error('掛號已建立，但照護關係授予失敗');
+        err.stage = 'relation';
+        err.appointmentId = ref.id;
+        err.cause = e;
+        throw err;
+      }
       return ref.id;
     },
 

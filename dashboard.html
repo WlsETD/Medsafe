@@ -977,6 +977,7 @@
     <script src="js/firebase-config.js"></script>
     <script src="js/db-service.js"></script>
     <script src="js/mockData.js"></script>
+    <script src="js/utils.js"></script>
     <script src="js/drug-catalog.js"></script>
     <script src="js/ddi-engine.js"></script>
     <!-- DDInter 2.0 匯入的規則。必須載入於 ddi-engine.js 之後、Vue 應用啟動之前：
@@ -1703,8 +1704,10 @@
                     if (this.assignBusy) return;
                     const nid = this.assignNid.trim().toUpperCase();
                     this.assignError = '';
-                    if (!/^[A-Z][12]\d{8}$/.test(nid)) {
-                        this.assignError = '格式不正確。應為 1 個英文字母 + 1 或 2 + 8 位數字。';
+                    // 呼叫 window.validateNationalId（js/utils.js），不在此重複實作——
+                    // 外來人口統一證號（第 2 碼 8/9）也必須能在這裡查得到。
+                    if (!window.validateNationalId(nid).valid) {
+                        this.assignError = '格式不正確。應為 1 個英文字母 + 1、2、8 或 9 + 8 位數字。';
                         return;
                     }
                     this.assignBusy = true;

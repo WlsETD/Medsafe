@@ -915,6 +915,7 @@
     <script src="js/firebase-config.js"></script>
     <script src="js/db-service.js"></script>
     <script src="js/mockData.js"></script>
+    <script src="js/utils.js"></script>
     <script src="js/drug-catalog.js"></script>
     <script src="js/ddi-engine.js"></script>
     <!-- DDInter 2.0 匯入的規則，須在引擎之後載入（理由見 dashboard.html 同處註解）。
@@ -1746,27 +1747,19 @@
                 // Security Rules 無法做加權求和的迴圈運算。因此這裡擋下的是
                 // 使用者的手誤，真正的權威仍是院方持證件核對。
                 // 兩者都不能取代對方：前端擋不了惡意呼叫端，院方擋不了打錯字。
-                isValidTwId(v) {
-                    const s = String(v || '').trim().toUpperCase();
-                    if (!/^[A-Z][12]\d{8}$/.test(s)) return false;
-                    const map = 'ABCDEFGHJKLMNPQRSTUVXYWZIO';
-                    const code = map.indexOf(s[0]) === -1 ? -1 : (10 + map.indexOf(s[0]));
-                    if (code < 10) return false;
-                    let sum = Math.floor(code / 10) + (code % 10) * 9;
-                    const w = [8, 7, 6, 5, 4, 3, 2, 1];
-                    for (let i = 0; i < 8; i++) sum += Number(s[1 + i]) * w[i];
-                    return (sum + Number(s[9])) % 10 === 0;
-                },
+                //
+                // 驗證邏輯呼叫 window.validateNationalId（js/utils.js），
+                // 不在此重複實作——兩份獨立的正則曾經各自漂移，
+                // 外來人口統一證號（第 2 碼 8/9）只被其中一份接受過。
                 async saveNationalId() {
                     if (this.nidBusy) return;
                     const v = this.nidInput.trim().toUpperCase();
                     this.nidError = '';
-                    if (!/^[A-Z][12]\d{8}$/.test(v)) {
-                        this.nidError = '格式不正確。應為 1 個英文字母 + 1 或 2 + 8 位數字，例如 A123456789。';
-                        return;
-                    }
-                    if (!this.isValidTwId(v)) {
-                        this.nidError = '檢查碼不符，請確認號碼是否輸入正確。';
+                    const result = window.validateNationalId(v);
+                    if (!result.valid) {
+                        this.nidError = result.reason === 'checksum'
+                            ? '檢查碼不符，請確認號碼是否輸入正確。'
+                            : '格式不正確。應為 1 個英文字母 + 1、2、8 或 9 + 8 位數字，例如 A123456789。';
                         return;
                     }
                     if (!confirm(`確認送出身分證字號 ${v}？\n\n送出後將無法自行更改，若有誤需洽櫃檯處理。`)) return;
@@ -1856,7 +1849,20 @@
                         this.triggerToast('掛號完成', `${doctor} 醫師現在可以看到您的用藥資料`);
                     } catch (e) {
                         console.error('掛號失敗：', e);
-                        this.apptError = '掛號失敗，未建立任何紀錄。請確認網路後再試。';
+                        if (e && e.stage === 'relation') {
+                            // 掛號那一筆已經寫進資料庫，只有授權沒成功。
+                            // 說成「未建立任何紀錄」會讓病患再掛一次，多出一筆重複的預約，
+                            // 而重掛並不能解決問題——失敗的是授權，不是掛號。
+                            // 因此清空表單、重新載入清單（讓那筆確實顯示出來），
+                            // 並把「醫師目前看不到」與「不需重掛」講明白。
+                            this.newAppt = { department: '一般內科', doctor: '', date: '' };
+                            await this.loadAppointments();
+                            this.apptError = '掛號已建立（見下方清單），但未能授予該醫師存取權，'
+                                + '他目前看不到您的用藥資料。請重新整理後再試一次，'
+                                + '或於報到時洽櫃檯以證件建立。不需重複掛號。';
+                        } else {
+                            this.apptError = '掛號失敗，未建立任何紀錄。請確認網路後再試。';
+                        }
                     } finally {
                         this.apptBusy = false;
                     }

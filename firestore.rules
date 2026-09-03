@@ -40,6 +40,40 @@ service cloud.firestore {
       return isActive() && profile().username == username && ownsUsername(username);
     }
 
+    // ── 「這份尚不存在的文件是否指名我」──────────────────────────────────
+    //
+    // {甲}__{乙} 形式的關係文件（care_relations）在建立前必須先被讀取一次，
+    // 才能分辨該走 create（新授權）或 update（續期）。但文件不存在時
+    // resource 為 null，`resource.data.patient` 這類條件一律不成立，
+    // 讀取會被拒絕——於是「第一次」永遠失敗。
+    //
+    // 不能改成寬鬆的 `resource == null` 放行：那會製造存在性神諭。
+    // 「permission-denied」代表關係存在但與你無關、「查無此文件」代表不存在，
+    // 兩者可區分，任何人就能逐一探測「某病患是否由某醫師照顧」——
+    // 洩漏的正是就醫事實本身（與 patient_index 拒絕 list 的理由相同）。
+    //
+    // 因此改為精確比對文件 ID 的前後綴：只有被 ID 指名的那一方，
+    // 才讀得到那份還不存在的文件。病患查得到「我與某醫師」，
+    // 醫師查得到「某病患與我」，其餘一律拒絕，回應與原本完全一致。
+    //
+    // 用字串切片而非 split('__')：username 允許底線（見 login.html 的
+    // /^[a-z0-9_.]{3,20}$/），`a__b` 是合法帳號，split 的結果並不唯一。
+    // 切片是精確的前後綴比對，沒有這個歧義，也不涉及正則注入。
+    // 授權的權威仍是 create 規則的 `rid == patient + '__' + doctor`，
+    // 這裡放行的只是一次「不存在」的讀取。
+    function ridStartsWithMe(rid) {
+      return rid.size() > profile().username.size() + 2
+        && rid[0 : profile().username.size() + 2] == profile().username + '__';
+    }
+    function ridEndsWithMe(rid) {
+      return rid.size() > profile().username.size() + 2
+        && rid[rid.size() - profile().username.size() - 2 : rid.size()] == '__' + profile().username;
+    }
+    function ridNamesMe(rid) {
+      return ownsUsername(profile().username)
+        && (ridStartsWithMe(rid) || (isDoctor() && ridEndsWithMe(rid)));
+    }
+
     // 自助註冊限定只能建立「patient」角色、狀態為 active 的自己身分，防止自我提權
     function isSelfRegisteringPatient(uid) {
       return isAuthed() && request.auth.uid == uid
@@ -155,11 +189,16 @@ service cloud.firestore {
     // 這與 patient_summaries 的 attestedBy 是同一種處理：
     // 系統驗不了的事，就標明是誰說的，不要假裝是系統確認的。
     //
-    // 【誠實的限制】規則只驗格式（一個英文字母 + 1或2 + 8 位數字），
+    // 【誠實的限制】規則只驗格式（一個英文字母 + 1/2/8/9 + 8 位數字），
     // 不驗檢查碼——Security Rules 無法做加權求和的迴圈運算。
     // 因此格式正確但不存在的號碼仍寫得進來，這正是需要院方核驗的原因。
+    //
+    // 第 2 碼納入 8、9：2021 年起發放的新式外來人口統一證號，
+    // 與本國國民身分證共用同一套檢查碼演算法（見 js/utils.js 的說明）。
+    // 若這裡只收 1/2，持統一證號的病患會在填寫時被規則擋下——
+    // 即使 utils.js 判它合法、patient.html 也肯讓他送出。
     function nationalIdFormatOk(v) {
-      return v is string && v.matches('[A-Z][12][0-9]{8}');
+      return v is string && v.matches('[A-Z][1289][0-9]{8}');
     }
     // 核驗是一句具名的斷言：「我核對過這個人的證件，號碼相符」。
     // 因此核驗者必須是動作發起人自己，且必須真的有號碼可核驗——
@@ -578,6 +617,10 @@ service cloud.firestore {
         isAdmin()
         || (resource != null && isOwnUsername(resource.data.patient))
         || (resource != null && isDoctor() && resource.data.doctor == profile().username)
+        // 文件尚不存在時，只有被 ID 指名的兩造讀得到（見 ridNamesMe 的說明）。
+        // 少了這一條，每一段照護關係的「第一次」建立都會失敗——
+        // 前端必須先讀一次才知道要 create 還是 update。
+        || (resource == null && ridNamesMe(rid))
       );
       // 文件 ID 必須與內容一致——否則可用「內容寫 A、ID 寫 B」
       // 讓規則的 O(1) 查找指向錯誤的授權。

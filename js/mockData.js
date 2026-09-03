@@ -140,7 +140,7 @@ window.mockData = {
     profile: {
       id: 'patient01',
       name: '王大明',
-      nationalId: 'A123456781',
+      nationalId: 'A123456789',
       age: 72,
       gender: '男',
       // healthSummary 已移除（稽核報告 P0-8）。原文為
@@ -191,12 +191,19 @@ window.mockData = {
   },
 
   // 其他真實患者帳號（醫師端病患清單 P001-P004，現為可獨立登入的真實帳戶）
+  //
+  // 【示範用的身分證字號必須是「檢查碼合法」的虛構號碼】
+  // 這些號碼一度是隨手編的，五組全部通不過 window.validateNationalId() 的
+  // 加權檢查碼，其中 P002 的第 2 碼還是 2（女）而 gender 寫「男」。
+  // 種子資料是直接寫進 profile 的，繞過了唯一會驗檢查碼的表單，因此不會報錯——
+  // 但拿其中任一組去示範「病患填寫身分證字號」都會被擋在「檢查碼不符」。
+  // 修改這些號碼時請以 utils.js 的演算法驗過，並確認第 2 碼與 gender 一致。
   patients: {
     P001: {
       assignedDoctor: 'doctor',
       assignedDoctorName: '李小美醫師',
       profile: {
-        id: 'P001', name: '張小泉', nationalId: 'B287654322', age: 68, gender: '女',
+        id: 'P001', name: '張小泉', nationalId: 'B287654326', age: 68, gender: '女',
         healthSummary: '目前用藥狀況穩定，無重大交互作用風險。',
         nextAppointment: '2024-06-20'
       },
@@ -220,7 +227,7 @@ window.mockData = {
       assignedDoctor: 'doctor',
       assignedDoctorName: '李小美醫師',
       profile: {
-        id: 'P002', name: '李大維', nationalId: 'A245678903', age: 75, gender: '男',
+        id: 'P002', name: '李大維', nationalId: 'A145678903', age: 75, gender: '男',
         healthSummary: '用藥品項較多，AI 已加強監控潛在交互作用風險。',
         nextAppointment: '2024-06-18'
       },
@@ -244,7 +251,7 @@ window.mockData = {
       assignedDoctor: 'doctor',
       assignedDoctorName: '李小美醫師',
       profile: {
-        id: 'P003', name: '陳美花', nationalId: 'C209876544', age: 70, gender: '女',
+        id: 'P003', name: '陳美花', nationalId: 'C209876541', age: 70, gender: '女',
         healthSummary: '目前用藥狀況穩定，無重大交互作用風險。',
         nextAppointment: '2024-06-22'
       },
@@ -268,7 +275,7 @@ window.mockData = {
       assignedDoctor: 'doctor',
       assignedDoctorName: '李小美醫師',
       profile: {
-        id: 'P004', name: '劉建國', nationalId: 'D112358135', age: 66, gender: '男',
+        id: 'P004', name: '劉建國', nationalId: 'D112358131', age: 66, gender: '男',
         healthSummary: '目前用藥狀況需注意，血壓藥與抗凝血劑存在潛在交互作用。',
         nextAppointment: '2024-06-16'
       },

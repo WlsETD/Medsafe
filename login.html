@@ -207,6 +207,13 @@
                             僅在您的裝置上檢核格式與檢查碼，<span class="text-primary">不會被儲存或傳送至伺服器</span>。
                             本欄位無法確認號碼是否屬於本人，完整實名核驗為規劃中項目。
                         </p>
+                        <!-- 「不儲存」是實話，但只講一半會誤導：使用者填了就以為已經登記，
+                             到櫃檯卻查無資料（因為 patient_index 從未被發布）。
+                             因此必須把後果與下一步一起講清楚。 -->
+                        <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mt-1.5 leading-relaxed">
+                            因為不儲存，註冊完成後請至<span class="font-black">病患端 →「我的掛號」</span>再填寫一次並送出。
+                            未完成該步驟時，櫃檯以身分證字號查詢會顯示「查無此證號」。
+                        </p>
                     </div>
                     <div>
                         <label class="block text-sm font-bold text-title mb-1">帳號</label>

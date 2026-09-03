@@ -740,6 +740,29 @@ await run('care_relations 文件 ID 與內容不符',
     grantedAt: serverTimestamp(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)) }), 'deny');
 await run('care_relations 醫師讀指向自己的關係',
   () => getDoc(doc(DOC(), 'care_relations/rel1__doctor')), 'allow');
+
+// ── 尚不存在的關係文件：第一次建立的前置讀取 ──────────────────────────
+//
+// 前端必須先讀一次 care_relations/{病患}__{醫師} 才知道該 create（新授權）
+// 還是 update（續期）。文件不存在時 resource 為 null，若規則一律拒絕，
+// 每一段照護關係的「第一次」都會失敗——掛號與臨櫃指派都會停在
+// permission-denied。這四筆測試就是那個迴歸。
+await run('care_relations 病患讀自己尚不存在的關係',
+  () => getDoc(doc(P001(), 'care_relations/P001__newdoc')), 'allow');
+await run('care_relations 醫師讀指名自己的尚不存在關係',
+  () => getDoc(doc(DOC(), 'care_relations/newpatient__doctor')), 'allow');
+// 但放行不可寬到成為存在性神諭：「拒絕」與「查無此文件」若可區分，
+// 任何人都能逐一探測「某病患是否由某醫師照顧」，洩漏就醫事實本身。
+await run('care_relations 病患探測他人的關係（存在）',
+  () => getDoc(doc(P001(), 'care_relations/rel1__doctor')), 'deny');
+await run('care_relations 病患探測他人的關係（不存在）',
+  () => getDoc(doc(P001(), 'care_relations/rel1__newdoc')), 'deny');
+// 後綴比對只對醫師開放：否則病患能探測「任何人與我」，
+// 而病患本來就不該是關係中的醫師方
+await run('care_relations 病患以自己為後綴探測',
+  () => getDoc(doc(ATK(), 'care_relations/rel1__atk')), 'deny');
+await run('care_relations 醫師探測不指名自己的關係',
+  () => getDoc(doc(DOC(), 'care_relations/rel1__otherdoc')), 'deny');
 await run('care_relations 不可刪除',
   () => deleteDoc(doc(P001(), 'care_relations/rel1__doctor')), 'deny');
 
@@ -833,43 +856,66 @@ await env.withSecurityRulesDisabled(async ctx => {
     username: 'nid1', name: '未填證號', role: 'patient', status: 'active' });
   // 已填寫證號的病患
   await setDoc(doc(db, 'patient_data/nid2'), {
-    profile: { id: 'nid2', name: '已填證號', nationalId: 'A123456781' },
+    profile: { id: 'nid2', name: '已填證號', nationalId: 'A123456789' },
     medications: [], ddiAlerts: [], reminders: [], assignedDoctor: 'doctor' });
   await setDoc(doc(db, 'user_roles/uidNid2'), {
     username: 'nid2', name: '已填證號', role: 'patient', status: 'active' });
+  // 另外兩位尚未填號的病患，專用於外來人口統一證號（第 2 碼 8/9）的格式測試——
+  // 不可共用 nid1：寫入一次即鎖死（見下方「首次填寫」測試），
+  // 再拿同一份 fixture 測 8/9 會撞上寫入次數限制，測到的就不是格式規則本身。
+  await setDoc(doc(db, 'patient_data/nid3'), {
+    profile: { id: 'nid3', name: '未填證號（外來 8）' }, medications: [], ddiAlerts: [], reminders: [],
+    assignedDoctor: 'doctor' });
+  await setDoc(doc(db, 'user_roles/uidNid3'), {
+    username: 'nid3', name: '未填證號（外來 8）', role: 'patient', status: 'active' });
+  await setDoc(doc(db, 'patient_data/nid4'), {
+    profile: { id: 'nid4', name: '未填證號（外來 9）' }, medications: [], ddiAlerts: [], reminders: [],
+    assignedDoctor: 'doctor' });
+  await setDoc(doc(db, 'user_roles/uidNid4'), {
+    username: 'nid4', name: '未填證號（外來 9）', role: 'patient', status: 'active' });
 });
 const NID1 = () => ctxFor('uidNid1', 'nid1@medsafe.local').firestore();
 const NID2 = () => ctxFor('uidNid2', 'nid2@medsafe.local').firestore();
+const NID3 = () => ctxFor('uidNid3', 'nid3@medsafe.local').firestore();
+const NID4 = () => ctxFor('uidNid4', 'nid4@medsafe.local').firestore();
 
 // 首次填寫：格式正確才收
 await run('身分證 病患首次填寫（格式正確）',
   () => updateDoc(doc(NID1(), 'patient_data/nid1'),
-    { profile: { id: 'nid1', name: '未填證號', nationalId: 'B287654322' } }), 'allow');
+    { profile: { id: 'nid1', name: '未填證號', nationalId: 'B287654326' } }), 'allow');
 await run('身分證 格式錯誤（缺英文字母）',
   () => updateDoc(doc(NID1(), 'patient_data/nid1'),
     { profile: { id: 'nid1', name: '未填證號', nationalId: '1234567890' } }), 'deny');
-await run('身分證 格式錯誤（第二碼非 1 或 2）',
+await run('身分證 格式錯誤（第二碼非 1/2/8/9）',
   () => updateDoc(doc(NID1(), 'patient_data/nid1'),
     { profile: { id: 'nid1', name: '未填證號', nationalId: 'A323456781' } }), 'deny');
 await run('身分證 格式錯誤（長度不足）',
   () => updateDoc(doc(NID1(), 'patient_data/nid1'),
     { profile: { id: 'nid1', name: '未填證號', nationalId: 'A12345' } }), 'deny');
+// 外來人口統一證號（第 2 碼 8 或 9）：與本國國民共用同一套格式規則，
+// 不得被單獨擋下——否則持此證號的病患永遠無法被櫃檯查到（見 js/utils.js 的說明）。
+await run('身分證 外來人口統一證號（第二碼 8）格式應通過',
+  () => updateDoc(doc(NID3(), 'patient_data/nid3'),
+    { profile: { id: 'nid3', name: '未填證號（外來 8）', nationalId: 'A823456783' } }), 'allow');
+await run('身分證 外來人口統一證號（第二碼 9）格式應通過',
+  () => updateDoc(doc(NID4(), 'patient_data/nid4'),
+    { profile: { id: 'nid4', name: '未填證號（外來 9）', nationalId: 'A923456785' } }), 'allow');
 
 // 【核心】填過就不能改——否則核驗狀態會與號碼脫鉤
 await run('身分證 病患竄改已填寫的證號',
   () => updateDoc(doc(NID2(), 'patient_data/nid2'),
-    { profile: { id: 'nid2', name: '已填證號', nationalId: 'C209876544' } }), 'deny');
+    { profile: { id: 'nid2', name: '已填證號', nationalId: 'C209876541' } }), 'deny');
 // 不影響其他 profile 欄位的正常維護
 await run('身分證 保留原證號時可改其他 profile 欄位',
   () => updateDoc(doc(NID2(), 'patient_data/nid2'),
-    { profile: { id: 'nid2', name: '改了名字', nationalId: 'A123456781' } }), 'allow');
+    { profile: { id: 'nid2', name: '改了名字', nationalId: 'A123456789' } }), 'allow');
 
 // 核驗狀態是院方的斷言，病患不得自行宣告
 await run('身分證 病患自行宣告已核驗',
   () => updateDoc(doc(NID2(), 'patient_data/nid2'), { nationalIdVerifiedBy: 'doctor' }), 'deny');
 await run('身分證 自助註冊時夾帶已核驗欄位',
   () => setDoc(doc(NEW5(), 'patient_data/newbie5b'), {
-    profile: { id: 'newbie5b', nationalId: 'A123456781' },
+    profile: { id: 'newbie5b', nationalId: 'A123456789' },
     medications: [], ddiAlerts: [], aiInsights: [], nationalIdVerifiedBy: 'doctor' }), 'deny');
 // 建檔時帶的證號同樣要驗格式
 await run('身分證 自助註冊帶入格式錯誤的證號',
@@ -902,7 +948,7 @@ await run('身分證 核保摘要不得夾帶證號',
   () => setDoc(doc(P001(), 'patient_summaries/P001'), {
     username: 'P001', displayName: '張小泉', ageBand: '65–74 歲', medicationCount: 3,
     alertCount: 0, safetyScore: 92, scoreStatus: 'assessed',
-    attestedBy: 'P001', attestedAt: serverTimestamp(), nationalId: 'A123456781' }), 'deny');
+    attestedBy: 'P001', attestedAt: serverTimestamp(), nationalId: 'A123456789' }), 'deny');
 
 // ── 身分證字號索引：可精確查號，不可列舉 ────────────────────────────────
 //
@@ -915,34 +961,34 @@ await run('身分證 核保摘要不得夾帶證號',
 // 只寫 `allow read: if isDoctor()` 會同時允許 list，那正是上述災難。
 await env.withSecurityRulesDisabled(async ctx => {
   const db = ctx.firestore();
-  await setDoc(doc(db, 'patient_index/B287654322'), { username: 'nid2' });
-  await setDoc(doc(db, 'patient_index/C209876544'), { username: 'nid1' });
+  await setDoc(doc(db, 'patient_index/B287654326'), { username: 'nid2' });
+  await setDoc(doc(db, 'patient_index/C209876541'), { username: 'nid1' });
 });
 
 await run('索引 醫師以完整證號精確查詢',
-  () => getDoc(doc(DOC(), 'patient_index/B287654322')), 'allow');
+  () => getDoc(doc(DOC(), 'patient_index/B287654326')), 'allow');
 // 【核心】這一條若失守，整個設計就變成先前否決的那個方案
 await run('索引 醫師列舉整個索引',
   () => getDocs(collection(DOC(), 'patient_index')), 'deny');
 await run('索引 管理員列舉整個索引',
   () => getDocs(collection(ADM(), 'patient_index')), 'deny');
 await run('索引 核保端查詢證號',
-  () => getDoc(doc(INS(), 'patient_index/B287654322')), 'deny');
+  () => getDoc(doc(INS(), 'patient_index/B287654326')), 'deny');
 await run('索引 病患查詢他人證號',
-  () => getDoc(doc(P001(), 'patient_index/B287654322')), 'deny');
+  () => getDoc(doc(P001(), 'patient_index/B287654326')), 'deny');
 
 // 索引鍵必須真的是自己的證號，否則可把他人證號指向自己的帳號，
 // 使醫師輸入該號碼時調出錯誤的病歷
 await run('索引 病患發布自己的證號索引',
-  () => setDoc(doc(NID2(), 'patient_index/A123456781'), { username: 'nid2' }), 'allow');
+  () => setDoc(doc(NID2(), 'patient_index/A123456789'), { username: 'nid2' }), 'allow');
 await run('索引 病患把他人證號指向自己',
-  () => setDoc(doc(NID1(), 'patient_index/A123456781'), { username: 'nid1' }), 'deny');
+  () => setDoc(doc(NID1(), 'patient_index/A123456789'), { username: 'nid1' }), 'deny');
 await run('索引 病患替他人發布索引',
-  () => setDoc(doc(NID1(), 'patient_index/B287654322'), { username: 'nid2' }), 'deny');
+  () => setDoc(doc(NID1(), 'patient_index/B287654326'), { username: 'nid2' }), 'deny');
 await run('索引 夾帶白名單外欄位',
-  () => setDoc(doc(NID2(), 'patient_index/A123456781'), { username: 'nid2', note: 'x' }), 'deny');
+  () => setDoc(doc(NID2(), 'patient_index/A123456789'), { username: 'nid2', note: 'x' }), 'deny');
 await run('索引 醫師不可自行發布索引',
-  () => setDoc(doc(DOC(), 'patient_index/D112358135'), { username: 'nid2' }), 'deny');
+  () => setDoc(doc(DOC(), 'patient_index/D112358131'), { username: 'nid2' }), 'deny');
 
 // ── 醫護持證件建立照護關係（basis: 'id-presented'）──────────────────────
 //
