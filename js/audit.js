@@ -36,7 +36,10 @@ window.Audit = (function () {
     USER_ROLE_CHANGE: 'user_role_change',
     DDI_RULE_CHANGE: 'ddi_rule_change',
     SETTINGS_CHANGE: 'settings_change',
-    MAINTENANCE_TOGGLE: 'maintenance_toggle'
+    MAINTENANCE_TOGGLE: 'maintenance_toggle',
+    // 緊急調閱：在沒有醫病關係的情況下取用病歷。
+    // 這是系統中唯一允許自我授權的動作，因此也是最需要事後複查的一筆記錄。
+    BREAK_GLASS: 'break_glass'
   };
 
   // 稽核記錄本身不得成為新的個資外洩管道。這裡只記「誰、何時、對誰、做了什麼」，

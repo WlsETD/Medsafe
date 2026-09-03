@@ -735,6 +735,78 @@ await run('care_relations 醫師讀指向自己的關係',
 await run('care_relations 不可刪除',
   () => deleteDoc(doc(P001(), 'care_relations/rel1__doctor')), 'deny');
 
+// ── 緊急調閱（break-glass）──────────────────────────────────────────────
+//
+// 這條規則與其他每一條的目的相反：它刻意允許醫師自我授權，
+// 因為急診病患無法掛號，而此時最需要知道他在吃什麼藥。
+//
+// 因此這批測試釘住的不是「能不能存取」，而是**宣告的品質**——
+// 理由必須實質填寫、時間由伺服器決定、時效有上限、記錄不可湮滅、
+// 身分不可冒名。這些條件若失守，緊急調閱就退化成一個沒有代價的後門。
+const bgDoc = (extra) => Object.assign({
+  patient: 'nobody', doctor: 'doctor',
+  reason: '病患意識不清由救護車送達急診，需確認抗凝血劑使用情形',
+  declaredAt: serverTimestamp(),
+  expiresAt: Timestamp.fromDate(new Date(Date.now() + 3 * 3600 * 1000))
+}, extra || {});
+
+// 合法：填了實質理由、時效在上限內
+await run('緊急調閱 醫師宣告後可存取',
+  () => setDoc(doc(DOC(), 'break_glass/nobody__doctor'), bgDoc()), 'allow');
+await run('緊急調閱 宣告後讀得到原本讀不到的病歷',
+  () => getDoc(doc(DOC(), 'patient_data/nobody')), 'allow');
+
+// 理由不可虛應。一鍵取用的後門與沒有後門的差別，全在這個門檻上
+await run('緊急調閱 理由過短',
+  () => setDoc(doc(DOC(), 'break_glass/rel2__doctor'), bgDoc({ patient: 'rel2', reason: '急診' })), 'deny');
+await run('緊急調閱 理由留空',
+  () => setDoc(doc(DOC(), 'break_glass/rel2__doctor'), bgDoc({ patient: 'rel2', reason: '' })), 'deny');
+
+// 時效不可自訂為永久——否則一次宣告換來無限期的病歷存取權
+await run('緊急調閱 時效超過 4 小時上限',
+  () => setDoc(doc(DOC(), 'break_glass/rel2__doctor'), bgDoc({
+    patient: 'rel2', expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 86400000)) })), 'deny');
+
+// 宣告時間由伺服器決定，不可回填造假時序
+await run('緊急調閱 回填宣告時間',
+  () => setDoc(doc(DOC(), 'break_glass/rel2__doctor'), bgDoc({
+    patient: 'rel2', declaredAt: Timestamp.fromDate(new Date(0)) })), 'deny');
+
+// 不可冒名：把調閱記到別的醫師頭上
+await run('緊急調閱 冒用他人身分宣告',
+  () => setDoc(doc(DOC(), 'break_glass/rel2__otherdoc'), bgDoc({ patient: 'rel2', doctor: 'otherdoc' })), 'deny');
+// 文件 ID 與內容不符時，規則的 O(1) 查找會指向錯誤的宣告
+await run('緊急調閱 文件 ID 與內容不符',
+  () => setDoc(doc(DOC(), 'break_glass/someoneelse__doctor'), bgDoc({ patient: 'rel2' })), 'deny');
+
+// 病患不可替自己建立（那不是緊急調閱），核保端更不可
+await run('緊急調閱 病患自行建立',
+  () => setDoc(doc(P001(), 'break_glass/P001__doctor'), bgDoc({ patient: 'P001' })), 'deny');
+await run('緊急調閱 核保端建立',
+  () => setDoc(doc(INS(), 'break_glass/P001__insurance01'), bgDoc({ patient: 'P001', doctor: 'insurance01' })), 'deny');
+
+// 【最重要】記錄不可湮滅。能被刪除的調閱記錄等於沒有記錄
+await run('緊急調閱 宣告者刪除自己的記錄',
+  () => deleteDoc(doc(DOC(), 'break_glass/nobody__doctor')), 'deny');
+await run('緊急調閱 管理員刪除記錄',
+  () => deleteDoc(doc(ADM(), 'break_glass/nobody__doctor')), 'deny');
+// 重新宣告是一次全新的宣告，同樣要填理由、同樣重新計時——不是「延長」
+await run('緊急調閱 重新宣告需重填理由',
+  () => updateDoc(doc(DOC(), 'break_glass/nobody__doctor'), { reason: '短' }), 'deny');
+// 病患看得到誰調閱過自己——這是這套機制對病患的意義所在。
+// 需先種入一筆：讀不存在的文件時 resource 為 null，各分支皆不成立而被拒，
+// 那測到的會是「文件不存在」，不是「病患有沒有讀取權」。
+await env.withSecurityRulesDisabled(async ctx => {
+  await setDoc(doc(ctx.firestore(), 'break_glass/P001__doctor'), {
+    patient: 'P001', doctor: 'doctor', reason: '急診到院，需確認用藥',
+    declaredAt: new Date(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 3600000))
+  });
+});
+await run('緊急調閱 病患可查看誰調閱過自己',
+  () => getDoc(doc(P001(), 'break_glass/P001__doctor')), 'allow');
+await run('緊急調閱 他人不可查看該記錄',
+  () => getDoc(doc(ATK(), 'break_glass/P001__doctor')), 'deny');
+
 console.log('');
 for (const r of results) console.log(r[0].padEnd(5), r[1], r[2] ? '\n      ' + r[2] : '');
 const failed = results.filter(r => r[0] === 'FAIL');

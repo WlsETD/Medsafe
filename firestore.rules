@@ -394,8 +394,11 @@ service cloud.firestore {
         return isDoctor() && resource != null
           && resource.data.assignedDoctor == profile().username;
       }
+      //   三、hasActiveBreakGlass() —— 急診等無法掛號的情境（見 break_glass 一節）。
+      //       這一條是刻意開的口：控制點不是阻擋，而是讓取用留下無法否認的紀錄。
       allow read: if isAdmin() || isOwnUsername(username)
-        || isAssignedDoctorOf() || hasActiveCareRelation(username);
+        || isAssignedDoctorOf() || hasActiveCareRelation(username)
+        || hasActiveBreakGlass(username);
       // create 的 isDoctor() 一併收斂。resource 為 null 時 isAssignedDoctorOf()
       // 不成立，因此醫師建檔須先有照護關係。原本任何醫師都能替尚無病歷的
       // username 建檔並把 assignedDoctor 寫成自己——那是自我授權。
@@ -418,7 +421,10 @@ service cloud.firestore {
       // 即使看不到病歷，仍可對它寫入用藥，那比讀取更危險。
       allow update: if resource != null && prescriptionIsAccountable() && pseudonymWellFormedIfNew()
         && (isAdmin()
-        || isAssignedDoctorOf() || hasActiveCareRelation(username)
+        // 緊急調閱同樣允許寫入：急診情境下往往需要當場開立處方。
+        // 處方閘門（prescriptionIsAccountable）仍然適用，
+        // 因此即使在緊急狀態下，新增用藥依舊必須攜帶安全檢查紀錄。
+        || isAssignedDoctorOf() || hasActiveCareRelation(username) || hasActiveBreakGlass(username)
         || (isOwnUsername(username) && patientOnlyTouchesOwnFields()
             && pseudonymNotOverwritten() && profileIdMatchesOwner(username)));
       allow delete: if isAdmin();
@@ -490,6 +496,64 @@ service cloud.firestore {
              .hasOnly(['status', 'expiresAt', 'updatedAt']);
       // 授予與撤銷的歷程本身即為證據，不可刪除
       allow delete: if false;
+    }
+
+    // ── 緊急調閱（break-glass）────────────────────────────────────────────
+    //
+    // 【這條規則刻意允許自我授權，理由必須寫清楚】
+    // 前面每一條規則的目的都是阻擋未經授權的存取。這一條相反：它讓醫師
+    // 在沒有照護關係的情況下，自行宣告緊急情況後取得存取權。
+    //
+    // 為什麼要開這個口：急診、到院前心跳停止、意識不清的病患無法掛號，
+    // 而此時最需要知道他在吃什麼藥——抗凝血劑、降血糖藥、乙型阻斷劑的
+    // 有無會直接改變處置。一個「查不到就是查不到」的系統，
+    // 在這個情境下的失效方式是病人死亡。本專案在處方攔截政策上
+    // 已論證過「可用性失效同樣會傷害病人」，此處是同一個道理的極端版本。
+    //
+    // 因此控制點不是「阻擋」，而是「讓它昂貴且無法否認」：
+    //   一、必須寫下理由（至少 10 字），不能一鍵取用
+    //   二、宣告時間由伺服器決定，無法回填造假
+    //   三、時效上限 4 小時，不會變成永久授權
+    //   四、update 與 delete 皆拒絕記錄被湮滅，只允許以新的宣告覆蓋
+    //       （覆蓋時同樣要填理由、同樣重新計時）
+    //   五、宣告者身分經 token.email 驗證，無法記到別人頭上
+    //
+    // 【誠實的限制】本文件只保留「最近一次宣告」。歷次宣告的完整歷程
+    // 依賴前端另外寫入 audit_logs，而規則無法強制那件事發生
+    //（與 P1-5 記載的限制相同）。要做到「宣告必然留下完整歷程」，
+    // 需由後端 trigger 在此文件變更時自動寫入，列於 Phase 6。
+    match /break_glass/{bid} {
+      allow read: if isActive() && (
+        isAdmin()
+        || (resource != null && isOwnUsername(resource.data.patient))
+        || (resource != null && isDoctor() && resource.data.doctor == profile().username)
+      );
+      // 建立與重新宣告的條件相同——重新宣告不是「延長」，而是一次全新的宣告
+      allow create, update: if isDoctor()
+        && bid == request.resource.data.patient + '__' + request.resource.data.doctor
+        && request.resource.data.doctor == profile().username
+        && ownsUsername(request.resource.data.doctor)
+        && request.resource.data.patient is string
+        && request.resource.data.patient.size() > 0
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() >= 10
+        && request.resource.data.reason.size() <= 500
+        && request.resource.data.declaredAt == request.time
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt < request.time + duration.value(4, 'h')
+        && request.resource.data.keys().hasOnly(
+             ['patient', 'doctor', 'reason', 'declaredAt', 'expiresAt']);
+      allow delete: if false;
+    }
+
+    function breakGlassPath(patientUsername) {
+      return /databases/$(database)/documents/break_glass/$(patientUsername + '__' + profile().username);
+    }
+    function hasActiveBreakGlass(patientUsername) {
+      return isDoctor()
+        && exists(breakGlassPath(patientUsername))
+        && get(breakGlassPath(patientUsername)).data.expiresAt > request.time;
     }
 
     function careRelationPath(patientUsername) {

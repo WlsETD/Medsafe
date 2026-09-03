@@ -145,6 +145,12 @@
                         其中 {{ legacyPatientCount }} 位尚無掛號紀錄，係依舊制指派欄位列入
                     </p>
                     <p v-if="patientLoadWarning" class="text-[9px] font-bold text-danger mt-1.5 leading-relaxed">{{ patientLoadWarning }}</p>
+                    <!-- 緊急調閱：唯一允許自我授權的路徑。刻意做成需要多一次點擊、
+                         且必須填寫理由——它不該和一般操作一樣順手。 -->
+                    <button @click="openBreakGlass" class="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-danger/40 text-danger hover:bg-danger hover:text-white transition-all text-[10px] font-black uppercase tracking-widest">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                        緊急調閱
+                    </button>
                 </div>
                 <div v-for="p in recentPatients" :key="p.id" 
                      @click="switchToPatient(p); showMobileMenu = false"
@@ -161,6 +167,9 @@
                         <div class="text-[10px] font-medium opacity-50 uppercase tracking-wider">
                             {{ p.id }}
                             <span v-if="p.source === 'legacy'" class="ml-1 normal-case opacity-70">· 未掛號</span>
+                            <!-- 緊急調閱進來的病患必須看得出來：他不是您的病患，
+                                 只是您在例外情況下取得了時限內的存取權 -->
+                            <span v-else-if="p.source === 'break-glass'" class="ml-1 normal-case text-danger font-black">· 緊急調閱</span>
                         </div>
                         <!-- 今日服藥回報（病患自述）。沒設提醒的病患不顯示，
                              否則畫面上會出現一排需要逐一排除的灰點。 -->
@@ -547,6 +556,55 @@
 
         <!-- 4. ADD PRESCRIPTION MODAL -->
         <transition name="fade">
+            <!-- ── 緊急調閱 ─────────────────────────────────────────────────
+                 這個視窗的措辭刻意不含糊。使用者必須清楚知道：
+                 這不是一個查詢功能，而是一次會被記名、會被複查的例外調用。 -->
+            <div v-if="showBreakGlass" role="dialog" aria-modal="true" class="fixed inset-0 z-[260] flex items-center justify-center p-4">
+                <div class="absolute inset-0 bg-slate-950/85 backdrop-blur-md" @click="showBreakGlass = false"></div>
+                <div class="bg-white rounded-[40px] w-full max-w-lg shadow-2xl relative z-10 overflow-hidden animate-fade-in text-left">
+                    <div class="bg-danger p-8 text-white">
+                        <h3 class="text-2xl font-black tracking-tighter">緊急調閱病歷</h3>
+                        <p class="opacity-80 text-[11px] font-bold mt-1 leading-relaxed">
+                            用於急診等病患無法掛號、而用藥資訊直接影響處置的情境。
+                        </p>
+                    </div>
+                    <div class="p-8 space-y-5">
+                        <div class="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-1.5">
+                            <p class="text-[11px] font-black text-danger">本次調閱會留下無法刪除的記錄</p>
+                            <ul class="text-[10px] font-bold text-red-900/80 leading-relaxed list-disc pl-4 space-y-0.5">
+                                <li>記錄您的帳號、時間與所填理由，且無法自行刪除或修改</li>
+                                <li>存取權限 {{ breakGlassHours }} 小時後自動失效</li>
+                                <li>管理者可調閱全部緊急調閱記錄進行複查</li>
+                            </ul>
+                        </div>
+
+                        <div v-if="breakGlassError" class="bg-red-50 text-danger text-xs font-bold p-4 rounded-xl border border-red-100">{{ breakGlassError }}</div>
+
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">病患帳號</label>
+                            <input v-model="breakGlassForm.patient" type="text" placeholder="如 P001"
+                                   class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-danger/30 focus:bg-white outline-none transition-all">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">調閱理由（至少 10 字）</label>
+                            <textarea v-model="breakGlassForm.reason" rows="3" placeholder="例：病患意識不清由救護車送達急診，需確認抗凝血劑使用情形"
+                                      class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-danger/30 focus:bg-white outline-none transition-all"></textarea>
+                            <p class="text-[10px] font-bold text-slate-400 mt-1.5 px-1">
+                                已填 {{ breakGlassForm.reason.trim().length }} 字。此理由會原文保存於稽核記錄中。
+                            </p>
+                        </div>
+                    </div>
+                    <div class="p-8 bg-slate-50 flex gap-4 border-t border-slate-100">
+                        <button @click="showBreakGlass = false" class="flex-1 py-4 font-black text-slate-400 uppercase text-[10px]">取消</button>
+                        <button @click="confirmBreakGlass"
+                                :disabled="breakGlassBusy || breakGlassForm.reason.trim().length < 10 || !breakGlassForm.patient.trim()"
+                                class="flex-[2] py-4 bg-danger text-white font-black rounded-3xl shadow-xl hover:scale-105 transition-all text-xs uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100">
+                            確認調閱並留下記錄
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <div v-if="showPrescriptionModal" role="dialog" aria-modal="true" class="fixed inset-0 z-[250] flex items-center justify-center p-4">
                 <div class="absolute inset-0 bg-slate-950/80 backdrop-blur-md" @click="showPrescriptionModal = false; resetAiCheck()"></div>
                 <div class="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl relative z-10 overflow-hidden border border-slate-100 animate-fade-in">
@@ -886,6 +944,12 @@
                     // 以及病患清單載入不完整時的警告
                     legacyPatientCount: 0,
                     patientLoadWarning: '',
+                    // 緊急調閱（break-glass）
+                    showBreakGlass: false,
+                    breakGlassForm: { patient: '', reason: '' },
+                    breakGlassBusy: false,
+                    breakGlassError: '',
+                    breakGlassHours: 4,
                     aiCheckStatus: 'idle',
                     ddiRuleCount: 0,
                     ddiRuleSource: 'local',
@@ -1450,6 +1514,67 @@
                     const total = typeof rec.total === 'number' ? rec.total : reminders.length;
                     if (total > 0 && taken >= total) return { state: 'full', text: taken + '/' + total };
                     return { state: 'partial', text: taken + '/' + total };
+                },
+
+                // ── 緊急調閱 ──────────────────────────────────────────────────
+                openBreakGlass() {
+                    this.breakGlassForm = { patient: '', reason: '' };
+                    this.breakGlassError = '';
+                    this.breakGlassHours = DbService.breakGlass.HOURS;
+                    this.showBreakGlass = true;
+                },
+                async confirmBreakGlass() {
+                    if (this.breakGlassBusy) return;
+                    const pid = this.breakGlassForm.patient.trim();
+                    this.breakGlassBusy = true;
+                    this.breakGlassError = '';
+                    try {
+                        const r = await DbService.breakGlass.declare(pid, this.breakGlassForm.reason, this.user.username);
+                        if (!r.ok) {
+                            this.breakGlassError = '調閱理由至少需 10 字。';
+                            return;
+                        }
+                        // 病歷讀取必須在宣告成功之後——先讀會因為還沒有權限而失敗
+                        const snap = await window.db.collection('patient_data').doc(pid).get();
+                        if (!snap.exists) {
+                            // 宣告已經留下記錄，這一點必須說清楚：
+                            // 查無此人不代表沒有發生過一次緊急調閱
+                            this.breakGlassError = `查無病患「${pid}」的病歷。本次宣告仍已留下記錄。`;
+                            return;
+                        }
+                        const p = { username: pid, ...snap.data() };
+                        const rules = window.DdiEngine.localRuleSet();
+                        const res = window.DdiEngine.analyze(p.medications || [], rules);
+                        const entry = {
+                            id: pid,
+                            name: (p.profile && p.profile.name) || pid,
+                            status: res.findings.length
+                                ? ((res.topSeverity === 'major' || res.topSeverity === 'contraindicated') ? '危險' : '警告')
+                                : ((res.unevaluable.length || res.ungraded.length) ? '待確認' : '未發現'),
+                            lastCheck: (p.stats && p.stats.lastSync) || '-',
+                            medications: p.medications || [],
+                            reminders: p.reminders || [],
+                            adherenceLog: p.adherenceLog || {},
+                            source: 'break-glass'
+                        };
+                        const idx = this.recentPatients.findIndex(x => x.id === pid);
+                        if (idx === -1) this.recentPatients.unshift(entry); else this.recentPatients[idx] = entry;
+                        this.showBreakGlass = false;
+                        this.switchToPatient(entry);
+                        // 稽核寫入失敗時不可只說成功——一次無法追溯的緊急調閱，
+                        // 正是這整套機制要防止的東西
+                        this.triggerToast(
+                            r.audited ? '已建立緊急調閱記錄' : '調閱已生效，但稽核記錄失敗',
+                            r.audited
+                                ? `${entry.name} 的病歷已開放 ${this.breakGlassHours} 小時，本次調閱已留下記錄`
+                                : `病歷已開放，惟本次調閱未能寫入稽核記錄，請立即通報系統管理者`
+                        );
+                    } catch (e) {
+                        console.error('緊急調閱失敗：', e);
+                        this.breakGlassError = '調閱失敗，未取得存取權。請確認病患帳號是否正確，或聯繫系統管理者。';
+                    } finally {
+                        this.breakGlassBusy = false;
+                    }
                 },
 
                 // 用藥記錄的顯示名稱。正規化邏輯在 DrugCatalog（藥物身分的擁有者），

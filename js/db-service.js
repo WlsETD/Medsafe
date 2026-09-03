@@ -386,6 +386,51 @@ window.DbService = {
     }
   },
 
+  // ── 緊急調閱（break-glass）──────────────────────────────────────────
+  //
+  // 見 firestore.rules 的 break_glass 一節：這是系統中唯一允許自我授權的路徑，
+  // 存在的理由是急診病患無法掛號，而此時最需要知道他在吃什麼藥。
+  // 控制點不是阻擋，是讓取用昂貴且無法否認。
+  breakGlass: {
+    HOURS: 4,
+
+    async declare(patientUsername, reason, doctorUsername) {
+      const text = String(reason || '').trim();
+      // 與規則同一個門檻。前端先擋是為了給出清楚的訊息，
+      // 但真正的強制在規則層——這裡放行也沒用。
+      if (text.length < 10) {
+        return { ok: false, reason: 'reason-too-short' };
+      }
+      const expires = new Date(Date.now() + (this.HOURS * 3600 - 60) * 1000);
+      await window.db.collection('break_glass')
+        .doc(patientUsername + '__' + doctorUsername)
+        .set({
+          patient: patientUsername,
+          doctor: doctorUsername,
+          reason: text,
+          declaredAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+          expiresAt: window.firebase.firestore.Timestamp.fromDate(expires)
+        });
+
+      // 稽核記錄與宣告文件是兩件事：宣告文件只保留最近一次，
+      // 完整歷程靠 audit_logs。寫入失敗必須回報——一次無法追溯的緊急調閱，
+      // 正是這整套機制要防止的東西。
+      const a = await window.Audit.log(window.Audit.ACTIONS.BREAK_GLASS, patientUsername,
+        { reason: text, expiresInHours: this.HOURS });
+      return { ok: true, audited: a.ok };
+    },
+
+    async current(patientUsername, doctorUsername) {
+      const snap = await window.db.collection('break_glass')
+        .doc(patientUsername + '__' + doctorUsername).get();
+      if (!snap.exists) return null;
+      const d = snap.data();
+      const exp = d.expiresAt && d.expiresAt.toDate ? d.expiresAt.toDate() : null;
+      if (!exp || exp <= new Date()) return null;
+      return { ...d, expiresAtDate: exp };
+    }
+  },
+
   // 醫師的病患清單：由進行中的掛號決定，而非 assignedDoctor 靜態欄位。
   //
   // 【為什麼要逐筆讀病歷而不是一次查詢】
