@@ -145,6 +145,13 @@
                         其中 {{ legacyPatientCount }} 位尚無掛號紀錄，係依舊制指派欄位列入
                     </p>
                     <p v-if="patientLoadWarning" class="text-[9px] font-bold text-danger mt-1.5 leading-relaxed">{{ patientLoadWarning }}</p>
+                    <!-- 櫃檯報到：輸入病患出示的證號，建立照護關係。
+                         這是常規路徑，因此做得順手；但它同樣是自我授權，
+                         所以同樣具名留痕（見 firestore.rules 的 basis: 'id-presented'）。 -->
+                    <button @click="openAssign" class="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white/10 text-white/90 hover:bg-white/20 transition-all text-[10px] font-black uppercase tracking-widest">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
+                        報到／指派病患
+                    </button>
                     <!-- 緊急調閱：唯一允許自我授權的路徑。刻意做成需要多一次點擊、
                          且必須填寫理由——它不該和一般操作一樣順手。 -->
                     <button @click="openBreakGlass" class="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-danger/40 text-danger hover:bg-danger hover:text-white transition-all text-[10px] font-black uppercase tracking-widest">
@@ -583,6 +590,51 @@
 
         <!-- 4. ADD PRESCRIPTION MODAL -->
         <transition name="fade">
+            <!-- ── 報到／指派病患 ───────────────────────────────────────────
+                 目前沒有 HIS 可串接，掛號來源不存在。實務上的替代流程是
+                 病患持健保卡臨櫃，醫護輸入證號調出病歷。
+                 這裡只能「精確查號」，不能搜尋或瀏覽——見 firestore.rules
+                 對 patient_index 的 get/list 分別授權。 -->
+            <div v-if="showAssign" role="dialog" aria-modal="true" class="fixed inset-0 z-[255] flex items-center justify-center p-4">
+                <div class="absolute inset-0 bg-slate-950/80 backdrop-blur-md" @click="showAssign = false"></div>
+                <div class="bg-white rounded-[40px] w-full max-w-lg shadow-2xl relative z-10 overflow-hidden animate-fade-in text-left">
+                    <div class="clinical-gradient p-8 text-white">
+                        <h3 class="text-2xl font-black tracking-tighter">報到／指派病患</h3>
+                        <p class="opacity-80 text-[11px] font-bold mt-1 leading-relaxed">
+                            輸入病患出示證件上的身分證字號，建立本次照護關係。
+                        </p>
+                    </div>
+                    <div class="p-8 space-y-5">
+                        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                            <p class="text-[11px] font-black text-slate-700 mb-1">本次指派會以您的帳號具名記錄</p>
+                            <p class="text-[10px] font-bold text-slate-500 leading-relaxed">
+                                系統無法驗證證件是否確實被出示，因此記錄的是「由您宣告病患持證件報到」。
+                                建立後 {{ assignDays }} 天內您可存取其病歷，病患本人可隨時撤回。
+                            </p>
+                        </div>
+
+                        <div v-if="assignError" class="bg-red-50 text-danger text-xs font-bold p-4 rounded-xl border border-red-100 leading-relaxed">{{ assignError }}</div>
+
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">身分證字號</label>
+                            <input v-model="assignNid" type="text" maxlength="10" placeholder="A123456789"
+                                   @keyup.enter="confirmAssign"
+                                   class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-mono font-black text-lg text-slate-800 tracking-wider focus:border-primary/20 focus:bg-white outline-none transition-all uppercase">
+                            <p class="text-[10px] font-bold text-slate-400 mt-2 px-1 leading-relaxed">
+                                僅能以完整證號查詢，無法以姓名搜尋或瀏覽名單。
+                            </p>
+                        </div>
+                    </div>
+                    <div class="p-8 bg-slate-50 flex gap-4 border-t border-slate-100">
+                        <button @click="showAssign = false" class="flex-1 py-4 font-black text-slate-400 uppercase text-[10px]">取消</button>
+                        <button @click="confirmAssign" :disabled="assignBusy || assignNid.trim().length !== 10"
+                                class="flex-[2] py-4 clinical-gradient text-white font-black rounded-3xl shadow-xl hover:scale-105 transition-all text-xs uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100">
+                            查詢並建立照護關係
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- ── 緊急調閱 ─────────────────────────────────────────────────
                  這個視窗的措辭刻意不含糊。使用者必須清楚知道：
                  這不是一個查詢功能，而是一次會被記名、會被複查的例外調用。 -->
@@ -982,6 +1034,12 @@
                     // 那筆查閱既沒有被記錄，醫師也沒有意識到自己看了。
                     nationalIdRevealed: false,
                     verifyBusy: false,
+                    // 報到／指派（無 HIS 時的掛號替代路徑）
+                    showAssign: false,
+                    assignNid: '',
+                    assignBusy: false,
+                    assignError: '',
+                    assignDays: 90,
                     aiCheckStatus: 'idle',
                     ddiRuleCount: 0,
                     ddiRuleSource: 'local',
@@ -1606,6 +1664,102 @@
                     }
                 },
 
+                // 讀取單一病患並組成清單項目。報到指派與緊急調閱都需要這件事，
+                // 兩處各寫一份的話，狀態判定或欄位只要有一邊被調整就會漂移——
+                // 而那種漂移在畫面上看不出來，只會讓同一位病患在不同入口
+                // 顯示成不同的風險等級。
+                async buildPatientEntry(username, source) {
+                    const snap = await window.db.collection('patient_data').doc(username).get();
+                    if (!snap.exists) return null;
+                    const p = { username, ...snap.data() };
+                    const res = window.DdiEngine.analyze(p.medications || [], window.DdiEngine.localRuleSet());
+                    return {
+                        id: username,
+                        name: (p.profile && p.profile.name) || username,
+                        // 狀態判定與清單載入處使用同一套規則：
+                        // 有已分級發現才是危險／警告；查得到但未分級或不認得的藥為待確認；
+                        // 兩者皆無時說「未發現」而非「安全」——後者是本系統無從保證的臨床斷言
+                        status: res.findings.length
+                            ? ((res.topSeverity === 'major' || res.topSeverity === 'contraindicated') ? '危險' : '警告')
+                            : ((res.unevaluable.length || res.ungraded.length) ? '待確認' : '未發現'),
+                        lastCheck: (p.stats && p.stats.lastSync) || '-',
+                        medications: p.medications || [],
+                        reminders: p.reminders || [],
+                        adherenceLog: p.adherenceLog || {},
+                        profile: p.profile || {},
+                        nationalIdVerifiedBy: p.nationalIdVerifiedBy || null,
+                        source: source
+                    };
+                },
+
+                // ── 報到／指派病患 ────────────────────────────────────────────
+                openAssign() {
+                    this.assignNid = '';
+                    this.assignError = '';
+                    this.assignDays = DbService.appointments.RELATION_DAYS;
+                    this.showAssign = true;
+                },
+                async confirmAssign() {
+                    if (this.assignBusy) return;
+                    const nid = this.assignNid.trim().toUpperCase();
+                    this.assignError = '';
+                    if (!/^[A-Z][12]\d{8}$/.test(nid)) {
+                        this.assignError = '格式不正確。應為 1 個英文字母 + 1 或 2 + 8 位數字。';
+                        return;
+                    }
+                    this.assignBusy = true;
+                    try {
+                        const look = await DbService.patientIndex.lookup(nid);
+                        // 查無此號與查詢失敗必須分開講——前者要請病患先註冊，
+                        // 後者是系統問題，櫃檯的下一步動作完全不同
+                        if (!look.ok) {
+                            this.assignError = '查詢失敗，未建立任何關係。請確認網路後重試，或改用緊急調閱。';
+                            return;
+                        }
+                        if (!look.found) {
+                            this.assignError = `查無此證號的註冊資料。請確認號碼無誤，或請病患先於病患端完成註冊並填寫身分證字號。`;
+                            return;
+                        }
+                        const username = look.username;
+                        await DbService.appointments.grantByIdPresented(username, this.user.username);
+                        // 同時建立一筆就診紀錄：醫師清單、FHIR Encounter 都以它為來源，
+                        // 少了它，這位病患雖然讀得到卻不會出現在清單上
+                        try {
+                            await DbService.appointments.create({
+                                patient: username, patientName: username,
+                                doctor: this.user.username, doctorName: this.user.name,
+                                department: '一般內科',
+                                scheduledAt: new Date().toISOString().slice(0, 10),
+                                note: '櫃檯報到（持證件）'
+                            });
+                        } catch (e) {
+                            // 關係已建立，病歷讀得到；只是清單來源缺一筆。據實說明，不假裝完全成功
+                            console.error('就診紀錄建立失敗：', e);
+                        }
+                        const a = await window.Audit.log(window.Audit.ACTIONS.CARE_ASSIGN, username,
+                            { basis: 'id-presented', days: this.assignDays });
+
+                        // 直接載入並切換到該病患——櫃檯報到之後本來就該看到他。
+                        // 不整批重載清單：那段載入邏輯在 created() 內，
+                        // 為了這裡去重構它，風險高於它帶來的好處。
+                        const entry = await this.buildPatientEntry(username, 'id-presented');
+                        this.showAssign = false;
+                        if (entry) {
+                            const idx = this.recentPatients.findIndex(x => x.id === username);
+                            if (idx === -1) this.recentPatients.unshift(entry); else this.recentPatients[idx] = entry;
+                            this.switchToPatient(entry);
+                        }
+                        this.triggerToast(a.ok ? '已建立照護關係' : '已建立，但稽核記錄失敗',
+                            a.ok ? `${(entry && entry.name) || username} 的病歷已可存取，有效 ${this.assignDays} 天`
+                                 : `病歷已可存取，惟本次指派未能寫入稽核記錄，請通報系統管理者`);
+                    } catch (e) {
+                        console.error('指派失敗：', e);
+                        this.assignError = '建立照護關係失敗，未取得存取權。請重試或聯繫系統管理者。';
+                    } finally {
+                        this.assignBusy = false;
+                    }
+                },
+
                 // ── 緊急調閱 ──────────────────────────────────────────────────
                 openBreakGlass() {
                     this.breakGlassForm = { patient: '', reason: '' };
@@ -1625,30 +1779,13 @@
                             return;
                         }
                         // 病歷讀取必須在宣告成功之後——先讀會因為還沒有權限而失敗
-                        const snap = await window.db.collection('patient_data').doc(pid).get();
-                        if (!snap.exists) {
+                        const entry = await this.buildPatientEntry(pid, 'break-glass');
+                        if (!entry) {
                             // 宣告已經留下記錄，這一點必須說清楚：
                             // 查無此人不代表沒有發生過一次緊急調閱
                             this.breakGlassError = `查無病患「${pid}」的病歷。本次宣告仍已留下記錄。`;
                             return;
                         }
-                        const p = { username: pid, ...snap.data() };
-                        const rules = window.DdiEngine.localRuleSet();
-                        const res = window.DdiEngine.analyze(p.medications || [], rules);
-                        const entry = {
-                            id: pid,
-                            name: (p.profile && p.profile.name) || pid,
-                            status: res.findings.length
-                                ? ((res.topSeverity === 'major' || res.topSeverity === 'contraindicated') ? '危險' : '警告')
-                                : ((res.unevaluable.length || res.ungraded.length) ? '待確認' : '未發現'),
-                            lastCheck: (p.stats && p.stats.lastSync) || '-',
-                            medications: p.medications || [],
-                            reminders: p.reminders || [],
-                            adherenceLog: p.adherenceLog || {},
-                            profile: p.profile || {},
-                            nationalIdVerifiedBy: p.nationalIdVerifiedBy || null,
-                            source: 'break-glass'
-                        };
                         const idx = this.recentPatients.findIndex(x => x.id === pid);
                         if (idx === -1) this.recentPatients.unshift(entry); else this.recentPatients[idx] = entry;
                         this.showBreakGlass = false;

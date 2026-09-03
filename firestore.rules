@@ -517,6 +517,40 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ── 身分證字號索引：可精確查號，但不可列舉 ──────────────────────────
+    //
+    // 【為什麼需要它】目前沒有 HIS 可串接，掛號來源不存在。實務上的替代
+    // 流程是：病患持健保卡到櫃檯，醫護輸入證號調出病歷。
+    //
+    // 【它與「醫師搜尋全院病患」的差別，是這整個設計成立的關鍵】
+    //   搜尋：輸入「王」列出所有姓王的人 —— 可釣魚、可瀏覽、可累積名單
+    //   查號：必須已知完整 10 碼 —— 那個號碼只能來自眼前病患的證件
+    // 前者是把 S-1 制度化，後者不是。但兩者的差別完全繫於一件事：
+    // **能不能列舉**。若醫師能一次撈出整個索引，它立刻退化成前者，
+    // 而且外洩的是全院的身分證字號對照表。
+    //
+    // Firestore 的 read 可再細分為 get（讀單一文件）與 list（查詢集合），
+    // 兩者可分別授權。因此這裡 get 開放、list 一律拒絕——
+    // 只寫 `allow read: if isDoctor()` 會同時允許 list，那正是上述的災難。
+    //
+    // 【誠實的限制】規則層沒有速率限制。知道某人證號的人（家屬、外洩名單持有者）
+    // 仍可查出其 username。真正的緩解是查詢留痕與事後複查，而非阻擋——
+    // 這與緊急調閱是同一種思路。窮舉在理論上可行但不實際：
+    // 通過檢查碼的號碼約 10^8 組，且每次查詢都是一次可被稽核的讀取。
+    match /patient_index/{nationalId} {
+      allow get: if isAdmin() || isDoctor();
+      allow list: if false;
+      // 只有病患本人能發布自己的索引，且索引鍵必須真的是他自己的證號——
+      // 少了這個檢查，任何人都能把他人的證號指向自己的帳號，
+      // 使醫師輸入該證號時調出錯誤的病歷。
+      allow create, update: if isActive()
+        && isOwnUsername(request.resource.data.username)
+        && request.resource.data.keys().hasOnly(['username'])
+        && get(/databases/$(database)/documents/patient_data/$(request.resource.data.username))
+             .data.profile.nationalId == nationalId;
+      allow delete: if isAdmin();
+    }
+
     // ── 照護關係：規則層可 O(1) 查驗的醫病關係 ──────────────────────────
     //
     // 【為什麼掛號本身不夠】
@@ -539,18 +573,41 @@ service cloud.firestore {
         || (resource != null && isOwnUsername(resource.data.patient))
         || (resource != null && isDoctor() && resource.data.doctor == profile().username)
       );
-      // 只有病患本人能授予，且文件 ID 必須與內容一致——
-      // 否則可用「內容寫 A、ID 寫 B」讓規則的 O(1) 查找指向錯誤的授權。
+      // 文件 ID 必須與內容一致——否則可用「內容寫 A、ID 寫 B」
+      // 讓規則的 O(1) 查找指向錯誤的授權。
+      //
+      // 兩種建立路徑：
+      //   一、病患本人授予（basis: 'patient'）——掛號時使用
+      //   二、醫護持證件建立（basis: 'id-presented'）——櫃檯報到時使用
+      //
+      // 【第二種是自我授權，因此必須具名且留痕】
+      // 沒有 HIS 可串接時，病患持健保卡到櫃檯就是實際發生的授權事件，
+      // 但系統無法驗證那張卡確實被出示過。因此比照緊急調閱的處理：
+      // 不阻擋，而是要求宣告者具名、時間由伺服器決定、且記錄不可竄改。
+      // 差別在於這是常規流程，故不像緊急調閱那樣要求填寫理由——
+      // 「病患持證件臨櫃」本身就是理由，而 basis 欄位已經說明了它。
       allow create: if isActive()
-        && isOwnUsername(request.resource.data.patient)
         && rid == request.resource.data.patient + '__' + request.resource.data.doctor
         && request.resource.data.status == 'active'
         && request.resource.data.grantedAt == request.time
-        && request.resource.data.expiresAt is timestamp;
-      // 撤銷或續期：只有病患本人，且只能動這幾個欄位。
-      // 不可改 patient／doctor，那會把關係轉移到別人身上。
+        && request.resource.data.expiresAt is timestamp
+        && (
+          (isOwnUsername(request.resource.data.patient)
+           && request.resource.data.get('basis', 'patient') == 'patient')
+          || (isDoctor()
+              && request.resource.data.doctor == profile().username
+              && ownsUsername(request.resource.data.doctor)
+              && request.resource.data.basis == 'id-presented')
+        );
+      // 撤銷或續期：病患本人，或該關係所指的醫師本人（完診時收回自己的存取權）。
+      // 只能動這幾個欄位——不可改 patient／doctor，那會把關係轉移到別人身上。
+      //
+      // 病患對醫護建立的關係同樣有撤銷權，這一點不可退讓：
+      // 若只有建立者能撤銷，「病患持證件臨櫃」這條路徑就變成單方面的、
+      // 病患無法收回的授權。
       allow update: if isActive() && resource != null
-        && isOwnUsername(resource.data.patient)
+        && (isOwnUsername(resource.data.patient)
+            || (isDoctor() && resource.data.doctor == profile().username))
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['status', 'expiresAt', 'updatedAt']);
       // 授予與撤銷的歷程本身即為證據，不可刪除

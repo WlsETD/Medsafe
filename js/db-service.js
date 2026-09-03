@@ -317,6 +317,34 @@ window.DbService = {
       }
     },
 
+    // 醫護持證件建立照護關係。沒有 HIS 可串接時，病患持健保卡到櫃檯
+    // 就是實際發生的授權事件——系統無法驗證那張卡被出示過，
+    // 因此比照緊急調閱：不阻擋，而是具名、留痕、有時效。
+    async grantByIdPresented(patient, doctor) {
+      const id = patient + '__' + doctor;
+      const expires = new Date();
+      expires.setDate(expires.getDate() + this.RELATION_DAYS);
+      const payload = {
+        patient, doctor, status: 'active', basis: 'id-presented',
+        grantedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+        expiresAt: window.firebase.firestore.Timestamp.fromDate(expires)
+      };
+      const ref = window.db.collection('care_relations').doc(id);
+      const snap = await ref.get();
+      if (snap.exists) {
+        // 已存在時只能改 status/expiresAt（規則限制），不可重寫 basis——
+        // 那會把一次病患自己給的授權，事後改寫成醫護宣告的授權
+        await ref.update({
+          status: 'active',
+          expiresAt: payload.expiresAt,
+          updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        await ref.set(payload);
+      }
+      return { relationId: id };
+    },
+
     async _revokeRelation(patient, doctor) {
       await window.db.collection('care_relations').doc(patient + '__' + doctor).update({
         status: 'revoked',
@@ -383,6 +411,32 @@ window.DbService = {
       if (remaining.length) return { relationRevoked: false, remaining: remaining.length };
       await this._revokeRelation(patient, doctor);
       return { relationRevoked: true, remaining: 0 };
+    }
+  },
+
+  // ── 身分證字號索引 ───────────────────────────────────────────────────
+  //
+  // 用途只有一個：讓醫護在櫃檯輸入證號後找到對應帳號。
+  // 規則上 get 開放、list 拒絕——可精確查號，不可列舉（見 firestore.rules）。
+  patientIndex: {
+    // 病患設定證號後由本人發布。規則會驗證索引鍵確實是他自己的證號，
+    // 因此無法把他人的證號指向自己的帳號。
+    async publish(nationalId, username) {
+      await window.db.collection('patient_index').doc(nationalId).set({ username });
+    },
+
+    // 醫護輸入證號查出帳號。查無資料與查詢失敗必須分開回報——
+    // 前者是「這個號碼沒有註冊」，後者是「系統壞了」，
+    // 對櫃檯人員而言下一步動作完全不同。
+    async lookup(nationalId) {
+      try {
+        const snap = await window.db.collection('patient_index').doc(nationalId).get();
+        if (!snap.exists) return { ok: true, found: false };
+        return { ok: true, found: true, username: snap.data().username };
+      } catch (e) {
+        console.error('證號查詢失敗：', e);
+        return { ok: false, error: e };
+      }
     }
   },
 

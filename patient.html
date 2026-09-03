@@ -1350,6 +1350,14 @@
                         this.adherenceLog = data.adherenceLog || {};
                         // 核驗狀態是頂層欄位，病患寫不了它——這正是它可信的原因
                         this.nationalIdVerified = !!data.nationalIdVerifiedBy;
+                        // 補發索引：既有病歷（含示範資料）的證號是直接寫進 profile 的，
+                        // 沒有經過會順帶建立索引的表單流程，櫃檯因此查不到他們。
+                        // 這裡在登入時補上，失敗不影響其他功能——只是查號會失敗，
+                        // 而那個失敗在櫃檯端有明確的訊息。
+                        if (data.profile && data.profile.nationalId) {
+                            DbService.patientIndex.publish(data.profile.nationalId, this._username)
+                                .catch(e => console.error('索引補發失敗：', e));
+                        }
                         // 跨日仍開著頁面時，日界一過就該換到新的一天。
                         // 沒有這行的話，過了午夜的勾選會寫進昨天的記錄。
                         this.todayKey = DbService.adherence.dayKey();
@@ -1748,6 +1756,15 @@
                         await window.db.collection('patient_data').doc(this._username)
                             .update({ profile: next });
                         this.profile = next;
+                        // 發布索引，讓櫃檯輸入證號時找得到您。
+                        // 索引寫入失敗不回滾證號——證號已經存進病歷了，
+                        // 回滾反而會讓兩者不一致。改為據實告知後果。
+                        try {
+                            await DbService.patientIndex.publish(v, this._username);
+                        } catch (e) {
+                            console.error('索引發布失敗：', e);
+                            this.nidError = '證號已儲存，但櫃檯查號索引建立失敗，報到時可能查不到您。請重新整理後再試一次。';
+                        }
                         this.nidInput = '';
                         this.triggerToast('已送出', '院方會在您報到時核對證件');
                     } catch (e) {

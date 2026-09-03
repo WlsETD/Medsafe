@@ -896,6 +896,73 @@ await run('身分證 核保摘要不得夾帶證號',
     alertCount: 0, safetyScore: 92, scoreStatus: 'assessed',
     attestedBy: 'P001', attestedAt: serverTimestamp(), nationalId: 'A123456781' }), 'deny');
 
+// ── 身分證字號索引：可精確查號，不可列舉 ────────────────────────────────
+//
+// 【這一組是整個「醫護輸入證號指派」設計成立與否的關鍵】
+// 精確查號與搜尋病患的差別，完全繫於能不能列舉。
+// 若醫師能一次撈出整個索引，它立刻退化成「醫師搜尋全院病患」——
+// 也就是先前明確否決的方案，而且外洩的是全院身分證字號對照表。
+//
+// Firestore 的 read 可細分為 get 與 list，兩者分別授權。
+// 只寫 `allow read: if isDoctor()` 會同時允許 list，那正是上述災難。
+await env.withSecurityRulesDisabled(async ctx => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'patient_index/B287654322'), { username: 'nid2' });
+  await setDoc(doc(db, 'patient_index/C209876544'), { username: 'nid1' });
+});
+
+await run('索引 醫師以完整證號精確查詢',
+  () => getDoc(doc(DOC(), 'patient_index/B287654322')), 'allow');
+// 【核心】這一條若失守，整個設計就變成先前否決的那個方案
+await run('索引 醫師列舉整個索引',
+  () => getDocs(collection(DOC(), 'patient_index')), 'deny');
+await run('索引 管理員列舉整個索引',
+  () => getDocs(collection(ADM(), 'patient_index')), 'deny');
+await run('索引 核保端查詢證號',
+  () => getDoc(doc(INS(), 'patient_index/B287654322')), 'deny');
+await run('索引 病患查詢他人證號',
+  () => getDoc(doc(P001(), 'patient_index/B287654322')), 'deny');
+
+// 索引鍵必須真的是自己的證號，否則可把他人證號指向自己的帳號，
+// 使醫師輸入該號碼時調出錯誤的病歷
+await run('索引 病患發布自己的證號索引',
+  () => setDoc(doc(NID2(), 'patient_index/A123456781'), { username: 'nid2' }), 'allow');
+await run('索引 病患把他人證號指向自己',
+  () => setDoc(doc(NID1(), 'patient_index/A123456781'), { username: 'nid1' }), 'deny');
+await run('索引 病患替他人發布索引',
+  () => setDoc(doc(NID1(), 'patient_index/B287654322'), { username: 'nid2' }), 'deny');
+await run('索引 夾帶白名單外欄位',
+  () => setDoc(doc(NID2(), 'patient_index/A123456781'), { username: 'nid2', note: 'x' }), 'deny');
+await run('索引 醫師不可自行發布索引',
+  () => setDoc(doc(DOC(), 'patient_index/D112358135'), { username: 'nid2' }), 'deny');
+
+// ── 醫護持證件建立照護關係（basis: 'id-presented'）──────────────────────
+//
+// 這是自我授權，與緊急調閱同一種性質，因此必須具名。
+// 差別在於這是常規流程，故不要求填寫理由——basis 欄位本身即為說明。
+await run('指派 醫師具名建立照護關係',
+  () => setDoc(doc(DOC(), 'care_relations/nid2__doctor'), {
+    patient: 'nid2', doctor: 'doctor', status: 'active', basis: 'id-presented',
+    grantedAt: serverTimestamp(),
+    expiresAt: Timestamp.fromDate(new Date(Date.now() + 90 * 86400000)) }), 'allow');
+await run('指派 建立後即可讀取該病歷',
+  () => getDoc(doc(DOC(), 'patient_data/nid2')), 'allow');
+// 少了 basis 就無從分辨這份授權是誰給的
+await run('指派 醫師建立但未標示 basis',
+  () => setDoc(doc(DOC(), 'care_relations/nid1__doctor'), {
+    patient: 'nid1', doctor: 'doctor', status: 'active',
+    grantedAt: serverTimestamp(),
+    expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)) }), 'deny');
+await run('指派 醫師冒用他人名義建立',
+  () => setDoc(doc(DOC(), 'care_relations/nid1__otherdoc'), {
+    patient: 'nid1', doctor: 'otherdoc', status: 'active', basis: 'id-presented',
+    grantedAt: serverTimestamp(),
+    expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)) }), 'deny');
+// 【不可退讓】病患對醫護建立的關係必須保有撤銷權，
+// 否則這條路徑就成了病患無法收回的單方面授權
+await run('指派 病患可撤銷醫護建立的關係',
+  () => updateDoc(doc(NID2(), 'care_relations/nid2__doctor'), { status: 'revoked' }), 'allow');
+
 console.log('');
 for (const r of results) console.log(r[0].padEnd(5), r[1], r[2] ? '\n      ' + r[2] : '');
 const failed = results.filter(r => r[0] === 'FAIL');
