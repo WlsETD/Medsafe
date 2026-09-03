@@ -346,9 +346,16 @@
                                 <!-- 病患自行填寫的證號與院方核對過健保卡的證號不是同一件事。
                                      未核驗時必須明白標示，不可讓醫師把自述當成已驗證。 -->
                                 <span v-if="selectedPatient.nationalIdVerifiedBy"
-                                      class="text-[8px] font-black text-primary uppercase tracking-widest">已核驗</span>
-                                <span v-else
-                                      class="text-[8px] font-black text-amber-600 uppercase tracking-widest">病患自述，未核驗</span>
+                                      class="text-[8px] font-black text-primary uppercase tracking-widest">已核驗 · {{ selectedPatient.nationalIdVerifiedBy }}</span>
+                                <template v-else>
+                                    <span class="text-[8px] font-black text-amber-600 uppercase tracking-widest">病患自述，未核驗</span>
+                                    <!-- 核驗是一句具名的斷言：「我核對過這個人的證件，號碼相符」。
+                                         因此按鈕的文字必須說出那件事，不能只寫「確認」。 -->
+                                    <button @click="verifyNationalId" :disabled="verifyBusy"
+                                            class="mt-1 px-3 py-1 rounded-lg border border-primary/40 text-primary hover:bg-primary hover:text-white transition-all text-[9px] font-black uppercase tracking-widest disabled:opacity-40">
+                                        我已核對證件
+                                    </button>
+                                </template>
                             </div>
                             
                             <!-- 這兩塊原本是「健康指數 94.2」與「Verified ✓」。
@@ -974,6 +981,7 @@
                     // 否則上一位展開過，下一位就直接是展開狀態——
                     // 那筆查閱既沒有被記錄，醫師也沒有意識到自己看了。
                     nationalIdRevealed: false,
+                    verifyBusy: false,
                     aiCheckStatus: 'idle',
                     ddiRuleCount: 0,
                     ddiRuleSource: 'local',
@@ -1557,6 +1565,33 @@
                     // 又不足以構成一個可直接使用的識別符
                     return s.length >= 10 ? s.slice(0, 1) + '****' + s.slice(-3) : '****';
                 },
+                // 核驗：由院方以持證件核對的結果具名背書。
+                // 這不是「系統驗證了號碼」——系統只驗得了格式與檢查碼；
+                // 這句話的內容是「我這個人，核對過證件本人，號碼相符」。
+                async verifyNationalId() {
+                    if (this.verifyBusy) return;
+                    const p = this.selectedPatient;
+                    if (!confirm(`確認已核對 ${p.name} 的身分證件，且號碼與系統紀錄相符？\n\n此核驗會以您的帳號具名記錄。`)) return;
+                    this.verifyBusy = true;
+                    try {
+                        await window.db.collection('patient_data').doc(p.id).update({
+                            nationalIdVerifiedBy: this.user.username,
+                            nationalIdVerifiedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        p.nationalIdVerifiedBy = this.user.username;
+                        const a = await window.Audit.log(window.Audit.ACTIONS.PII_VIEW, p.id,
+                            { field: 'nationalId', op: 'verify' });
+                        this.triggerToast(a.ok ? '已核驗' : '已核驗，但稽核記錄失敗',
+                            a.ok ? `${p.name} 的身分證字號已由您具名核驗`
+                                 : `已核驗，惟本次操作未能寫入稽核記錄，請通報系統管理者`);
+                    } catch (e) {
+                        console.error('核驗失敗：', e);
+                        this.triggerToast('核驗失敗', '未寫入任何資料，該證號仍維持未核驗狀態');
+                    } finally {
+                        this.verifyBusy = false;
+                    }
+                },
+
                 async revealNationalId() {
                     if (this.nationalIdRevealed) return;
                     this.nationalIdRevealed = true;

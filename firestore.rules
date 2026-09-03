@@ -161,6 +161,20 @@ service cloud.firestore {
     function nationalIdFormatOk(v) {
       return v is string && v.matches('[A-Z][12][0-9]{8}');
     }
+    // 核驗是一句具名的斷言：「我核對過這個人的證件，號碼相符」。
+    // 因此核驗者必須是動作發起人自己，且必須真的有號碼可核驗——
+    // 對一份沒有證號的病歷宣告「已核驗」，那句話沒有指涉對象。
+    // 撤銷核驗（改回 null）一律允許：發現對不上時必須能立刻收回，
+    // 而收回的門檻不該高於宣告。
+    function verificationIsAccountable() {
+      return !('nationalIdVerifiedBy' in request.resource.data)
+        || request.resource.data.nationalIdVerifiedBy == null
+        || (request.resource.data.nationalIdVerifiedBy == profile().username
+            && ownsUsername(request.resource.data.nationalIdVerifiedBy)
+            && request.resource.data.nationalIdVerifiedAt == request.time
+            && ('nationalId' in request.resource.data.get('profile', {})));
+    }
+
     // 病患只能從無到有寫入一次。允許反覆更改等於讓身分可以被重新宣告，
     // 而核驗狀態是針對某一個特定號碼做的——號碼一換，核驗就失去意義。
     function nationalIdWriteOnceByPatient() {
@@ -463,6 +477,7 @@ service cloud.firestore {
       // 寫入同樣受醫病關係限制。只擋讀取是不夠的——沒有關係的醫師
       // 即使看不到病歷，仍可對它寫入用藥，那比讀取更危險。
       allow update: if resource != null && prescriptionIsAccountable() && pseudonymWellFormedIfNew()
+        && verificationIsAccountable()
         && (isAdmin()
         // 緊急調閱同樣允許寫入：急診情境下往往需要當場開立處方。
         // 處方閘門（prescriptionIsAccountable）仍然適用，

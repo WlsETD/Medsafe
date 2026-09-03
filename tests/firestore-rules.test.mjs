@@ -869,6 +869,26 @@ await run('身分證 自助註冊帶入格式錯誤的證號',
     profile: { id: 'newbie6b', nationalId: 'bad' },
     medications: [], ddiAlerts: [], aiInsights: [] }), 'deny');
 
+// ── 核驗：一句具名的斷言 ──────────────────────────────────────────────
+// 「我核對過這個人的證件，號碼相符」。因此核驗者必須是動作發起人自己，
+// 時間由伺服器決定，且必須真的有號碼可核驗。
+await run('核驗 醫師具名核驗有證號的病患',
+  () => updateDoc(doc(DOC(), 'patient_data/nid2'),
+    { nationalIdVerifiedBy: 'doctor', nationalIdVerifiedAt: serverTimestamp() }), 'allow');
+await run('核驗 冒用他人名義核驗',
+  () => updateDoc(doc(DOC(), 'patient_data/nid2'),
+    { nationalIdVerifiedBy: 'otherdoc', nationalIdVerifiedAt: serverTimestamp() }), 'deny');
+await run('核驗 回填核驗時間',
+  () => updateDoc(doc(DOC(), 'patient_data/nid2'),
+    { nationalIdVerifiedBy: 'doctor', nationalIdVerifiedAt: Timestamp.fromDate(new Date(0)) }), 'deny');
+// 對一份沒有證號的病歷宣告「已核驗」，那句話沒有指涉對象
+await run('核驗 對無證號的病歷宣告已核驗',
+  () => updateDoc(doc(DOC(), 'patient_data/P900'),
+    { nationalIdVerifiedBy: 'doctor', nationalIdVerifiedAt: serverTimestamp() }), 'deny');
+// 發現對不上時必須能立刻收回，門檻不該高於宣告
+await run('核驗 可撤銷核驗',
+  () => updateDoc(doc(DOC(), 'patient_data/nid2'), { nationalIdVerifiedBy: null }), 'allow');
+
 // 核保端不得經由摘要取得證號——白名單本來就擋住，這條釘住它不被放寬
 await run('身分證 核保摘要不得夾帶證號',
   () => setDoc(doc(P001(), 'patient_summaries/P001'), {

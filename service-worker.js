@@ -36,7 +36,8 @@
 //      升號會在 activate 時刪除舊快取，強制回網路取新檔。
 //      （這正是上方註解所說「版本號退化為加速手段」的例外：
 //        跨檔案的 API 變更仍然需要它。）
-const CACHE_VERSION = 'medsafe-static-v23';
+// v25：模板加上 drugLabel() 防禦——即使 D3 mutate 仍正確顯示藥名
+const CACHE_VERSION = 'medsafe-static-v25';
 
 const PRECACHE_URLS = [
   './index.html',

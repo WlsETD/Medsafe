@@ -448,6 +448,44 @@
                     <h2 class="text-2xl font-black text-title tracking-tight">我的掛號</h2>
                 </div>
 
+                <!-- ── 身分資料 ──────────────────────────────────────────────
+                     放在掛號頁的理由：掛號本來就要報身分證字號，這是報到櫃檯
+                     實際會發生的事。填寫後不可自行更改——核驗是針對某一個
+                     特定號碼做的，號碼一換核驗就失去意義。 -->
+                <div class="bg-white rounded-[40px] p-8 sm:p-10 shadow-sm space-y-5 mb-6">
+                    <div class="flex items-baseline justify-between gap-3">
+                        <h3 class="text-sm font-black text-title">身分證字號</h3>
+                        <span v-if="profile && profile.nationalId"
+                              :class="['text-[10px] font-black uppercase tracking-widest', nationalIdVerified ? 'text-primary' : 'text-amber-600']">
+                            {{ nationalIdVerified ? '已由院方核驗' : '尚未核驗' }}
+                        </span>
+                    </div>
+
+                    <div v-if="profile && profile.nationalId" class="bg-bgMain rounded-2xl px-5 py-4">
+                        <p class="font-mono text-lg font-black text-title tracking-wider">{{ profile.nationalId }}</p>
+                        <p class="text-[11px] font-bold text-lightText mt-1.5 leading-relaxed">
+                            已填寫的證號無法自行更改。若有誤，請於就診時洽櫃檯處理。
+                            <span v-if="!nationalIdVerified">院方會在您報到時核對證件，核對後此處會顯示「已由院方核驗」。</span>
+                        </p>
+                    </div>
+
+                    <div v-else class="space-y-3">
+                        <p class="text-xs font-bold text-lightText leading-relaxed">
+                            掛號需要身分證字號以供院方核對健保資料。<strong>填寫後將無法自行更改</strong>，請確認無誤再送出。
+                        </p>
+                        <div v-if="nidError" class="text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-2xl px-4 py-3">{{ nidError }}</div>
+                        <div class="flex flex-wrap items-end gap-3">
+                            <div class="flex-1 min-w-[200px] space-y-2">
+                                <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">身分證字號</label>
+                                <input v-model="nidInput" type="text" maxlength="10" placeholder="如 A123456789"
+                                       class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-5 font-mono font-black text-title tracking-wider focus:border-primary/20 focus:bg-white outline-none transition-all uppercase">
+                            </div>
+                            <button @click="saveNationalId" :disabled="nidBusy || !nidInput.trim()"
+                                    class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">送出</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="bg-white rounded-[40px] p-8 sm:p-10 shadow-sm space-y-6">
                     <div class="bg-bgMain rounded-[28px] p-6">
                         <p class="text-sm font-black text-title mb-2">掛號後，該名醫師才看得到您的用藥資料</p>
@@ -913,6 +951,11 @@
                     newAppt: { department: '一般內科', doctor: '', date: '' },
                     apptBusy: false,
                     apptError: '',
+                    // 身分證字號。nationalIdVerified 由頂層欄位決定，病患寫不了它。
+                    nidInput: '',
+                    nidBusy: false,
+                    nidError: '',
+                    nationalIdVerified: false,
                     consentInsurer: '',
                     consentDays: 90,
                     consentBusy: false,
@@ -1305,6 +1348,8 @@
                         this.ddiAlerts = data.ddiAlerts;
                         this.reminders = data.reminders;
                         this.adherenceLog = data.adherenceLog || {};
+                        // 核驗狀態是頂層欄位，病患寫不了它——這正是它可信的原因
+                        this.nationalIdVerified = !!data.nationalIdVerifiedBy;
                         // 跨日仍開著頁面時，日界一過就該換到新的一天。
                         // 沒有這行的話，過了午夜的勾選會寫進昨天的記錄。
                         this.todayKey = DbService.adherence.dayKey();
@@ -1396,6 +1441,18 @@
                                 const r = Math.random() * 16 | 0;
                                 return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
                             }));
+                        // asciiSlug 與 shortHash 由 MedicationStatement 與 Encounter 共用。
+                        // 原本 shortHash 宣告在 medications 的 map callback 內，
+                        // Encounter 看不到它。複製一份是最糟的選項——
+                        // 兩個「相同」的雜湊函式日後只要有一邊被調整，
+                        // 去重鍵就會靜默漂移，而伺服器上會開始堆出重複資源。
+                        const asciiSlug = v => String(v == null ? '' : v).trim().toLowerCase()
+                            .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                        const shortHash = str => {
+                            let h = 2166136261;
+                            for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+                            return (h >>> 0).toString(36);
+                        };
                         const bundle = {
                             resourceType: 'Bundle',
                             type: 'transaction',
@@ -1420,13 +1477,6 @@
                                     // 但識別碼本身必須是 ASCII：劑量與院所含中文和括號時，
                                     // 直接放進 ifNoneExist 的搜尋字串會讓伺服器無法解析（HAPI-0929），
                                     // 整個 bundle 以 400 失敗。故變異部分以短雜湊表示，僅保留英文藥名供人閱讀。
-                                    const asciiSlug = v => String(v == null ? '' : v).trim().toLowerCase()
-                                        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-                                    const shortHash = str => {
-                                        let h = 2166136261;
-                                        for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
-                                        return (h >>> 0).toString(36);
-                                    };
                                     const variant = shortHash([med.dosage, med.freq, med.hospital]
                                         .map(x => String(x == null ? '' : x)).join('|'));
                                     // 名稱必須經正規化再取用。醫師開立的處方存的是
@@ -1454,6 +1504,54 @@
                                             method: 'POST',
                                             url: 'MedicationStatement',
                                             ifNoneExist: 'identifier=' + encodeURIComponent(medIdent.system + '|' + medIdent.value)
+                                        }
+                                    };
+                                }),
+                                // ── Encounter：把「就診」這件事本身也表達成 FHIR ──────────
+                                //
+                                // 在此之前，同步出去的都是「資料的格式轉換」：
+                                // Patient 是一個人、MedicationStatement 是一筆用藥。
+                                // Encounter 表達的是工作流程——這個人在什麼時候、
+                                // 因為什麼科別，與醫療體系發生了一次接觸。
+                                // 跨院要判斷「這筆用藥是哪一次就診開的」，靠的就是它。
+                                //
+                                // 【去識別化的一致性】此處刻意不送 participant。
+                                // Encounter.participant 需要 Practitioner 參照，
+                                // 而本系統沒有建立 Practitioner 資源；若改以文字塞入醫師帳號，
+                                // 等於把院內人員身分送上一台無存取控制的伺服器。
+                                // 科別足以支撐跨院的臨床理解，醫師身分不是必要欄位。
+                                ...this.myAppointments.filter(a => a.scheduledAt).map(a => {
+                                    const when = a.scheduledAt.toDate ? a.scheduledAt.toDate() : new Date(a.scheduledAt);
+                                    // 與用藥同樣的去重策略：identifier 必須穩定且為 ASCII，
+                                    // 否則每次同步都會在伺服器上多留一份
+                                    const encIdent = {
+                                        system: deid.NAMESPACE + ':encounter',
+                                        value: [ident.value, 'enc', shortHash([a.id])].join('-')
+                                    };
+                                    // FHIR Encounter.status 與本系統的掛號狀態不是同一組詞彙，
+                                    // 必須明確對應而非直接沿用——planned/in-progress/finished/cancelled
+                                    const statusMap = {
+                                        booked: 'planned', arrived: 'in-progress',
+                                        finished: 'finished', cancelled: 'cancelled'
+                                    };
+                                    return {
+                                        resource: {
+                                            resourceType: 'Encounter',
+                                            identifier: [encIdent],
+                                            status: statusMap[a.status] || 'unknown',
+                                            // AMB = ambulatory，門診。這是 FHIR 的標準術語集。
+                                            class: {
+                                                system: 'http://terminology.hl7.org/CodeSystem/v3-ActCode',
+                                                code: 'AMB', display: 'ambulatory'
+                                            },
+                                            subject: { reference: patientUrn },
+                                            serviceType: { text: a.department || '一般內科' },
+                                            period: { start: when.toISOString() }
+                                        },
+                                        request: {
+                                            method: 'POST',
+                                            url: 'Encounter',
+                                            ifNoneExist: 'identifier=' + encodeURIComponent(encIdent.system + '|' + encIdent.value)
                                         }
                                     };
                                 })
@@ -1610,6 +1708,54 @@
                     return window.DrugCatalog
                         ? window.DrugCatalog.medDisplayName(med)
                         : { zh: (med && (med.name_zh || med.zhName)) || '', en: (med && (med.name_en || med.name)) || '' };
+                },
+
+                // ── 身分證字號 ────────────────────────────────────────────────
+                //
+                // 前端做完整驗證（含檢查碼），Firestore 規則只驗格式——
+                // Security Rules 無法做加權求和的迴圈運算。因此這裡擋下的是
+                // 使用者的手誤，真正的權威仍是院方持證件核對。
+                // 兩者都不能取代對方：前端擋不了惡意呼叫端，院方擋不了打錯字。
+                isValidTwId(v) {
+                    const s = String(v || '').trim().toUpperCase();
+                    if (!/^[A-Z][12]\d{8}$/.test(s)) return false;
+                    const map = 'ABCDEFGHJKLMNPQRSTUVXYWZIO';
+                    const code = map.indexOf(s[0]) === -1 ? -1 : (10 + map.indexOf(s[0]));
+                    if (code < 10) return false;
+                    let sum = Math.floor(code / 10) + (code % 10) * 9;
+                    const w = [8, 7, 6, 5, 4, 3, 2, 1];
+                    for (let i = 0; i < 8; i++) sum += Number(s[1 + i]) * w[i];
+                    return (sum + Number(s[9])) % 10 === 0;
+                },
+                async saveNationalId() {
+                    if (this.nidBusy) return;
+                    const v = this.nidInput.trim().toUpperCase();
+                    this.nidError = '';
+                    if (!/^[A-Z][12]\d{8}$/.test(v)) {
+                        this.nidError = '格式不正確。應為 1 個英文字母 + 1 或 2 + 8 位數字，例如 A123456789。';
+                        return;
+                    }
+                    if (!this.isValidTwId(v)) {
+                        this.nidError = '檢查碼不符，請確認號碼是否輸入正確。';
+                        return;
+                    }
+                    if (!confirm(`確認送出身分證字號 ${v}？\n\n送出後將無法自行更改，若有誤需洽櫃檯處理。`)) return;
+                    this.nidBusy = true;
+                    try {
+                        // profile 是 map，規則以 affectedKeys() 檢查頂層鍵，
+                        // 因此必須整份寫回而非只寫子欄位
+                        const next = Object.assign({}, this.profile, { nationalId: v });
+                        await window.db.collection('patient_data').doc(this._username)
+                            .update({ profile: next });
+                        this.profile = next;
+                        this.nidInput = '';
+                        this.triggerToast('已送出', '院方會在您報到時核對證件');
+                    } catch (e) {
+                        console.error('身分證字號寫入失敗：', e);
+                        this.nidError = '寫入失敗，未儲存任何資料。請確認網路後重試。';
+                    } finally {
+                        this.nidBusy = false;
+                    }
                 },
 
                 // ── 掛號 ──────────────────────────────────────────────────────
