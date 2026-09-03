@@ -748,6 +748,35 @@
                             <textarea v-model="newRx.instruction" rows="3" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-primary/20 focus:bg-white transition-all outline-none" placeholder="輸入詳細服用方法與警語..."></textarea>
                         </div>
 
+                        <!-- 【服用方式決定要不要建立提醒】院內用藥（如注射、輸液）是醫護人員
+                             執行給藥，病患不需要、也不該被提醒「記得吃」；只有帶回家自行服用的藥
+                             才會出現在病患端的「今日用藥提醒」。兩者共用同一張處方，差別只在
+                             要不要合併進 reminders。 -->
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">服用方式</label>
+                            <div class="flex gap-3">
+                                <button type="button" @click="newRx.takeHome = true"
+                                        :class="['flex-1 py-3 rounded-2xl text-xs font-black transition-all', newRx.takeHome ? 'bg-primary text-white' : 'bg-slate-50 text-slate-400']">
+                                    帶回家自行服用
+                                </button>
+                                <button type="button" @click="newRx.takeHome = false; newRx.reminderTimes = []"
+                                        :class="['flex-1 py-3 rounded-2xl text-xs font-black transition-all', !newRx.takeHome ? 'bg-primary text-white' : 'bg-slate-50 text-slate-400']">
+                                    院內服用（不建立提醒）
+                                </button>
+                            </div>
+                            <div v-if="newRx.takeHome" class="mt-3">
+                                <p class="text-[10px] font-black text-slate-400 uppercase mb-2 px-1">加入今日用藥提醒的時段（可複選，可留空不加入）</p>
+                                <div class="flex flex-wrap gap-2">
+                                    <button v-for="slot in reminderSlots" :key="slot.time" type="button"
+                                            @click="toggleReminderTime(slot.time)"
+                                            :class="['px-4 py-2 rounded-xl text-xs font-bold transition-all border-2',
+                                                     newRx.reminderTimes.includes(slot.time) ? 'bg-primary/10 border-primary text-primary' : 'bg-slate-50 border-transparent text-slate-400']">
+                                        {{ slot.label }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="rounded-3xl p-6 transition-all duration-500 border-2" :class="aiCheckStatus === 'idle' ? 'bg-slate-50 border-slate-100' : (aiCheckStatus === 'checking' ? 'bg-primary/5 border-primary/10' : (aiCheckStatus === 'risk' ? 'bg-danger/5 border-danger/20' : (aiCheckStatus === 'unevaluable' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200')))">
                             <div v-if="aiCheckStatus === 'idle'" class="flex flex-col items-center gap-3">
                                 <!-- 目錄外的藥不得開立：本系統只保有目錄內藥物的 ATC 身分，
@@ -1014,7 +1043,16 @@
                     showFullScreenGraph: false, showToast: false, showMobileMenu: false,
                     toastTitle: '系統通知', toastMessage: '同步成功',
                     showPrescriptionModal: false,
-                    newRx: { drugName: '', dosage: '', instruction: '' },
+                    newRx: { drugName: '', dosage: '', instruction: '', takeHome: true, reminderTimes: [] },
+                    // 提醒時段的固定選項，比照 mockData 既有展示資料使用的時段，
+                    // 病患端「今日用藥提醒」是照 time 排序顯示的整點清單，不開放自訂時間，
+                    // 避免醫師一次輸錯格式（如 "8am"）而讓提醒永遠不會顯示。
+                    reminderSlots: [
+                        { time: '08:00', label: '早上 08:00' },
+                        { time: '12:00', label: '中午 12:00' },
+                        { time: '20:00', label: '晚上 20:00' },
+                        { time: '22:00', label: '睡前 22:00' }
+                    ],
                     // 藥品選單的開闔。選單只是輔助輸入——欄位仍接受自由文字，
                     // 因為醫師本來就可能開立目錄以外的藥；系統該做的是
                     // 明白告知那些藥無法比對交互作用，而不是禁止輸入。
@@ -1933,8 +1971,12 @@
                     this.overrideReasonNote = '';
                     this.showOverrideModal = false;
                     this.submitError = '';
-                    this.newRx = { drugName: '', dosage: '', instruction: '' };
+                    this.newRx = { drugName: '', dosage: '', instruction: '', takeHome: true, reminderTimes: [] };
                     this.ddiRulesUnavailable = false;
+                },
+                toggleReminderTime(time) {
+                    const i = this.newRx.reminderTimes.indexOf(time);
+                    if (i === -1) this.newRx.reminderTimes.push(time); else this.newRx.reminderTimes.splice(i, 1);
                 },
                 // ── 處方安全閘門（Phase 4 / 稽核報告 P1-1、P0-4、P1-2、P1-5）─────────────
                 //
@@ -2066,6 +2108,9 @@
                         conflict: isOverride,
                         dosage: this.newRx.dosage,
                         freq: this.newRx.instruction || '依醫囑',
+                        // 是否帶回家自行服用，決定了要不要出現在病患端的每日提醒——
+                        // 保留在病歷上，供日後查看這筆藥當初是哪一種給藥方式。
+                        takeHome: this.newRx.takeHome,
                         safetyCheck: safetyCheck
                     };
 
@@ -2089,11 +2134,28 @@
                         { drug: this.newRx.drugName, atc: newMed.atc, dosage: this.newRx.dosage,
                           persisted: persisted, safetyCheck: safetyCheck });
 
+                    // 只有病歷確實寫入、且醫師標示「帶回家自行服用」並選了時段，
+                    // 才合併進病患的每日提醒——院內用藥（如注射、輸液）由醫護人員執行給藥，
+                    // 不該讓病患誤以為自己還需要記得吃。失敗不影響已經開立成功的處方，
+                    // 但仍須據實告知，不可靜默吞掉（與稽核記錄失敗同樣的處理方式）。
+                    let reminderResult = { persisted: true };
+                    if (persisted && this.newRx.takeHome && this.newRx.reminderTimes.length) {
+                        try {
+                            reminderResult = await DbService.addReminderEntries(pid,
+                                this.newRx.reminderTimes.map(time => ({ time, text: '服用' + rxDrug.name_zh })));
+                        } catch (e) {
+                            console.error('提醒建立失敗：', e);
+                            reminderResult = { persisted: false };
+                        }
+                    }
+
                     // 寫入成功才更新畫面
                     if (!Array.isArray(this.extraPrescriptions[pid])) this.extraPrescriptions[pid] = [];
                     this.extraPrescriptions[pid].push(newMed);
                     this.showPrescriptionModal = false;
                     this.submitting = false;
+
+                    const wantedReminder = persisted && this.newRx.takeHome && this.newRx.reminderTimes.length;
 
                     // 病歷未實際寫入時不可說「開立成功」。示範資料的病患沒有雲端病歷，
                     // 這種情況必須說清楚，否則醫師會以為紀錄已留存。
@@ -2103,8 +2165,12 @@
                     } else if (!audit.ok) {
                         this.triggerToast('處方已開立，但稽核記錄失敗',
                             '處方已寫入病歷，惟本次操作未能留下稽核記錄，請通報系統管理者。');
+                    } else if (wantedReminder && !reminderResult.persisted) {
+                        this.triggerToast('處方已開立，但提醒建立失敗',
+                            '處方已寫入病歷並留存稽核記錄，惟本次未能加入病患的每日用藥提醒，請提醒病患自行於病患端確認，或稍後重試。');
                     } else {
-                        this.triggerToast('開立成功', '處方已寫入病歷並留存稽核記錄');
+                        this.triggerToast('開立成功',
+                            '處方已寫入病歷並留存稽核記錄' + (wantedReminder ? '，並已加入病患的今日用藥提醒' : ''));
                     }
 
                     // FHIR 同步為次要動作：失敗不影響已寫入的病歷，但仍須據實告知，

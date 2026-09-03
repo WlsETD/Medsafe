@@ -206,6 +206,31 @@ window.DbService = {
     });
   },
 
+  // 醫師開立「帶回家自行服用」的處方時，把藥名合併進病患每日提醒表對應的時段。
+  // 只用於帶回家的藥——院內用藥由醫護人員執行給藥，不該出現在病患自己的
+  // 每日服藥檢核表裡，那會讓他誤以為自己還需要記得吃。
+  //
+  // 與 addMedicationToPatient 同樣先讀最新文件再寫回（P1-2 的同一個理由）：
+  // 直接用畫面上可能已經過期的 reminders 覆蓋，會蓋掉病患剛勾選、或另一位
+  // 醫師剛加的異動。同一時段已有其他藥時合併成一行文字，而非各佔一列。
+  async addReminderEntries(username, entries) {
+    const ref = window.db.collection('patient_data').doc(username);
+    const snap = await ref.get();
+    if (!snap.exists) return { persisted: false, reason: 'no-record' };
+    const reminders = (snap.data().reminders || []).map(r => Object.assign({}, r));
+    for (const { time, text } of entries) {
+      const existing = reminders.find(r => r.time === time);
+      if (existing) {
+        if (!existing.text.includes(text)) existing.text = existing.text + '、' + text;
+      } else {
+        reminders.push({ time, text, completed: false });
+      }
+    }
+    reminders.sort((a, b) => a.time.localeCompare(b.time));
+    await ref.update({ reminders });
+    return { persisted: true };
+  },
+
   // ── 用藥回報：逐日記錄 ────────────────────────────────────────────────
   //
   // 【為什麼不能沿用 reminders[].completed】
