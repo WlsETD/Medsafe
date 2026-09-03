@@ -194,10 +194,16 @@ service cloud.firestore {
         && emptyOrAbsent('aiInsights')
         && statsInitialIsClean()
         && profileIdMatchesOwner(username)
-        // assignedDoctor 決定這份病歷會出現在哪位醫師的清單裡（getPatientsByDoctor 照此查詢），
-        // 因此不可由自助註冊者自行指定，只能是系統預設值。
-        && (!('assignedDoctor' in request.resource.data)
-            || request.resource.data.assignedDoctor == 'doctor')
+        // assignedDoctor 是既有病患的過渡欄位，新註冊者一律不得帶入。
+        //
+        // 原本允許值為 'doctor'（展示帳號），因為註冊流程會預設指派給它。
+        // 該預設已移除：一個從未見過這位病患的醫師，不該因為對方註冊了帳號
+        // 就讀得到其病歷。醫病關係改由掛號或持證件指派建立。
+        //
+        // 現在完全禁止，而不只是限制值：自助註冊者若能指定 assignedDoctor，
+        // 就能單方面讓任一醫師讀得到自己的病歷，也能把自己塞進他人的病患清單。
+        && !('assignedDoctor' in request.resource.data)
+        && !('assignedDoctorName' in request.resource.data)
         // nationalIdVerifiedBy/At 不在此白名單內：自助註冊者不得在建檔當下
         // 就宣告自己的證號已經過核驗——那是院方才能做的斷言。
         && request.resource.data.keys().hasOnly(

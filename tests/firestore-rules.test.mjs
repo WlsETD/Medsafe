@@ -518,12 +518,20 @@ await run('S-2 自助註冊把 profile.id 填成他人 username',
 await run('S-2 前置：newbie8 的身分索引',
   () => setDoc(doc(NEW8(), 'user_roles/uidNew8'),
     { username: 'newbie8', name: '新人', role: 'patient', status: 'active' }), 'allow');
+// 新註冊帳號不帶 assignedDoctor：一個從未見過這位病患的醫師，
+// 不該因為對方註冊了帳號就讀得到其病歷。醫病關係由掛號或持證件指派建立。
 await run('S-2 合法自助註冊（registerPatient 的實際形狀）',
   () => setDoc(doc(NEW8(), 'patient_data/newbie8'), {
     profile: { id: 'newbie8', name: '新人', age: null, gender: '', healthSummary: '尚無用藥紀錄', nextAppointment: '' },
     stats: { safetyScore: null, activeMeds: 0, aiChecksToday: 0, lastSync: '尚未同步' },
-    medications: [], ddiAlerts: [], aiInsights: [], reminders: [],
-    assignedDoctor: 'doctor', assignedDoctorName: '李小美醫師' }), 'allow');
+    medications: [], ddiAlerts: [], aiInsights: [], reminders: [] }), 'allow');
+
+// 自助註冊者若能指定 assignedDoctor，就能單方面讓任一醫師讀得到自己的病歷，
+// 也能把自己塞進他人的病患清單
+await run('S-2 自助註冊指定 assignedDoctor',
+  () => setDoc(doc(NEW7(), 'patient_data/newbie7c'), {
+    profile: { id: 'newbie7c' }, medications: [], ddiAlerts: [], aiInsights: [],
+    assignedDoctor: 'doctor' }), 'deny');
 
 // H-6：affectedKeys() 只看頂層鍵，profile 是 map，子欄位改動在頂層只呈現為「profile 有變」
 await run('H-6 病患把 profile.id 改成他人 username',

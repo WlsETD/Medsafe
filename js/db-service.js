@@ -141,10 +141,17 @@ window.DbService = {
         medications: [],
         ddiAlerts: [],
         aiInsights: [],
-        reminders: [],
-        // 目前系統只有一位醫師，新註冊病患先預設指派給她；之後管理員可在後台改指派其他醫師
-        assignedDoctor: 'doctor',
-        assignedDoctorName: '李小美醫師'
+        reminders: []
+        // 【刻意不寫 assignedDoctor】
+        // 原本這裡預設指派給展示帳號 'doctor'，使每一個自助註冊的帳號
+        // 一出生就讓某位醫師讀得到自己的病歷——而那位醫師從未見過這個人。
+        //
+        // 醫病關係現在由實際發生的事建立：病患掛號（basis: 'patient'），
+        // 或持證件臨櫃由醫護指派（basis: 'id-presented'）。
+        // 在那之前，這份病歷不該對任何醫師開放。
+        //
+        // 註：assignedDoctor 仍保留在規則的讀取條件中，那是給既有病患的過渡路徑；
+        // 新註冊者沒有這個欄位，因此只走照護關係。
       });
     } catch (e) {
       // users/{username} 已被其他人註冊走時，上面的寫入會被規則擋下（視為 update 而非 create）

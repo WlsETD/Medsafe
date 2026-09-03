@@ -174,7 +174,10 @@
                     <div class="text-left"><h2 class="text-2xl md:text-4xl font-black text-title italic tracking-tighter uppercase">My Health Hub</h2><p class="text-xs md:text-sm font-bold text-lightText uppercase tracking-widest pl-1">FHIR Personal Health Record</p></div>
                 </div>
                 <div class="flex items-center gap-3 md:gap-6 bg-white p-2 md:p-2.5 rounded-3xl shadow-premium border border-white">
-                    <button @click="openChat" :aria-label="'與' + doctorName + '對話'" class="relative p-2.5 text-lightText hover:text-primary transition-colors">
+                    <button @click="openChat" :disabled="!hasDoctor"
+                            :aria-label="hasDoctor ? ('與' + doctorLabel + '對話') : '尚無主治醫師，無法對話'"
+                            :title="hasDoctor ? '' : '尚無主治醫師。掛號後即可與該名醫師對話。'"
+                            class="relative p-2.5 text-lightText hover:text-primary transition-colors disabled:opacity-30 disabled:hover:text-lightText disabled:cursor-not-allowed">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8-1.06 0-2.077-.16-3.02-.457L3 21l1.457-4.98A7.96 7.96 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                         <span v-if="unreadChatCount > 0" class="absolute top-2 right-2 min-w-[18px] h-[18px] bg-danger rounded-full border-2 border-white flex items-center justify-center text-[8px] font-black text-white leading-none px-0.5">{{ unreadChatCount }}</span>
                     </button>
@@ -428,9 +431,13 @@
                             </div>
                         </div>
                         <div class="w-full lg:w-72 flex flex-col gap-4 text-left">
-                            <button @click="openChat" class="bg-danger text-white font-black py-5 rounded-3xl shadow-xl shadow-danger/30 hover:scale-[1.03] active:scale-[0.97] transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-3 text-left">
+                            <!-- 沒有主治醫師時停用而非隱藏：隱藏會讓病患以為系統沒有這個功能，
+                                 停用並說明原因才知道下一步該做什麼（去掛號）。 -->
+                            <button @click="hasDoctor ? openChat() : (activeView = 'appointments')"
+                                    :class="['font-black py-5 rounded-3xl transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-3 text-left',
+                                             hasDoctor ? 'bg-danger text-white shadow-xl shadow-danger/30 hover:scale-[1.03] active:scale-[0.97]' : 'bg-slate-200 text-slate-500']">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8-1.06 0-2.077-.16-3.02-.457L3 21l1.457-4.98A7.96 7.96 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                                傳訊息給{{ doctorName }}
+                                {{ hasDoctor ? '傳訊息給' + doctorName : '尚無主治醫師，前往掛號' }}
                             </button>
                             <button @click="showDdiDetailModal = true" class="bg-bgMain text-title font-black py-5 rounded-3xl hover:bg-slate-100 transition-all text-xs uppercase tracking-widest border border-slate-200 shadow-sm text-left flex justify-center">
                                 了解臨床機轉
@@ -750,7 +757,7 @@
                             <div v-if="!chatReady" class="text-center text-xs font-black text-danger bg-red-50 border border-red-200 rounded-2xl py-4 px-5 leading-relaxed">
                                 無法連線至對話伺服器，目前顯示的內容可能不完整。<br>這不代表沒有訊息，請確認網路後重新整理。
                             </div>
-                            <div v-else-if="chatMessages.length === 0" class="text-center text-xs font-bold text-slate-500 py-10">尚無對話紀錄，開始留言給{{ doctorName }}吧</div>
+                            <div v-else-if="chatMessages.length === 0" class="text-center text-xs font-bold text-slate-500 py-10">尚無對話紀錄，開始留言給{{ doctorLabel }}吧</div>
                             <template v-for="(msg, i) in chatMessages" :key="i">
                                 <div v-if="msg.from === 'system'" class="text-center">
                                     <span class="inline-block text-[10px] font-bold text-slate-400 bg-white/5 border border-white/10 rounded-full px-4 py-2">{{ msg.text }}</span>
@@ -884,7 +891,7 @@
                         <!-- Risk Warning -->
                         <div v-if="selectedMed.status === '風險'" class="bg-red-50 border-l-4 border-danger rounded-2xl p-5 flex gap-4 items-start">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-danger shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-                            <p class="text-sm font-bold text-danger leading-relaxed">此藥品與其他處方存在交互風險，請諮詢{{ doctorName }}</p>
+                            <p class="text-sm font-bold text-danger leading-relaxed">此藥品與其他處方存在交互風險，請諮詢{{ doctorLabel }}</p>
                         </div>
                     </div>
                     <!-- Footer -->
@@ -937,7 +944,6 @@
                 // 不再有 `|| { name: '訪客' }` 這種讓驗證失敗仍照常渲染的退路
                 const user = getVerifiedUser();
                 const patientData = (window.mockData.patients && window.mockData.patients[user.username]) || window.mockData.patient;
-                const doctorUser = window.mockData.users.find(u => u.role === 'doctor');
                 return {
                     showPasswordModal: false, changingPassword: false, passwordError: '',
                     passwordForm: { current: '', next: '', confirm: '' },
@@ -992,7 +998,10 @@
                     chatInput: '',
                     awaitingReply: false,
                     unreadChatCount: 0,
-                    doctorName: doctorUser ? doctorUser.name : '主治醫師',
+                    // 【不可預設一位醫師】原本這裡從 mockData 撈出第一個 doctor 角色當預設，
+                    // 於是尚未有任何醫病關係的病患，畫面上仍會出現「李小美醫師」——
+                    // 一位從未見過他的人。空字串代表「還沒有」，由畫面據實呈現。
+                    doctorName: '',
                     showNotifDropdown: false,
                     showAllMedsModal: false,
                     showChatModal: false,
@@ -1269,6 +1278,16 @@
                     const summary = DbService.buildUnderwritingSummary(this._username, { profile: this.profile });
                     return summary.ageBand;
                 },
+                // 是否已有主治醫師。新註冊帳號沒有——那是正常狀態，
+                // 不是錯誤，畫面必須說得出「還沒有」而不是填一個預設的人名。
+                hasDoctor() {
+                    return !!this.doctorUsername;
+                },
+                // 泛稱用。沒有具體醫師時讀作「主治醫師」，
+                //「請諮詢主治醫師」這類句子語意仍然成立。
+                doctorLabel() {
+                    return this.doctorName || '主治醫師';
+                },
                 // 進行中的掛號（已預約或已報到）。側欄數字用它——
                 // 「現在有哪位醫師看得到我的資料」不該需要點進去才知道。
                 upcomingAppointments() {
@@ -1361,6 +1380,9 @@
                         // 跨日仍開著頁面時，日界一過就該換到新的一天。
                         // 沒有這行的話，過了午夜的勾選會寫進昨天的記錄。
                         this.todayKey = DbService.adherence.dayKey();
+                        // assignedDoctor 只對既有病患存在（新註冊者不再帶此欄位）。
+                        // 有就先用，之後 loadAppointments() 會以實際的照護關係覆蓋——
+                        // 掛號或臨櫃指派才是現在真正決定醫病關係的東西。
                         if (data.assignedDoctorName) this.doctorName = data.assignedDoctorName;
                         // 主治醫師的帳號決定了誰能讀這串對話（conversations.participants），
                         // 因此必須取自病歷中的指派結果，不可由病患自行指定。
@@ -1800,6 +1822,14 @@
                             return String(this.apptDateText(y)).localeCompare(String(this.apptDateText(x)));
                         });
                         this.myAppointments = list;
+                        // 目前的主治醫師由最近一筆進行中的掛號決定。
+                        // 沒有掛號就是沒有主治醫師——這是新註冊帳號的正常狀態，
+                        // 不可用預設值填補，那會讓病患以為某位醫師正在照顧他。
+                        const active = list.filter(a => this.apptIsActive(a));
+                        if (active.length) {
+                            this.doctorUsername = active[0].doctor;
+                            this.doctorName = active[0].doctorName || active[0].doctor;
+                        }
                     } catch (e) {
                         console.error('掛號讀取失敗：', e);
                         // 讀不到不可顯示成「沒有掛號」——那兩件事對病患的意義完全不同
@@ -1943,6 +1973,14 @@
                     const el = document.getElementById('chat-scroll'); if (el) el.scrollTop = el.scrollHeight;
                 },
                 openChat() {
+                    // 沒有主治醫師時不開啟。對話串的 participants 必須在建立當下
+                    // 就寫對，而此時沒有第二位參與者——強行建立會產生一串
+                    // 只有病患自己讀得到的對話，看起來像是發出去了，實際上沒有人收得到。
+                    if (!this.hasDoctor) {
+                        this.triggerToast('尚無主治醫師', '請先完成掛號，掛號後即可與該名醫師對話。');
+                        this.activeView = 'appointments';
+                        return;
+                    }
                     this.showChatModal = true;
                     this.unreadChatCount = 0;
                     this.showNotifDropdown = false;
