@@ -935,6 +935,14 @@ await run('核驗 冒用他人名義核驗',
 await run('核驗 回填核驗時間',
   () => updateDoc(doc(DOC(), 'patient_data/nid2'),
     { nationalIdVerifiedBy: 'doctor', nationalIdVerifiedAt: Timestamp.fromDate(new Date(0)) }), 'deny');
+// 【回歸測試】核驗過的病患，之後任何不相干的欄位寫入都必須仍然允許。
+// 曾經的漏洞：核驗當下 nationalIdVerifiedAt == request.time 成立，
+// 但之後任何一次不相干的寫入都會讓這個等式不再成立（nationalIdVerifiedAt
+// 是舊值、request.time 是現在）——若沒有「核驗欄位本身未被這次寫入變動」
+// 的放行條件，核驗過的病患會變成永久唯讀病歷，連醫師開藥都會被擋下。
+await run('核驗 核驗過的病患仍可被寫入不相干欄位（防止變成永久唯讀）',
+  () => updateDoc(doc(DOC(), 'patient_data/nid2'),
+    { reminders: [{ time: '08:00', text: '服用測試藥', completed: false }] }), 'allow');
 // 對一份沒有證號的病歷宣告「已核驗」，那句話沒有指涉對象
 await run('核驗 對無證號的病歷宣告已核驗',
   () => updateDoc(doc(DOC(), 'patient_data/P900'),

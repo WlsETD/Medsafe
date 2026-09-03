@@ -205,9 +205,24 @@ service cloud.firestore {
     // 對一份沒有證號的病歷宣告「已核驗」，那句話沒有指涉對象。
     // 撤銷核驗（改回 null）一律允許：發現對不上時必須能立刻收回，
     // 而收回的門檻不該高於宣告。
+    //
+    // 【曾經的漏洞，記錄下來避免回歸】這個檢查原本沒有「這次寫入是否真的
+    // 動到核驗欄位」的判斷，導致 nationalIdVerifiedAt == request.time 在
+    // 核驗當下成立，但之後任何一次不相干的寫入（例如開藥、改提醒）都會
+    // 把 request.time 往前推、而 nationalIdVerifiedAt 仍是舊值，等式從此
+    // 不再成立——核驗過的病患的病歷因此變成永久唯讀。這在測試中沒被抓到，
+    // 是因為 tests 從未在核驗成功「之後」對同一份文件做過不相干的更新。
+    // 因此加上「核驗欄位與既有文件相同即視為未變動」這一支：只在核驗欄位
+    // 本身真的改變時，才要求 nationalIdVerifiedAt 等於本次的 request.time。
+    function verificationUnchanged() {
+      return resource != null
+        && request.resource.data.get('nationalIdVerifiedBy', null) == resource.data.get('nationalIdVerifiedBy', null)
+        && request.resource.data.get('nationalIdVerifiedAt', null) == resource.data.get('nationalIdVerifiedAt', null);
+    }
     function verificationIsAccountable() {
       return !('nationalIdVerifiedBy' in request.resource.data)
         || request.resource.data.nationalIdVerifiedBy == null
+        || verificationUnchanged()
         || (request.resource.data.nationalIdVerifiedBy == profile().username
             && ownsUsername(request.resource.data.nationalIdVerifiedBy)
             && request.resource.data.nationalIdVerifiedAt == request.time
