@@ -136,6 +136,44 @@ service cloud.firestore {
       return !('profile' in request.resource.data)
         || request.resource.data.profile.get('id', username) == username;
     }
+
+    // ── 身分證字號 ────────────────────────────────────────────────────────
+    //
+    // 【為什麼可以加，以及加之前必須先做什麼】
+    // 台灣的 HIS 普遍顯示身分證字號，它就是健保體系的病人主鍵，這是實務常態。
+    // 但它同時是跨健保、戶政、金融、電信的萬用鍵——在 patient_data 的讀取權
+    // 還是無條件 isDoctor() 的時期，加入它等於建立一個
+    //「任何醫師都能撈出全院身分證字號」的資料庫。
+    // 因此本欄位在 S-1 修復（改以照護關係為條件）之後才加入，兩者不可分開。
+    //
+    // 【寫入模型：病患填一次，院方核驗】
+    // 病患自己輸入自己的證號是合理的（掛號時本來就要報）。但那是**自述**，
+    // 與健保卡核對過的證號不是同一件事。因此：
+    //   profile.nationalId          —— 病患可寫入一次，之後不可更改（比照 fhirPseudonym）
+    //   nationalIdVerifiedBy / At  —— 頂層欄位，不在 patientWritableFields 內，
+    //                                 只有院方能寫。醫師端必須在未核驗時明白標示。
+    // 這與 patient_summaries 的 attestedBy 是同一種處理：
+    // 系統驗不了的事，就標明是誰說的，不要假裝是系統確認的。
+    //
+    // 【誠實的限制】規則只驗格式（一個英文字母 + 1或2 + 8 位數字），
+    // 不驗檢查碼——Security Rules 無法做加權求和的迴圈運算。
+    // 因此格式正確但不存在的號碼仍寫得進來，這正是需要院方核驗的原因。
+    function nationalIdFormatOk(v) {
+      return v is string && v.matches('[A-Z][12][0-9]{8}');
+    }
+    // 病患只能從無到有寫入一次。允許反覆更改等於讓身分可以被重新宣告，
+    // 而核驗狀態是針對某一個特定號碼做的——號碼一換，核驗就失去意義。
+    function nationalIdWriteOnceByPatient() {
+      return !('profile' in request.resource.data)
+        || !('nationalId' in request.resource.data.profile)
+        // 已存在時必須維持原值
+        || (('nationalId' in resource.data.get('profile', {}))
+            && request.resource.data.profile.nationalId
+               == resource.data.profile.nationalId)
+        // 首次寫入時檢查格式
+        || (!('nationalId' in resource.data.get('profile', {}))
+            && nationalIdFormatOk(request.resource.data.profile.nationalId));
+    }
     function patientInitialDocIsClean(username) {
       return emptyOrAbsent('medications')
         && emptyOrAbsent('ddiAlerts')
@@ -146,9 +184,14 @@ service cloud.firestore {
         // 因此不可由自助註冊者自行指定，只能是系統預設值。
         && (!('assignedDoctor' in request.resource.data)
             || request.resource.data.assignedDoctor == 'doctor')
+        // nationalIdVerifiedBy/At 不在此白名單內：自助註冊者不得在建檔當下
+        // 就宣告自己的證號已經過核驗——那是院方才能做的斷言。
         && request.resource.data.keys().hasOnly(
              ['profile', 'stats', 'medications', 'ddiAlerts', 'aiInsights', 'reminders',
-              'assignedDoctor', 'assignedDoctorName', 'fhirPseudonym', 'adherenceLog']);
+              'assignedDoctor', 'assignedDoctorName', 'fhirPseudonym', 'adherenceLog'])
+        // 建檔時若帶了證號，格式必須正確
+        && (!('nationalId' in request.resource.data.get('profile', {}))
+            || nationalIdFormatOk(request.resource.data.profile.nationalId));
     }
 
     // 化名只能從無到有寫入一次。允許反覆更改會讓公開 FHIR 伺服器上
@@ -426,7 +469,8 @@ service cloud.firestore {
         // 因此即使在緊急狀態下，新增用藥依舊必須攜帶安全檢查紀錄。
         || isAssignedDoctorOf() || hasActiveCareRelation(username) || hasActiveBreakGlass(username)
         || (isOwnUsername(username) && patientOnlyTouchesOwnFields()
-            && pseudonymNotOverwritten() && profileIdMatchesOwner(username)));
+            && pseudonymNotOverwritten() && profileIdMatchesOwner(username)
+            && nationalIdWriteOnceByPatient()));
       allow delete: if isAdmin();
     }
 

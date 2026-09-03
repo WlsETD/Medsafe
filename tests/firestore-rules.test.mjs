@@ -807,6 +807,75 @@ await run('緊急調閱 病患可查看誰調閱過自己',
 await run('緊急調閱 他人不可查看該記錄',
   () => getDoc(doc(ATK(), 'break_glass/P001__doctor')), 'deny');
 
+// ── 身分證字號 ──────────────────────────────────────────────────────────
+//
+// 病患可填一次、之後不可更改；核驗狀態只有院方能設。
+// 這兩件事分開的理由：病患自己輸入的證號是「自述」，
+// 與院方核對過健保卡的證號不是同一件事——與 attestedBy 同一種處理。
+//
+// 允許反覆更改會讓身分可以被重新宣告，而核驗是針對某一個特定號碼做的；
+// 號碼一換，核驗就失去意義，畫面上卻仍顯示「已核驗」。
+await env.withSecurityRulesDisabled(async ctx => {
+  const db = ctx.firestore();
+  // 尚未填寫證號的病患（P001 的 profile 目前沒有 nationalId）
+  await setDoc(doc(db, 'patient_data/nid1'), {
+    profile: { id: 'nid1', name: '未填證號' }, medications: [], ddiAlerts: [], reminders: [],
+    assignedDoctor: 'doctor' });
+  await setDoc(doc(db, 'user_roles/uidNid1'), {
+    username: 'nid1', name: '未填證號', role: 'patient', status: 'active' });
+  // 已填寫證號的病患
+  await setDoc(doc(db, 'patient_data/nid2'), {
+    profile: { id: 'nid2', name: '已填證號', nationalId: 'A123456781' },
+    medications: [], ddiAlerts: [], reminders: [], assignedDoctor: 'doctor' });
+  await setDoc(doc(db, 'user_roles/uidNid2'), {
+    username: 'nid2', name: '已填證號', role: 'patient', status: 'active' });
+});
+const NID1 = () => ctxFor('uidNid1', 'nid1@medsafe.local').firestore();
+const NID2 = () => ctxFor('uidNid2', 'nid2@medsafe.local').firestore();
+
+// 首次填寫：格式正確才收
+await run('身分證 病患首次填寫（格式正確）',
+  () => updateDoc(doc(NID1(), 'patient_data/nid1'),
+    { profile: { id: 'nid1', name: '未填證號', nationalId: 'B287654322' } }), 'allow');
+await run('身分證 格式錯誤（缺英文字母）',
+  () => updateDoc(doc(NID1(), 'patient_data/nid1'),
+    { profile: { id: 'nid1', name: '未填證號', nationalId: '1234567890' } }), 'deny');
+await run('身分證 格式錯誤（第二碼非 1 或 2）',
+  () => updateDoc(doc(NID1(), 'patient_data/nid1'),
+    { profile: { id: 'nid1', name: '未填證號', nationalId: 'A323456781' } }), 'deny');
+await run('身分證 格式錯誤（長度不足）',
+  () => updateDoc(doc(NID1(), 'patient_data/nid1'),
+    { profile: { id: 'nid1', name: '未填證號', nationalId: 'A12345' } }), 'deny');
+
+// 【核心】填過就不能改——否則核驗狀態會與號碼脫鉤
+await run('身分證 病患竄改已填寫的證號',
+  () => updateDoc(doc(NID2(), 'patient_data/nid2'),
+    { profile: { id: 'nid2', name: '已填證號', nationalId: 'C209876544' } }), 'deny');
+// 不影響其他 profile 欄位的正常維護
+await run('身分證 保留原證號時可改其他 profile 欄位',
+  () => updateDoc(doc(NID2(), 'patient_data/nid2'),
+    { profile: { id: 'nid2', name: '改了名字', nationalId: 'A123456781' } }), 'allow');
+
+// 核驗狀態是院方的斷言，病患不得自行宣告
+await run('身分證 病患自行宣告已核驗',
+  () => updateDoc(doc(NID2(), 'patient_data/nid2'), { nationalIdVerifiedBy: 'doctor' }), 'deny');
+await run('身分證 自助註冊時夾帶已核驗欄位',
+  () => setDoc(doc(NEW5(), 'patient_data/newbie5b'), {
+    profile: { id: 'newbie5b', nationalId: 'A123456781' },
+    medications: [], ddiAlerts: [], aiInsights: [], nationalIdVerifiedBy: 'doctor' }), 'deny');
+// 建檔時帶的證號同樣要驗格式
+await run('身分證 自助註冊帶入格式錯誤的證號',
+  () => setDoc(doc(NEW6(), 'patient_data/newbie6b'), {
+    profile: { id: 'newbie6b', nationalId: 'bad' },
+    medications: [], ddiAlerts: [], aiInsights: [] }), 'deny');
+
+// 核保端不得經由摘要取得證號——白名單本來就擋住，這條釘住它不被放寬
+await run('身分證 核保摘要不得夾帶證號',
+  () => setDoc(doc(P001(), 'patient_summaries/P001'), {
+    username: 'P001', displayName: '張小泉', ageBand: '65–74 歲', medicationCount: 3,
+    alertCount: 0, safetyScore: 92, scoreStatus: 'assessed',
+    attestedBy: 'P001', attestedAt: serverTimestamp(), nationalId: 'A123456781' }), 'deny');
+
 console.log('');
 for (const r of results) console.log(r[0].padEnd(5), r[1], r[2] ? '\n      ' + r[2] : '');
 const failed = results.filter(r => r[0] === 'FAIL');

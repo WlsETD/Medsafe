@@ -39,7 +39,10 @@ window.Audit = (function () {
     MAINTENANCE_TOGGLE: 'maintenance_toggle',
     // 緊急調閱：在沒有醫病關係的情況下取用病歷。
     // 這是系統中唯一允許自我授權的動作，因此也是最需要事後複查的一筆記錄。
-    BREAK_GLASS: 'break_glass'
+    BREAK_GLASS: 'break_glass',
+    // 查閱直接識別符（身分證字號）。醫師本來就有權查看，
+    // 記錄的目的不是阻擋，而是讓事後能查出誰在什麼時候看了誰的證號。
+    PII_VIEW: 'pii_view'
   };
 
   // 稽核記錄本身不得成為新的個資外洩管道。這裡只記「誰、何時、對誰、做了什麼」，

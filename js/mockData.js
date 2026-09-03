@@ -140,6 +140,7 @@ window.mockData = {
     profile: {
       id: 'patient01',
       name: '王大明',
+      nationalId: 'A123456781',
       age: 72,
       gender: '男',
       // healthSummary 已移除（稽核報告 P0-8）。原文為
@@ -195,7 +196,7 @@ window.mockData = {
       assignedDoctor: 'doctor',
       assignedDoctorName: '李小美醫師',
       profile: {
-        id: 'P001', name: '張小泉', age: 68, gender: '女',
+        id: 'P001', name: '張小泉', nationalId: 'B287654322', age: 68, gender: '女',
         healthSummary: '目前用藥狀況穩定，無重大交互作用風險。',
         nextAppointment: '2024-06-20'
       },
@@ -219,7 +220,7 @@ window.mockData = {
       assignedDoctor: 'doctor',
       assignedDoctorName: '李小美醫師',
       profile: {
-        id: 'P002', name: '李大維', age: 75, gender: '男',
+        id: 'P002', name: '李大維', nationalId: 'A245678903', age: 75, gender: '男',
         healthSummary: '用藥品項較多，AI 已加強監控潛在交互作用風險。',
         nextAppointment: '2024-06-18'
       },
@@ -243,7 +244,7 @@ window.mockData = {
       assignedDoctor: 'doctor',
       assignedDoctorName: '李小美醫師',
       profile: {
-        id: 'P003', name: '陳美花', age: 70, gender: '女',
+        id: 'P003', name: '陳美花', nationalId: 'C209876544', age: 70, gender: '女',
         healthSummary: '目前用藥狀況穩定，無重大交互作用風險。',
         nextAppointment: '2024-06-22'
       },
@@ -267,7 +268,7 @@ window.mockData = {
       assignedDoctor: 'doctor',
       assignedDoctorName: '李小美醫師',
       profile: {
-        id: 'P004', name: '劉建國', age: 66, gender: '男',
+        id: 'P004', name: '劉建國', nationalId: 'D112358135', age: 66, gender: '男',
         healthSummary: '目前用藥狀況需注意，血壓藥與抗凝血劑存在潛在交互作用。',
         nextAppointment: '2024-06-16'
       },

@@ -330,6 +330,26 @@
                             </div>
                             <h2 class="text-2xl font-black text-slate-800">{{ selectedPatient.name }}</h2>
                             <p class="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">{{ selectedPatient.id }}</p>
+
+                            <!-- ── 身分證字號 ────────────────────────────────────
+                                 預設遮罩、點擊才完整顯示，且展開會寫入稽核記錄。
+                                 它是跨健保／戶政／金融的萬用鍵，診間螢幕常在多人視線內，
+                                 讓它預設可見等於把最高敏感度的識別符長時間攤開。
+                                 遮罩不是為了防醫師——醫師本來就有權查看——
+                                 而是為了讓「查看」成為一個有意識的動作。 -->
+                            <div v-if="patientNationalId" class="mt-2 flex flex-col items-center gap-1">
+                                <button @click="revealNationalId"
+                                        class="font-mono text-sm font-black text-slate-600 hover:text-primary transition-colors tracking-wider"
+                                        :title="nationalIdRevealed ? '已顯示完整號碼' : '點擊顯示完整號碼（會留下查閱記錄）'">
+                                    {{ nationalIdRevealed ? patientNationalId : maskNationalId(patientNationalId) }}
+                                </button>
+                                <!-- 病患自行填寫的證號與院方核對過健保卡的證號不是同一件事。
+                                     未核驗時必須明白標示，不可讓醫師把自述當成已驗證。 -->
+                                <span v-if="selectedPatient.nationalIdVerifiedBy"
+                                      class="text-[8px] font-black text-primary uppercase tracking-widest">已核驗</span>
+                                <span v-else
+                                      class="text-[8px] font-black text-amber-600 uppercase tracking-widest">病患自述，未核驗</span>
+                            </div>
                             
                             <!-- 這兩塊原本是「健康指數 94.2」與「Verified ✓」。
                                  94.2 是寫死的常數，與這位病患無關；「Verified」則沒有說明
@@ -950,6 +970,10 @@
                     breakGlassBusy: false,
                     breakGlassError: '',
                     breakGlassHours: 4,
+                    // 身分證字號預設遮罩。切換病患時必須重設，
+                    // 否則上一位展開過，下一位就直接是展開狀態——
+                    // 那筆查閱既沒有被記錄，醫師也沒有意識到自己看了。
+                    nationalIdRevealed: false,
                     aiCheckStatus: 'idle',
                     ddiRuleCount: 0,
                     ddiRuleSource: 'local',
@@ -1173,6 +1197,12 @@
                 adherenceReportedDays() {
                     return this.adherenceDays.filter(d => d.state !== 'none').length;
                 },
+                // 目前選中病患的身分證字號。沒有就回傳空字串，樣板據此決定
+                // 要不要顯示整個區塊——顯示一個空的遮罩會讓人以為資料被隱藏了。
+                patientNationalId() {
+                    const p = this.selectedPatient;
+                    return (p && p.profile && p.profile.nationalId) || '';
+                },
                 adherenceTodayText() {
                     const t = this.adherenceDays.find(d => d.isToday);
                     if (!t || t.state === 'none') return '今日尚未回報';
@@ -1345,7 +1375,11 @@
                                 // 服藥回報（病患自述）。同樣必須在這裡帶上——
                                 // 這是唯一一次讀到完整病歷的地方，漏掉就只能再查一次
                                 reminders: p.reminders || [],
-                                adherenceLog: p.adherenceLog || {}
+                                adherenceLog: p.adherenceLog || {},
+                                // profile 帶身分證字號；nationalIdVerifiedBy 是頂層欄位，
+                                // 決定畫面顯示「已核驗」還是「病患自述，未核驗」
+                                profile: p.profile || {},
+                                nationalIdVerifiedBy: p.nationalIdVerifiedBy || null
                             };
                         });
 
@@ -1516,6 +1550,27 @@
                     return { state: 'partial', text: taken + '/' + total };
                 },
 
+                // ── 身分證字號 ────────────────────────────────────────────────
+                maskNationalId(v) {
+                    const s = String(v || '');
+                    // 保留首碼與末三碼：足以在對話中確認「是不是這個人」，
+                    // 又不足以構成一個可直接使用的識別符
+                    return s.length >= 10 ? s.slice(0, 1) + '****' + s.slice(-3) : '****';
+                },
+                async revealNationalId() {
+                    if (this.nationalIdRevealed) return;
+                    this.nationalIdRevealed = true;
+                    // 查閱直接識別符屬於應留痕的行為。寫入失敗不回滾顯示——
+                    // 醫師已經看到了，把畫面遮回去只會讓記錄與事實更不一致；
+                    // 正確的處置是明白告知這一次查閱沒有被記錄下來。
+                    const a = await window.Audit.log(window.Audit.ACTIONS.PII_VIEW,
+                        this.selectedPatient.id, { field: 'nationalId' });
+                    if (!a.ok) {
+                        this.triggerToast('查閱記錄失敗',
+                            '已顯示完整號碼，惟本次查閱未能寫入稽核記錄，請通報系統管理者');
+                    }
+                },
+
                 // ── 緊急調閱 ──────────────────────────────────────────────────
                 openBreakGlass() {
                     this.breakGlassForm = { patient: '', reason: '' };
@@ -1555,6 +1610,8 @@
                             medications: p.medications || [],
                             reminders: p.reminders || [],
                             adherenceLog: p.adherenceLog || {},
+                            profile: p.profile || {},
+                            nationalIdVerifiedBy: p.nationalIdVerifiedBy || null,
                             source: 'break-glass'
                         };
                         const idx = this.recentPatients.findIndex(x => x.id === pid);
@@ -1595,6 +1652,10 @@
                 switchToPatient(p) {
                     // 換病患後舊的檢測結論即失效，必須清掉，否則會對新病患顯示上一位的比對結果
                     this.resetAiCheck();
+                    // 身分證字號一律回到遮罩狀態。不重設的話，上一位展開過，
+                    // 下一位就直接是展開狀態——那筆查閱既沒有被記錄，
+                    // 醫師也沒有意識到自己看了。
+                    this.nationalIdRevealed = false;
                     this.selectedPatient = p; this.triggerToast('同步成功', `載入 ${p.name} 的雲端資料`);
                     this.$nextTick(() => {
                         const el = document.getElementById('patient-station'); if (el) el.scrollIntoView({ behavior: 'smooth' });
