@@ -58,8 +58,16 @@ service cloud.firestore {
 
     // 後台使用者列表（用 username 當 document id，供 admin.html 顯示/管理）
     // 註：同一個 username 只要文件已存在，重複建立會被視為 update 而非 create，因此不會被自助註冊覆蓋
+    // 讀取權原本包含 isDoctor()，但這個集合唯一的讀取路徑是 getAllUsers()，
+    // 而它只在 admin.html 被呼叫。醫師拿到的因此不是「查得到需要的人」，
+    // 而是「對整個集合的無限制列舉」——一次撈出全系統管理員、醫師、核保員與病患的
+    // username、Auth UID、角色與帳號狀態。醫師帳號一旦外洩，等於交出全站使用者名冊，
+    // 而 UID 正是後續精準攻擊最有價值的輸入。（對抗性稽核 H-2）
+    //
+    // 移除後醫師端沒有任何功能受影響：dashboard.html 取得病患是靠
+    // patient_data 的 assignedDoctor 查詢，不經過本集合。
     match /users/{username} {
-      allow read: if isAdmin() || isDoctor() || isOwnUsername(username);
+      allow read: if isAdmin() || isOwnUsername(username);
       allow create: if isAdmin()
         || (isAuthed() && request.resource.data.uid == request.auth.uid
             && request.resource.data.role == 'patient'
@@ -100,9 +108,37 @@ service cloud.firestore {
     function emptyOrAbsent(field) {
       return !(field in request.resource.data) || request.resource.data[field].size() == 0;
     }
-    function patientInitialDocIsClean() {
+    // 白名單只管「哪些欄位可以出現」，不管「裡面裝什麼」。
+    // 原本 stats 與 aiInsights 都在白名單內卻沒有任何內容檢查，
+    // 於是自助註冊者可以在建檔當下就寫入 stats.safetyScore = 100
+    // 與一則自製的「此病患零風險」AI 洞察。（對抗性稽核 S-2）
+    //
+    // 這兩者與 medications／ddiAlerts 是同一種東西：系統評估的結果，
+    // 不是使用者可以宣告的事實。既然後者在 update 時已被擋下，
+    // create 時就不該留一個把它們一次寫進去的入口。
+    // safetyScore 的乾淨初始值就是 null（「尚未評估」），因此不能寫成
+    // get('safetyScore', null)——把 null 當成 get() 的預設值會觸發 Null value error，
+    // 整條規則求值失敗而拒絕，連合法的 registerPatient 都會被擋在門外。
+    // 存在性用 in 檢查，值再單獨比對。
+    function statsInitialIsClean() {
+      return !('stats' in request.resource.data)
+        || ((!('safetyScore' in request.resource.data.stats)
+             || request.resource.data.stats.safetyScore == null)
+            && request.resource.data.stats.get('activeMeds', 0) == 0
+            && request.resource.data.stats.get('aiChecksToday', 0) == 0);
+    }
+    // profile.id 是聊天室的路由鍵（chatStore.getMessages(profile.id)）。
+    // 建檔時若能填成別人的 username，就能讓自己的介面指向他人的對話串。
+    function profileIdMatchesOwner(username) {
+      return !('profile' in request.resource.data)
+        || request.resource.data.profile.get('id', username) == username;
+    }
+    function patientInitialDocIsClean(username) {
       return emptyOrAbsent('medications')
         && emptyOrAbsent('ddiAlerts')
+        && emptyOrAbsent('aiInsights')
+        && statsInitialIsClean()
+        && profileIdMatchesOwner(username)
         // assignedDoctor 決定這份病歷會出現在哪位醫師的清單裡（getPatientsByDoctor 照此查詢），
         // 因此不可由自助註冊者自行指定，只能是系統預設值。
         && (!('assignedDoctor' in request.resource.data)
@@ -117,6 +153,34 @@ service cloud.firestore {
     function pseudonymNotOverwritten() {
       return !('fhirPseudonym' in resource.data)
         || request.resource.data.fhirPseudonym == resource.data.fhirPseudonym;
+    }
+
+    // ── 化名格式（對抗性稽核 H-5）───────────────────────────────────────
+    //
+    // pseudonymNotOverwritten() 只保證「已存在的化名不會被改掉」，
+    // 對「第一次寫進去的是什麼」完全沒有意見。因此註冊者可以在初始文件裡
+    // 把 fhirPseudonym 直接填成另一位病患的化名值——之後雙方同步到 FHIR 伺服器的
+    // 資源會共用同一個 identifier，兩人的用藥資料在該伺服器上合併成一份。
+    // 這是臨床資料交叉污染，不只是識別碼衝突。
+    //
+    // 格式檢查擋掉了隨手亂填，也讓「化名必須由 _randomId() 產生」成為資料層的不變式。
+    //
+    // 【誠實的限制】格式管得住，全域唯一性管不住。Firestore 規則無法查詢
+    // 「其他文件是否已使用同一個值」——那需要另立一份以化名為文件 ID 的集合，
+    // 由建立該文件的成敗來保證唯一（規則可驗證 create 必須同時成立）。
+    // 在目前的資料模型下未實作，因此蓄意複製他人化名仍有可能，只是必須先取得
+    // 對方的化名值（該值受 patient_data 的讀取規則保護）。此項列於 Phase 6。
+    function pseudonymFormatOk() {
+      return request.resource.data.fhirPseudonym is string
+        && request.resource.data.fhirPseudonym.matches('DEMO-[0-9A-F]{12}');
+    }
+    // 只在化名這次「被寫入新值」時檢查格式，不對既有資料回溯施加限制——
+    // 否則醫師更新一份早年建立的病歷時，會因為那份文件裡的舊化名格式不符而被擋下。
+    function pseudonymWellFormedIfNew() {
+      return !('fhirPseudonym' in request.resource.data)
+        || (resource != null && ('fhirPseudonym' in resource.data)
+            && request.resource.data.fhirPseudonym == resource.data.fhirPseudonym)
+        || pseudonymFormatOk();
     }
 
     // 病患資料：admin/doctor 可讀寫；保險核保員只能讀（核保用途，不得修改病歷）；
@@ -306,16 +370,23 @@ service cloud.firestore {
       // 若只用 assignedDoctor 做等值比對，代班醫師與會診醫師會被鎖在門外——
       // 那在急診情境下會直接致命。此項列於 Phase 6，不在本次修復範圍。
       allow read: if isAdmin() || isDoctor() || isOwnUsername(username);
-      allow create: if isAdmin() || isDoctor()
-        || (isOwnUsername(username) && patientInitialDocIsClean());
+      allow create: if pseudonymWellFormedIfNew() && (isAdmin() || isDoctor()
+        || (isOwnUsername(username) && patientInitialDocIsClean(username)));
       // resource != null 守衛：Security Rules 的布林運算子是容錯的（error || true 會得到 true），
       // 因此「求值錯誤必然拒絕」並不是保證，只是目前這條 OR 鏈剛好沒有為真的分支。
       // 少了守衛，日後任何人在此鏈加上一個新條件，都可能讓 resource 為 null 時的求值錯誤
       // 被 || 吸收而靜默放行，且斷言 allow/deny 的測試抓不到這種變化。
       // 新增用藥必須攜帶安全檢查紀錄（見上方 prescriptionIsAccountable）。
       // 此條對 admin 同樣適用——「管理員繞過安全檢查開藥」不該是被允許的路徑。
-      allow update: if resource != null && prescriptionIsAccountable() && (isAdmin() || isDoctor()
-        || (isOwnUsername(username) && patientOnlyTouchesOwnFields() && pseudonymNotOverwritten()));
+      // profileIdMatchesOwner：patientOnlyTouchesOwnFields() 用的 affectedKeys() 只看頂層鍵，
+      // 而 profile 是 map——病患改動 profile 底下的任何子欄位，頂層都只呈現為「profile 有變」。
+      // 因此 profile.id 可被改寫成他人的 username，使聊天室路由指向別人的對話串。
+      //（對抗性稽核 H-6）此處只釘住 id；healthSummary 等自述欄位本就該由病患自行維護，
+      // 核保端也已看不到它（改讀 patient_summaries 的固定白名單）。
+      allow update: if resource != null && prescriptionIsAccountable() && pseudonymWellFormedIfNew()
+        && (isAdmin() || isDoctor()
+        || (isOwnUsername(username) && patientOnlyTouchesOwnFields()
+            && pseudonymNotOverwritten() && profileIdMatchesOwner(username)));
       allow delete: if isAdmin();
     }
 
@@ -351,8 +422,15 @@ service cloud.firestore {
       allow read, write: if isAdmin() || isInsurance();
     }
 
+    // graph_data 是交互作用知識圖譜的底層資料，與 ddi_rules 同屬「知識庫」性質，
+    // 權限卻不一致：規則庫限定 admin 才能改，圖譜卻開放醫師寫入與刪除。
+    // 等於前門上鎖、後門敞開。（對抗性稽核 H-4）
+    //
+    // 實際上系統只有 dashboard.html 透過 getGraphData() 讀取它，
+    // 沒有任何程式路徑會寫入，因此收斂為與 ddi_rules 相同的形狀，功能零影響。
     match /graph_data/{doc} {
-      allow read, write: if isAdmin() || isDoctor();
+      allow read: if isAdmin() || isDoctor();
+      allow write: if isAdmin();
     }
 
     match /ddi_rules/{doc} {
@@ -360,16 +438,33 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── 保險端集合：撤銷刪除權 ──────────────────────────────────────────
+    // （對抗性稽核 H-3）
+    //
+    // Firestore 的 write 同時涵蓋 create、update 與 delete。原本三個集合都是
+    // `allow read, write`，因此任一核保帳號都能一次刪光所有保單、理賠與個案紀錄。
+    //
+    // 理賠與保單是財務憑證，個案紀錄是照護軌跡——這三者的共同性質是
+    // 「事後必須查得到」。能被單一帳號無痕刪除的紀錄，在爭議發生時沒有證據價值，
+    // 也讓 H-7（單人核准理賠）從「缺乏覆核」升級為「可核准後銷毀證據」。
+    //
+    // 因此保留 create 與 update（日常作業需要），撤銷 delete。
+    // 誠實的限制：update 仍可改寫內容，規則層無法阻止有寫入權者竄改既有紀錄；
+    // 要達成真正的不可竄改，需比照 audit_logs 改為 append-only 並由後端維護狀態機，
+    // 那需要理賠流程的完整重新設計，列於 Phase 6。
     match /care_cases/{doc} {
-      allow read, write: if isAdmin() || isInsurance();
+      allow read, create, update: if isAdmin() || isInsurance();
+      allow delete: if isAdmin();
     }
 
     match /insurance_claims/{doc} {
-      allow read, write: if isAdmin() || isInsurance();
+      allow read, create, update: if isAdmin() || isInsurance();
+      allow delete: if isAdmin();
     }
 
     match /insurance_policies/{doc} {
-      allow read, write: if isAdmin() || isInsurance();
+      allow read, create, update: if isAdmin() || isInsurance();
+      allow delete: if isAdmin();
     }
   }
 }

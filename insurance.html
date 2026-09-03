@@ -66,6 +66,45 @@
             .no-print { display: none !important; }
             #report-print-area [class*="shadow-"] { box-shadow: none !important; }
             #report-print-area { color: #292E4C !important; }
+
+            /* 【匯出檔必須自己說明自己是什麼】（對抗性稽核 H-9）
+               畫面上每張卡片都標了「模擬」，頁尾也有完整註腳，但那是 10px 的灰字：
+               一旦列印成 PDF 並脫離本系統流傳，它看起來就只是一份格式正式的財務報表。
+               報表的性質不該依賴讀者有沒有注意到頁尾小字。
+
+               浮水印以 body::before 繪製並固定於頁面，隨每一頁重複出現，
+               且位於 @media print 區塊內——它不是畫面元素，無法用 DevTools
+               在匯出前關掉，因為列印樣式在列印當下才套用。 */
+            body::before {
+                content: "競賽展示模擬資料 — 非真實財務／精算紀錄";
+                visibility: visible !important;
+                position: fixed;
+                top: 45%;
+                left: 50%;
+                transform: translate(-50%, -50%) rotate(-28deg);
+                font-size: 30pt;
+                font-weight: 900;
+                letter-spacing: 0.06em;
+                color: rgba(214, 48, 49, 0.16);
+                white-space: nowrap;
+                z-index: 9999;
+                pointer-events: none;
+            }
+            /* 每頁頁尾另附一行可讀的說明，供列印後仍看得懂資料來源 */
+            body::after {
+                content: "本報表之保費、理賠、折扣、人力單價、稅率與準備金提存比例皆為模擬假設，僅供報表格式與分析邏輯示範，不得作為財務、精算或核保依據。";
+                visibility: visible !important;
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                text-align: center;
+                font-size: 7pt;
+                font-weight: 700;
+                color: #B33939;
+                padding: 3mm 6mm;
+                border-top: 0.4mm solid #B33939;
+            }
         }
     </style>
 </head>
@@ -231,7 +270,10 @@
                                         <th class="pb-6">保戶</th>
                                         <th class="pb-6">險種名稱</th>
                                         <th class="pb-6">合規保額</th>
-                                        <th class="pb-6 text-right pr-4">Security Code</th>
+                                        <!-- 原本標題是「Security Code」，值卻是 Math.random() 產生的隨機字串，
+                                             不以任何保單內容為輸入。名稱暗示密碼學保護，實際上只是裝飾。
+                                             現已改為保單內容的 SHA-256 前綴，名稱也據實標示。 -->
+                                        <th class="pb-6 text-right pr-4" title="保戶、險種與保額的 SHA-256 摘要前 12 碼。內容一經竄改，此碼即不相符。">內容檢查碼</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-50">
@@ -540,7 +582,16 @@
                         <section class="bg-white rounded-[32px] md:rounded-[40px] shadow-premium border border-white overflow-hidden">
                             <div class="p-8 border-b border-gray-50">
                                 <h3 class="font-black text-navy flex items-center gap-2"><span class="w-1.5 h-5 bg-danger rounded-full"></span> 用藥安全風險 × 理賠關聯（核保政策依據）</h3>
-                                <p class="text-xs text-lightText mt-1">依 DDI 風險等級模擬平均理賠成本，作為保費費率與核保條件調整參考（模擬數據）</p>
+                                <p class="text-xs text-lightText mt-1">依 DDI 風險等級模擬平均理賠成本，用於安排關懷介入的優先順序（模擬數據）</p>
+                                <!-- 這段不是免責聲明，是設計說明：本表刻意不產生費率建議。
+                                     理由見 ddiPolicyRows 的註解——交互作用主要來自處方而非病患行為。 -->
+                                <div class="mt-3 flex items-start gap-2 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-amber-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                                    <p class="text-[11px] text-amber-900 leading-relaxed font-medium">
+                                        本表<strong>不產生費率建議</strong>。藥物交互作用主要源自處方決策而非保戶行為，逕以其調整保費將使多重慢性病之年長保戶結構性承擔最高費率。
+                                        費率之釐定應依保險法第 144 條，經合格精算人員簽署並報主管機關核定或備查，不得由系統即時產生。
+                                    </p>
+                                </div>
                             </div>
                             <div class="overflow-x-auto">
                                 <table class="w-full border-collapse min-w-[600px]">
@@ -631,7 +682,8 @@
                             <div class="space-y-2">
                                 <h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">FHIR Patient 資源查核</h4>
                                 <div class="p-5 md:p-6 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col gap-3">
-                                    <p class="text-[11px] font-bold text-slate-500 leading-relaxed">向公用 HAPI FHIR 測試伺服器（hapi.fhir.org/baseR4）即時查詢是否有同名 Patient 資源，用於驗證跨院資料交換介接是否暢通。</p>
+                                    <p class="text-[11px] font-bold text-slate-500 leading-relaxed">向 FHIR 伺服器（<span class="font-mono">{{ fhirHost }}</span>）即時查詢是否有對應的 Patient 資源，用於驗證跨院資料交換介接是否暢通。</p>
+                                    <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">⚠️ 該伺服器<strong>目前沒有存取控制</strong>，上面的資料任何人皆可讀取。</p>
                                     <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2 leading-relaxed">⚠️ 查詢以化名代號進行，<strong>不會將保戶姓名送出</strong>；查得到即代表該個案的跨院資料通道已打通。</p>
                                     <p v-if="fhirCheckStatus === 'not-synced'" class="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 mt-2 leading-relaxed">該保戶尚未同步任何資料至 FHIR 伺服器，因此查無紀錄。這不是查詢失敗，也不代表其用藥有異常。</p>
                                     <div class="flex items-center justify-between gap-4">
@@ -705,8 +757,13 @@
         <!-- Global Toast -->
         <transition name="fade">
             <div v-if="showToast" class="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-[200] bg-slate-900 text-white px-6 py-4 md:px-8 md:py-5 rounded-[24px] md:rounded-[32px] shadow-2xl border border-white/10 flex items-center gap-4 animate-fade-in text-left">
-                <div class="w-8 h-8 md:w-10 md:h-10 bg-success rounded-full flex items-center justify-center text-white shrink-0"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg></div>
-                <div class="overflow-hidden"><div class="font-black text-xs md:text-sm uppercase tracking-widest truncate text-left">{{ toastTitle }}</div><div class="text-[9px] md:text-[10px] text-slate-500 font-bold truncate">Synchronized with Node</div></div>
+                <!-- 圖示與副標必須反映實際結果。原本是寫死的綠勾與「Synchronized with Node」，
+                     連「操作失敗，請稍後再試」都會配上成功的外觀。 -->
+                <div :class="['w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center text-white shrink-0', toastTone === 'error' ? 'bg-danger' : 'bg-success']">
+                    <svg v-if="toastTone === 'ok'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg>
+                    <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-6 md:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" /></svg>
+                </div>
+                <div class="overflow-hidden max-w-[18rem]"><div class="font-black text-xs md:text-sm uppercase tracking-widest text-left">{{ toastTitle }}</div><div v-if="toastMsg" class="text-[10px] md:text-[11px] text-white/80 font-bold mt-0.5 leading-snug">{{ toastMsg }}</div></div>
             </div>
         </transition>
     </div>
@@ -738,7 +795,8 @@
                 return {
                     showPasswordModal: false, changingPassword: false, passwordError: '',
                     passwordForm: { current: '', next: '', confirm: '' },
-                    user, activeMenu: 'Dashboard', showRiskDetailModal: false, showToast: false, toastTitle: '', selectedRiskPatient: {},
+                    user, activeMenu: 'Dashboard', showRiskDetailModal: false, showToast: false,
+                    toastTitle: '', toastMsg: '', toastTone: 'ok', toastTimer: null, selectedRiskPatient: {},
                     showMobileMenu: false,
                     maintenanceMode: false,
                     maintenanceCheckFailed: false,
@@ -750,8 +808,14 @@
                     // FHIR 目標位址供介面顯示。警告文字不可寫死——
                     // 管理者換成自架伺服器後，畫面仍在恐嚇使用者資料會外流，
                     // 而一個永遠亮著的警告燈，使用者很快就學會忽略它。
+                    //
+                    // 但反過來也一樣危險：2026-09-03 實測發現，遷移到自架伺服器後
+                    // 警告會因為「網址不是 hapi.fhir.org」而全部消失，
+                    // 而那台伺服器其實一樣沒有存取控制。判斷因此改綁存取控制本身
+                    // （FhirClient.isUnprotected()），預設為「未受保護」。
                     fhirBaseUrl: '',
-                    fhirIsPublic: true,
+                    fhirHost: '',
+                    fhirUnprotected: true,
                     // 查核失敗的具體原因（逾時／伺服器錯誤／連線失敗各有不同處置）
                     fhirCheckError: '',
                     // 查核失敗的具體原因（逾時／伺服器錯誤／連線失敗各有不同處置）
@@ -774,9 +838,12 @@
                     claims: insData.claimsTracking,
                     coverageGaps: insData.coverageGaps,
                     recentPolicies: [
-                        { id: 'POL-9921', customer: '—', name: '智慧健康險 (L1)', amount: 'NT$ 120,000', hash: '0x7d...f3a1' },
-                        { id: 'POL-9922', customer: '—', name: '智慧健康險 (L2)', amount: 'NT$ 150,000', hash: '0x7d...f3a2' },
-                        { id: 'POL-9923', customer: '—', name: '長照防護專案', amount: 'NT$ 300,000', hash: '0x7d...f3a3' },
+                        // 這三筆是尚未有真實保單時的示範列。原本的 hash 寫成 '0x7d...f3a1'，
+                        // 外觀模仿區塊鏈雜湊卻毫無來源，會讓人以為保單受密碼學保護。
+                        // 示範資料就標示為示範資料。
+                        { id: 'POL-9921', customer: '—', name: '智慧健康險 (L1)', amount: 'NT$ 120,000', hash: '（示範資料）' },
+                        { id: 'POL-9922', customer: '—', name: '智慧健康險 (L2)', amount: 'NT$ 150,000', hash: '（示範資料）' },
+                        { id: 'POL-9923', customer: '—', name: '長照防護專案', amount: 'NT$ 300,000', hash: '（示範資料）' },
                     ],
                     showAddPolicyModal: false,
                     newPolicy: { customer: '', planName: '', amount: '' },
@@ -810,11 +877,29 @@
                         { month: '2026-06', premium: 6900000, claims: 1720000, discount: 382000 },
                         { month: '2026-07', premium: 7050000, claims: 2040000, discount: 398000 },
                     ],
+                    // ── 建議欄一律為「介入」而非「定價」（對抗性稽核 S-4）─────────────
+                    //
+                    // 原本極高風險列寫的是「建議加收 15% 風險溢價」。有兩個問題，
+                    // 第二個比第一個嚴重得多：
+                    //
+                    // 一、程序上：保險法第 144 條要求費率須經合格精算人員簽署並報主管機關
+                    //     核定或備查。一個由前端 JavaScript 產生的百分比不具備任何精算基礎，
+                    //     不該以「建議核保政策」的形式呈現給核保員採用。
+                    //
+                    // 二、實質上：藥物交互作用主要是「處方」的產物，不是病患行為的產物。
+                    //     同時服用 Warfarin 與 Aspirin 的心血管患者，多半是醫師基於臨床
+                    //     需要做出的合理處方。向病患加收保費，等於讓他為醫師的處方決策付費。
+                    //     而 computeSafetyScore 對用藥 ≥ 5 種另有扣分，使得年長多重慢性病者
+                    //     ——最需要保障的一群——結構性地落在最高費率端。
+                    //     這不是模型調參可以修掉的偏差，是把風險指標直接當定價依據的必然結果。
+                    //
+                    // 因此建議欄改為介入導向：系統指出「誰需要被關心」，
+                    // 由人決定「要不要調整契約條件」，且該決定走既有的精算與核保程序。
                     ddiPolicyRows: [
-                        { level: '極高風險', patients: 120, avgClaim: 18500, suggestion: '建議加收 15% 風險溢價，並要求季度回診覆核' },
-                        { level: '高風險', patients: 85, avgClaim: 9200, suggestion: '建議搭售 AI 用藥提醒服務，換取部分保費折扣' },
-                        { level: '中風險', patients: 45, avgClaim: 4100, suggestion: '維持現行費率，持續觀察' },
-                        { level: '低風險', patients: 10, avgClaim: 800, suggestion: '可提供續保優惠方案，鼓勵長期投保' },
+                        { level: '極高風險', patients: 120, avgClaim: 18500, suggestion: '優先啟動個案關懷，並提醒保戶回診與主治醫師覆核用藥組合' },
+                        { level: '高風險', patients: 85, avgClaim: 9200, suggestion: '主動提供 AI 用藥提醒服務，追蹤後續交互作用警示是否下降' },
+                        { level: '中風險', patients: 45, avgClaim: 4100, suggestion: '納入定期觀察名單，暫不介入' },
+                        { level: '低風險', patients: 10, avgClaim: 800, suggestion: '無須額外介入；如評估續保優惠，須另循精算程序核定' },
                     ]
                 }
             },
@@ -961,7 +1046,8 @@
                 // FHIR Base URL 改為實際讀取管理端設定（Phase 5）
                 const _fhirBase = await window.FhirClient.init();
                 this.fhirBaseUrl = _fhirBase;
-                this.fhirIsPublic = window.FhirClient.isPublicSandbox();
+                this.fhirHost = window.FhirClient.host();
+                this.fhirUnprotected = window.FhirClient.isUnprotected();
                 try {
                     this.careCases = await DbService.getCareCases();
                 } catch (e) {
@@ -1085,7 +1171,30 @@
                         this.fhirCheckStatus = 'error';
                     }
                 },
-                triggerToast(t) { this.toastTitle = t; this.showToast = true; setTimeout(() => this.showToast = false, 3000); },
+                // 保單內容的 SHA-256 摘要前 12 碼。欄位以  分隔，
+                // 避免「AB|C」與「A|BC」這類串接歧義產生相同輸入。
+                //
+                // 誠實的限制：這是「內容檢查碼」，不是簽章。它能偵測內容與檢查碼不符，
+                // 但無法阻止有寫入權者同時改內容與檢查碼。要做到那樣需要伺服器端簽章
+                // （後端持金鑰），與 FHIR 存取控制同屬 Phase 6。
+                async contentDigest(parts) {
+                    const input = parts.join('');
+                    // crypto.subtle 只在安全脈絡（HTTPS / localhost）下存在。
+                    // 取不到時不可偽造一個看起來像雜湊的字串——那正是原本的錯誤。
+                    if (!(window.crypto && window.crypto.subtle)) return '（無法計算：需 HTTPS）';
+                    const buf = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+                    return Array.from(new Uint8Array(buf)).slice(0, 6)
+                        .map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+                },
+                // tone 由呼叫端明示，不從文字內容推測（見 admin.html 同名函式的說明）
+                triggerToast(t, m, tone) {
+                    this.toastTitle = t;
+                    this.toastMsg = m || '';
+                    this.toastTone = tone || 'ok';
+                    this.showToast = true;
+                    if (this.toastTimer) clearTimeout(this.toastTimer);
+                    this.toastTimer = setTimeout(() => { this.showToast = false; }, this.toastTone === 'ok' ? 3000 : 8000);
+                },
                 async activateCareCase() {
                     if (this.activatingCare) return;
                     this.activatingCare = true;
@@ -1103,13 +1212,16 @@
                         };
                         await DbService.addCareCase(record);
                         this.careCases.unshift(record);
+                        this.triggerToast(`個案關懷已啟動：${patient.name || '該保戶'}`);
                     } catch (e) {
+                        // 原本這則成功提示放在 finally 裡，寫入拋錯時照樣顯示「已啟動」——
+                        // 核保員會以為個案已建立，實際上 Firestore 什麼都沒有。
                         console.error('Firestore care case error:', e);
+                        this.triggerToast('個案關懷未啟動',
+                            `${patient.name || '該保戶'} 的個案未能寫入資料庫，請稍後再試或通報系統管理者。`, 'error');
                     } finally {
                         this.activatingCare = false;
                         this.showRiskDetailModal = false;
-                        const name = patient.name || '該保戶';
-                        this.triggerToast(`個案關懷已啟動：${name}`);
                     }
                 },
                 // 輸入已改為核保摘要（patient_summaries），不再是完整病歷。
@@ -1158,7 +1270,7 @@
                         this.triggerToast(`${c.patientName} 的個案狀態已更新為「${newStatus}」`);
                     } catch (e) {
                         c.status = prev;
-                        this.triggerToast('狀態更新失敗，請稍後再試');
+                        this.triggerToast('狀態更新失敗', '個案狀態未寫入資料庫，畫面已還原為原本的狀態。', 'error');
                     }
                 },
                 openAddClaimModal() {
@@ -1199,7 +1311,7 @@
                         claim.status = status; claim.statusClass = statusClass; claim.progress = progress;
                         this.triggerToast(`理賠案件已${status}`);
                     } catch (e) {
-                        this.triggerToast('操作失敗，請稍後再試');
+                        this.triggerToast('理賠審核未生效', '審核結果未能寫入資料庫，本案狀態維持不變。', 'error');
                     }
                 },
                 openAddPolicyModal() {
@@ -1212,11 +1324,17 @@
                         this.newPolicyError = '保戶、險種與保額為必填欄位';
                         return;
                     }
+                    const customer = this.newPolicy.customer.trim();
+                    const planName = this.newPolicy.planName.trim();
+                    const amount = 'NT$ ' + Number(this.newPolicy.amount).toLocaleString();
                     const record = {
-                        customer: this.newPolicy.customer.trim(),
-                        name: this.newPolicy.planName.trim(),
-                        amount: 'NT$ ' + Number(this.newPolicy.amount).toLocaleString(),
-                        hash: 'SEC-' + Math.random().toString(16).slice(2, 8).toUpperCase(),
+                        customer, name: planName, amount,
+                        // 【檢查碼必須由內容決定】（對抗性稽核 H-10）
+                        // 原本是 'SEC-' + Math.random()：6 個十六進位字元、非密碼學安全亂數，
+                        // 且不以任何保單內容為輸入。它在畫面上叫「Security Code」，
+                        // 卻對「這張保單有沒有被改過」提供零資訊——純粹的安全劇場。
+                        // 改以保單內容的 SHA-256 為來源後，改動保戶、險種或保額都會使檢查碼不符。
+                        hash: await this.contentDigest([customer, planName, amount]),
                         createdAt: Date.now()
                     };
                     try {

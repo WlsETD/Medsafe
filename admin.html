@@ -696,6 +696,22 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div class="space-y-2"><label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">FHIR Base URL</label><input v-model="systemSettings.fhirUrl" type="text" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-title focus:border-primary/20 outline-none transition-all"></div>
                         </div>
+
+                        <!-- 存取控制具結。
+                             2026-09-03：遷移到自架 Cloud Run 伺服器後，四端的資料外流警告
+                             全部消失了——因為判斷條件是「網址是不是 hapi.fhir.org」，
+                             而那台伺服器實測未帶憑證即可讀寫。判斷因此改綁這個欄位。 -->
+                        <div class="p-6 rounded-3xl border-2" :class="systemSettings.fhirAccessControlled ? 'bg-emerald-50/60 border-emerald-200' : 'bg-amber-50/60 border-amber-200'">
+                            <label class="flex items-start gap-4 cursor-pointer">
+                                <input type="checkbox" v-model="systemSettings.fhirAccessControlled" class="mt-1 w-5 h-5 rounded accent-primary shrink-0">
+                                <span class="space-y-1.5">
+                                    <span class="block text-xs font-black text-title uppercase tracking-widest">我具結此伺服器已設定存取控制</span>
+                                    <span class="block text-[10px] font-bold text-slate-500 leading-relaxed">未勾選時，病患端、醫師端與核保端會顯示「此伺服器沒有存取控制，任何人皆可讀取」的警告。<strong class="text-amber-700">勾選本項不會產生任何保護</strong>——本系統無法自行驗證對方有沒有擋在門口，這只是記錄「誰在何時說它安全了」，變更會寫入稽核記錄。請在確實設定完成後才勾選。</span>
+                                    <span class="block text-[10px] font-bold text-slate-500 leading-relaxed">另請注意：本連線層<strong>不送出任何憑證</strong>。若該伺服器真的要求授權，本系統的同步功能會一併失敗——要對受保護的伺服器存取，需由後端代理持有憑證。</span>
+                                    <span v-if="fhirUrlIsPublicSandbox" class="block text-[10px] font-black text-amber-700 leading-relaxed">目前位址為 HL7 公開沙箱，警告一律顯示，本勾選不生效。</span>
+                                </span>
+                            </label>
+                        </div>
                         <div class="pt-4 flex items-center justify-between bg-indigo-50/50 p-6 rounded-3xl border border-indigo-100">
                             <div class="flex items-center gap-3"><div :class="['w-3 h-3 rounded-full', isTestingConnection ? 'bg-warning animate-ping' : (fhirConnectionOk === false ? 'bg-danger' : 'bg-success')]"></div><span class="text-sm font-black text-slate-600 uppercase">狀態：{{ fhirConnectionOk === false ? '連線失敗' : (fhirConnectionOk === true ? '連線正常' : '尚未測試') }}</span></div>
                             <button @click="testFhirConnection" :disabled="isTestingConnection" class="px-6 py-2.5 bg-white border-2 border-indigo-100 rounded-xl text-xs font-black text-primary hover:bg-primary hover:text-white transition-all">{{ isTestingConnection ? '測試中...' : '測試連線' }}</button>
@@ -890,8 +906,15 @@
         <!-- GLOBAL TOAST -->
         <transition name="fade">
             <div v-if="showToast" class="fixed bottom-10 right-10 z-[200] bg-slate-900 text-white px-8 py-5 rounded-3xl shadow-2xl border border-white/10 flex items-center gap-4 animate-fade-in text-left">
-                <div class="w-10 h-10 bg-success rounded-full flex items-center justify-center text-white"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg></div>
-                <div><div class="font-black text-sm uppercase tracking-widest">{{ toastTitle }}</div><div class="text-[10px] text-slate-400 italic">Database status: synchronized</div></div>
+                <!-- 圖示與副標都必須反映實際結果。原本這裡是寫死的綠勾與
+                     「Database status: synchronized」，失敗時照樣顯示成功，
+                     連「稽核記錄失敗」這種需要通報管理者的警告都被蓋掉。 -->
+                <div :class="['w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0', toastTone === 'error' ? 'bg-danger' : (toastTone === 'warn' ? 'bg-warning' : 'bg-success')]">
+                    <svg v-if="toastTone === 'ok'" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg>
+                    <svg v-else-if="toastTone === 'warn'" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                    <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" /></svg>
+                </div>
+                <div class="max-w-[22rem]"><div class="font-black text-sm uppercase tracking-widest">{{ toastTitle }}</div><div v-if="toastMsg" :class="['text-[11px] mt-0.5 leading-snug', toastTone === 'ok' ? 'text-slate-400' : 'text-white']">{{ toastMsg }}</div></div>
             </div>
         </transition>
     </div>
@@ -971,7 +994,8 @@
                     showEditUserModal: false, showToast: false,
                     showCredentialModal: false, createdCredential: { username: '', password: '' },
                     credentialCopied: false,
-                    toastTitle: '', newUser: { name: '', role: 'doctor', email: '', hospital: '' },
+                    toastTitle: '', toastMsg: '', toastTone: 'ok', toastTimer: null,
+                    newUser: { name: '', role: 'doctor', email: '', hospital: '' },
                     newUserError: '',
                     newRule: { drugA: '', drugB: '', severity: '高風險', effect: '' },
                     newRuleError: '',
@@ -979,6 +1003,10 @@
                     // 系統設置相關
                     systemSettings: {
                         fhirUrl: 'https://hapi.fhir.org/baseR4',
+                        // 預設 false：沒有人具結過，就等於沒有人確認過。
+                        // 這個值決定四端是否顯示「此伺服器無存取控制」的警告，
+                        // 預設必須落在保守的那一邊（詳見 js/fhir-client.js 檔頭第四節）。
+                        fhirAccessControlled: false,
                         aiSensitivity: 85,
                         autoBlock: true,
                         isMaintenanceMode: false,
@@ -1011,6 +1039,13 @@
                 }
             },
             computed: {
+                // 目前填入的位址是不是 HL7 公開沙箱。對它具結存取控制無效——
+                // 那是 HL7 的公用伺服器，不是任何管理者能宣告安全的對象。
+                // （放在 computed 而非樣板內：樣板表達式裡的正規表示式字面量
+                //   會被 Vue 的表達式解析器處理，不值得為了少一個函式冒這個險。）
+                fhirUrlIsPublicSandbox() {
+                    return /hapi\.fhir\.org/i.test(this.systemSettings.fhirUrl || '');
+                },
                 // DDInter 藥物清單。資料以陣列形式儲存（[id, name, n, atc?]）以節省體積，
                 // 1,971 筆用物件形式會多出約 40%。
                 // 不會生效的規則數。刻意與「規則總數」分開呈現——
@@ -1132,8 +1167,11 @@
                 try {
                     const savedSettings = await DbService.getSystemSettings();
                     if (savedSettings) {
-                        const { fhirUrl, aiSensitivity, autoBlock, syncInterval, sessionTimeout } = savedSettings;
+                        const { fhirUrl, fhirAccessControlled, aiSensitivity, autoBlock, syncInterval, sessionTimeout } = savedSettings;
                         Object.assign(this.systemSettings, { fhirUrl, aiSensitivity, autoBlock, syncInterval, sessionTimeout });
+                        // 舊資料沒有這個欄位，undefined 必須落回 false 而不是留成 undefined，
+                        // 否則勾選框會變成未受控狀態，畫面與實際存檔的值會不一致。
+                        this.systemSettings.fhirAccessControlled = !!fhirAccessControlled;
                     }
                 } catch (e) {
                     console.error('Firestore system settings error:', e);
@@ -1144,7 +1182,7 @@
                 } catch (e) {
                     console.error('Firestore DDI rules error:', e);
                 }
-                this.kpis[0].value = this.mockRules.length;
+                this.refreshRuleCountKpi();
                 // 藥物目錄品項數：目錄本身就在前端，直接算即可
                 this.kpis[2].value = window.DrugCatalog ? window.DrugCatalog.all().length : 0;
                 // 稽核事件數。最多取 500 筆——超過時顯示「500+」而非硬報一個數字，
@@ -1240,10 +1278,10 @@
                     try {
                         await DbService.deleteDdiRule(String(id));
                         this.mockRules = this.mockRules.filter(r => r.id !== id && r.id !== String(id));
-                        this.kpis[0].value = this.mockRules.length;
+                        this.refreshRuleCountKpi();
                         this.triggerToast('已刪除', '規則已從資料庫移除');
                     } catch (e) {
-                        this.triggerToast('刪除失敗', '請稍後再試');
+                        this.triggerToast('刪除失敗', '請稍後再試', 'error');
                     }
                 },
 
@@ -1260,28 +1298,65 @@
                     }
                     this.showEditUserModal = true;
                 },
+                // 【角色變更必須先落地，才能宣稱它發生過】（對抗性稽核 H-13）
+                //
+                // 原本這個函式只把新角色寫進 Vue 的 mockUsers 陣列，從未寫入 Firestore：
+                // 按 F5 就回復原狀，安全規則採信的 user_roles 更是完全沒動。
+                // 但它照樣寫下一筆 USER_ROLE_CHANGE 稽核記錄，並顯示「權限已修改」。
+                //
+                // 三件事同時出錯：管理員以為改好了、系統顯示改好了、稽核軌跡記載改好了，
+                // 而實際權限一點都沒變。稽核記載一件從未發生的事，比完全沒有稽核更危險——
+                // 事後調查會據此做出錯誤結論。
+                //
+                // 因此改為：先寫入，寫入成功才留痕；任一步失敗就據實說明失敗在哪裡，
+                // 且不留下與事實不符的記錄。
                 async saveUserEdit() {
                     const idx = this.mockUsers.findIndex(u => u.id === this.editingUser.id);
                     if (idx === -1) return;
+                    const original = this.mockUsers[idx];
+                    const roleChanged = original.role !== this.editingUser.role;
+
+                    if (roleChanged) {
+                        let r;
+                        try {
+                            r = await DbService.setUserRole(this.editingUser.id, this.editingUser.uid, this.editingUser.role);
+                        } catch (e) {
+                            this.triggerToast('角色未變更', '寫入失敗，請確認 Firestore 規則允許寫入 users 與 user_roles。本次沒有做任何變更。', 'error');
+                            return;
+                        }
+                        // 沒有 uid 就寫不到 user_roles，而安全規則只看 user_roles。
+                        // 此時就算 users 改了，實際權限也不會變——不可回報成功。
+                        if (!r.ok) {
+                            this.triggerToast('角色未變更', '此帳號缺少對應的 Auth UID，無法寫入安全規則採信的 user_roles，變更不會生效。請改由重新建立帳號處理。', 'error');
+                            return;
+                        }
+                    }
+
                     if (this.editingUser.role === 'patient') {
                         const doctor = this.doctorOptions.find(d => d.id === this.editingUser.assignedDoctor);
                         try {
                             await DbService.assignDoctorToPatient(this.editingUser.id, doctor ? doctor.id : '', doctor ? doctor.name : '');
                         } catch (e) {
-                            this.triggerToast('指派失敗', '請確認 Firestore 規則允許寫入 patient_data');
+                            // 角色可能已經改成功了，必須分開陳述，不能籠統說「失敗」
+                            this.triggerToast(roleChanged ? '角色已變更，但指派失敗' : '指派失敗',
+                                (roleChanged ? `角色已改為 ${this.editingUser.role}，但` : '') + '主治醫師指派未能寫入，請確認 Firestore 規則允許寫入 patient_data', 'error');
                             return;
                         }
                     }
+
                     const roles = { doctor: '醫師', patient: '患者', insurance: '保險', admin: '管理員' };
                     this.editingUser.roleName = roles[this.editingUser.role];
                     this.mockUsers[idx] = this.editingUser;
                     this.showEditUserModal = false;
-                    // 變更他人角色屬於高風險操作，必須留痕（P1-5）
+
+                    // 變更他人角色屬於高風險操作，必須留痕（P1-5）。
+                    // 這行現在位於「變更確實已寫入」之後，記錄的才是既成事實。
                     const a = await window.Audit.log(window.Audit.ACTIONS.USER_ROLE_CHANGE, this.editingUser.id,
-                        { role: this.editingUser.role, assignedDoctor: this.editingUser.assignedDoctor || null });
+                        { role: this.editingUser.role, roleChanged, assignedDoctor: this.editingUser.assignedDoctor || null });
                     this.triggerToast(a.ok ? '資料已更新' : '資料已更新，但稽核記錄失敗',
                         a.ok ? `用戶 ${this.editingUser.name} 的權限已修改`
-                             : `用戶 ${this.editingUser.name} 的權限已修改，惟本次操作未能留下稽核記錄，請通報系統管理者`);
+                             : `用戶 ${this.editingUser.name} 的權限已修改，惟本次操作未能留下稽核記錄，請通報系統管理者`,
+                        a.ok ? 'ok' : 'warn');
                 },
                 openPasswordModal() {
                     this.passwordForm = { current: '', next: '', confirm: '' };
@@ -1328,18 +1403,27 @@
                     // 一旦把自己或最後一位 admin 停用，就沒有人能改回來，只能進 Firebase Console 手動救
                     if (newStatus === 'disabled') {
                         if (user.id === this.user.username) {
-                            this.triggerToast('無法停用', '不能停用你自己正在使用的帳號');
+                            this.triggerToast('無法停用', '不能停用你自己正在使用的帳號', 'error');
                             return;
                         }
                         const activeAdmins = this.mockUsers.filter(u => u.role === 'admin' && u.status === 'active');
                         if (user.role === 'admin' && activeAdmins.length <= 1) {
-                            this.triggerToast('無法停用', '系統必須保留至少一位啟用中的管理員');
+                            this.triggerToast('無法停用', '系統必須保留至少一位啟用中的管理員', 'error');
                             return;
                         }
                     }
                     try {
-                        await window.db.collection('users').doc(user.id).update({ status: newStatus });
-                        if (user.uid) await window.db.collection('user_roles').doc(user.uid).update({ status: newStatus });
+                        // 【兩份文件必須同生共死】（對抗性稽核 H-16）
+                        // 原本是兩次獨立 update，且 user_roles 那次還包在 if (user.uid) 裡。
+                        // 前者成功、後者失敗（或根本沒 uid）時，列表顯示「已停用」，
+                        // 而安全規則採信的 user_roles 仍是 active——帳號看似被停權，
+                        // 實際保有完整權限。這是停用功能最不該有的失敗模式。
+                        const r = await DbService.setUserStatus(user.id, user.uid, newStatus);
+                        if (!r.ok) {
+                            this.triggerToast('狀態未變更',
+                                `${user.name} 缺少對應的 Auth UID，無法寫入安全規則採信的 user_roles。若只改 users 會造成「顯示已停用但實際仍可存取」，因此本次未做任何變更。`, 'error');
+                            return;
+                        }
                         user.status = newStatus;
                         user.statusName = newStatus === 'active' ? '正常' : '停用';
                         const label = newStatus === 'active' ? '已恢復正常' : '已停用，該帳號無法登入';
@@ -1348,9 +1432,10 @@
                             { status: newStatus, role: user.role });
                         this.triggerToast(a.ok ? '狀態變更' : '狀態已變更，但稽核記錄失敗',
                             a.ok ? `${user.name} ${label}`
-                                 : `${user.name} ${label}；惟本次操作未能留下稽核記錄，請通報系統管理者`);
+                                 : `${user.name} ${label}；惟本次操作未能留下稽核記錄，請通報系統管理者`,
+                            a.ok ? 'ok' : 'warn');
                     } catch (e) {
-                        this.triggerToast('變更失敗', '請確認 Firestore 規則允許寫入 users');
+                        this.triggerToast('變更失敗', '請確認 Firestore 規則允許寫入 users 與 user_roles', 'error');
                     }
                 },
 
@@ -1368,24 +1453,29 @@
                         this.triggerToast('連線成功', `HAPI FHIR Server 響應正常 (延遲 ${ms}ms)`);
                     } catch (e) {
                         this.fhirConnectionOk = false;
-                        this.triggerToast('連線失敗', '無法連線至 FHIR 伺服器，請確認 Base URL 或網路狀態');
+                        this.triggerToast('連線失敗', '無法連線至 FHIR 伺服器，請確認 Base URL 或網路狀態', 'error');
                     } finally {
                         this.isTestingConnection = false;
                     }
                 },
                 async saveSystemSettings() {
-                    const { fhirUrl, aiSensitivity, autoBlock, syncInterval, sessionTimeout } = this.systemSettings;
+                    const { fhirUrl, fhirAccessControlled, aiSensitivity, autoBlock, syncInterval, sessionTimeout } = this.systemSettings;
                     try {
-                        await DbService.saveSystemSettings({ fhirUrl, aiSensitivity, autoBlock, syncInterval, sessionTimeout });
+                        await DbService.saveSystemSettings({ fhirUrl, fhirAccessControlled: !!fhirAccessControlled,
+                            aiSensitivity, autoBlock, syncInterval, sessionTimeout });
                         // autoBlock 直接影響醫師能否開立高風險處方，其變更必須可追溯：
                         // 日後若發生用藥事件，需要能查出當時的攔截政策是誰在何時關掉的。
+                        // fhirAccessControlled 同理：它會關掉四端的資料外流警告，
+                        // 是「誰在何時說這台伺服器安全了」的具結，必須留下記錄。
                         const a = await window.Audit.log(window.Audit.ACTIONS.SETTINGS_CHANGE, 'admin_data/main',
-                            { autoBlock: autoBlock, sessionTimeout: sessionTimeout, syncInterval: syncInterval });
+                            { autoBlock: autoBlock, sessionTimeout: sessionTimeout, syncInterval: syncInterval,
+                              fhirUrl: fhirUrl, fhirAccessControlled: !!fhirAccessControlled });
                         this.triggerToast(a.ok ? '設置已儲存' : '設置已儲存，但稽核記錄失敗',
                             a.ok ? '系統核心參數已寫入 Firestore，重新整理後仍會保留'
-                                 : '參數已寫入，惟本次變更未能留下稽核記錄，請通報系統管理者');
+                                 : '參數已寫入，惟本次變更未能留下稽核記錄，請通報系統管理者',
+                            a.ok ? 'ok' : 'warn');
                     } catch (e) {
-                        this.triggerToast('儲存失敗', '請確認 Firestore 規則允許寫入 admin_data');
+                        this.triggerToast('儲存失敗', '請確認 Firestore 規則允許寫入 admin_data', 'error');
                     }
                 },
                 // 規則的 severity 有兩種來源：雲端 ddi_rules 可能是中文（「極高風險」），
@@ -1405,6 +1495,25 @@
                 //   由藥名解析   以灰色顯示並註明
                 // 兩者都解析不到時顯示紅色「無法解析」——那才是真正該注意的狀態，
                 // 因為那條規則在醫師端永遠不會觸發。
+                // 【「DDI 規則總數」必須是引擎實際使用的數量】
+                //
+                // 這個 KPI 原本取 mockRules.length，也就是「後台這張表裡有幾列」。
+                // DDInter 的 224 條規則不出現在那張表裡（它們自動產生、不可手動編輯），
+                // 於是知識庫接上 DDInter 之後，這裡會顯示 5，而引擎實際在用 229。
+                //
+                // 那正是本檔 mockRules 註解描述的同一個毛病，只是方向相反：
+                // 當時是「管理員以為在管理規則，其實那份清單不影響任何行為」，
+                // 現在會變成「管理員以為知識庫只有 5 條，其實引擎用的是 229 條」。
+                // 兩者都是後台數字與系統實際行為脫節。
+                //
+                // 改為與醫師端同一個組裝函式，併入雲端規則後再經 normalizeRules
+                // 去重並丟棄無法解析者——得到的就是「實際會參與比對的規則數」。
+                refreshRuleCountKpi() {
+                    const E = window.DdiEngine;
+                    this.kpis[0].value = (E && window.DrugCatalog)
+                        ? E.normalizeRules(E.localRuleSet().concat(this.mockRules || [])).rules.length
+                        : (this.mockRules || []).length;
+                },
                 ruleAtc(rule, side) {
                     const stored = side === 'A' ? rule.atcA : rule.atcB;
                     if (stored) return { code: stored, derived: false };
@@ -1431,23 +1540,60 @@
                 exportReportPdf() {
                     window.print();
                 },
+                // 【維護模式是畫面公告，不是存取控制】（對抗性稽核 S-3、H-17）
+                //
+                // firestore.rules 全文沒有出現過 maintenanceMode——規則從不檢查它。
+                // 它的實際作用只有一個：讓各頁面在載入時渲染一層覆蓋畫面。
+                // 因此它擋不住直接呼叫 SDK 的請求，也擋不住已經停留在頁面上的使用者
+                // （非管理端只在 created() 讀一次，沒有即時推送）。
+                //
+                // 原本的提示寫「醫師、患者、保險端已鎖定，僅管理員可存取」——這是不實陳述，
+                // 而且是最危險的那一種：管理員可能因此以為在維護期間資料是安全的，
+                // 於是放心進行資料遷移。文案已改為據實描述其實際效力。
+                //
+                // 要讓維護模式成為真正的存取控制，需在規則中對各集合加上
+                // 「admin_data/main.maintenanceMode == false 或呼叫者為 admin」的條件。
+                // 那會使每次讀寫都多一次 get()，屬於有成本的取捨，列於 Phase 6。
                 async toggleMaintenanceMode() {
                     const enabled = this.systemSettings.isMaintenanceMode;
+                    // 切換全站公告是影響所有使用者的操作，卻原本連確認都沒有
+                    // （刪除一條 DDI 規則反而有 confirm()）。補上確認，並在此說明其真實效力。
+                    const ok = window.confirm(enabled
+                        ? '啟用維護模式？\n\n所有非管理員頁面將在「下次載入時」顯示維護公告。\n\n請注意：這是畫面層的公告，不是存取控制。它不會阻止透過 SDK 或 API 的直接讀寫，也不會影響目前已開啟頁面的使用者。'
+                        : '解除維護模式？\n\n各頁面將在下次載入時恢復正常顯示。');
+                    if (!ok) {
+                        this.systemSettings.isMaintenanceMode = !enabled;
+                        return;
+                    }
                     try {
                         await DbService.setMaintenanceMode(enabled);
-                        // 維護模式會鎖住醫師、病患與保險端的存取，屬於影響全站可用性的操作
                         await window.Audit.log(window.Audit.ACTIONS.MAINTENANCE_TOGGLE, 'admin_data/main', { enabled: enabled });
                         this.triggerToast(
                             enabled ? '維護模式已啟用' : '維護模式已解除',
-                            enabled ? '醫師、患者、保險端已鎖定，僅管理員可存取' : '全站已恢復正常存取'
+                            enabled
+                                ? '各頁面下次載入時會顯示維護公告。這是畫面層公告，不阻擋 SDK／API 的直接存取，也不影響已開啟的頁面。'
+                                : '各頁面下次載入時恢復正常顯示。',
+                            enabled ? 'warn' : 'ok'
                         );
                     } catch (e) {
                         this.systemSettings.isMaintenanceMode = !enabled;
-                        this.triggerToast('設定失敗', '請確認 Firestore 規則允許寫入 admin_data');
+                        this.triggerToast('設定失敗', '請確認 Firestore 規則允許寫入 admin_data', 'error');
                     }
                 },
 
-                triggerToast(t, m) { this.toastTitle = t; this.showToast = true; setTimeout(() => this.showToast = false, 3000); },
+                // tone 必須由呼叫端明示，不從文字內容猜測。
+                // 「標題裡有『失敗』就顯示紅色」是把樣式綁在代理指標上，
+                // 與 P0-3、P0-4 及 FHIR 警告燈是同一種錯誤——文案一改就脫鉤。
+                triggerToast(t, m, tone) {
+                    this.toastTitle = t;
+                    this.toastMsg = m || '';
+                    this.toastTone = tone || 'ok';
+                    this.showToast = true;
+                    if (this.toastTimer) clearTimeout(this.toastTimer);
+                    // 失敗與警告的訊息比較長，且使用者可能需要據此採取行動，停留久一點
+                    const ms = this.toastTone === 'ok' ? 3000 : 8000;
+                    this.toastTimer = setTimeout(() => { this.showToast = false; }, ms);
+                },
                 async addRule() {
                     if (!this.newRule.drugA.trim() || !this.newRule.drugB.trim() || !this.newRule.effect.trim()) {
                         this.newRuleError = '藥品 A、藥品 B 與交互作用說明為必填欄位';
@@ -1467,7 +1613,7 @@
                     try {
                         const id = await DbService.addDdiRule(rule);
                         this.mockRules.push({ id, ...rule });
-                        this.kpis[0].value = this.mockRules.length;
+                        this.refreshRuleCountKpi();
                         this.newRule = { drugA: '', drugB: '', severity: '高風險', effect: '' };
                         this.newRuleError = '';
                         this.showAddRuleModal = false;

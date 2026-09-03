@@ -164,7 +164,10 @@
                 }
             }
         });
-        mountWhenAuthorized(app, null);
+        // 本頁顯示院內藥品主檔，含庫存、庫位與採購價格——那是營運資訊，
+        // 不是病患或核保端的必要資訊。原本傳 null（不限角色），
+        // 等於任何已登入帳號都讀得到。（對抗性稽核 H-20）
+        mountWhenAuthorized(app, ['doctor', 'admin']);
     </script>
     <script src="js/pwa-register.js" defer></script>
 </body>

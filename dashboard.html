@@ -390,8 +390,9 @@
                                     <div v-else class="space-y-4">
                                         <div v-for="cf in graphConflicts" :key="cf.source + cf.target" class="p-4 rounded-2xl bg-danger/10 border border-danger/20 animate-fade-in group">
                                             <div class="text-[10px] font-black text-white mb-1">{{ cf.source }} × {{ cf.target }}</div>
-                                            <p class="text-[9px] text-slate-300 leading-tight mb-2">{{ cf.effect }}</p>
-                                            <div class="text-[8px] font-black text-warning italic">處理建議：{{ cf.recommendation }}</div>
+                                            <p v-if="cf.effect" class="text-[9px] text-slate-300 leading-tight mb-2">{{ cf.effect }}</p>
+                                            <div v-if="cf.recommendation" class="text-[8px] font-black text-warning italic">處理建議：{{ cf.recommendation }}</div>
+                                            <div v-else-if="cf.detailLevel === 'severity-only'" class="text-[8px] font-black text-warning italic">僅有嚴重度分級，機轉與處置請另行查證</div>
                                         </div>
                                     </div>
                                 </div>
@@ -504,8 +505,16 @@
                                 <span class="text-[9px] font-black uppercase tracking-widest rounded-lg px-2 py-1" :class="f.involvesNew ? 'bg-white text-danger' : 'bg-white/50'">{{ f.involvesNew ? '涉及本次開立' : '既有用藥之間' }}</span>
                                             <span class="text-xs font-black tracking-tight">{{ f.a.name_en }}（{{ f.a.name_zh }}） × {{ f.b.name_en }}（{{ f.b.name_zh }}）</span>
                                         </div>
-                                        <p class="text-[11px] font-bold leading-relaxed">{{ f.effect }}</p>
+                                        <p v-if="f.effect" class="text-[11px] font-bold leading-relaxed">{{ f.effect }}</p>
                                         <p v-if="f.recommendation" class="text-[11px] font-bold leading-relaxed bg-white/60 rounded-xl px-3 py-2"><span class="font-black">處置建議：</span>{{ f.recommendation }}</p>
+                                        <!-- DDInter 匯入的規則只有嚴重度分級，沒有作用機轉與處置建議
+                                             （原始資料只提供 Drug_A / Drug_B / Level 三欄）。
+                                             修復前這裡是無條件渲染 f.effect，於是這類規則在畫面上
+                                             變成一則空白的警示——醫師無從分辨那是「系統查不到細節」
+                                             還是「這組藥沒什麼好說的」。空白不是中立，它會被讀成後者。 -->
+                                        <p v-if="f.detailLevel === 'severity-only'" class="text-[11px] font-bold leading-relaxed bg-white/60 rounded-xl px-3 py-2">
+                                            本條僅有嚴重度分級，知識庫未收錄作用機轉與處置建議，請另行查證後判斷。
+                                        </p>
                                         <!-- 出處與複核日期直接顯示給醫師。臨床指引會改版（本系統的 Metformin × 顯影劑
                                              一條就曾因此過時），醫師有權知道這條建議的依據與新舊。 -->
                                         <p v-if="f.source" class="text-[9px] font-bold opacity-70">依據：{{ f.source }}<span v-if="f.reviewedOn">　·　{{ f.reviewedOn }} 複核</span></p>
@@ -514,6 +523,30 @@
 
                                 <!-- 二、無法評估的藥。這一段的存在本身就是安全設計：
                                      沒有它，這些藥會被靜默併入「未發現交互作用」。 -->
+                                <!-- 一之二、未分級的交互作用記載。
+                                     DDInter 有一半以上的規則其嚴重度是原始資料庫標為 Unknown 的。
+                                     這些記載必須呈現（丟掉等於宣稱它們不存在），但不能與已分級的
+                                     警示並列——否則 6 則「不知道多嚴重」會稀釋掉 1 則真正重大的，
+                                     那就是稽核報告 P1-13 所說的警示疲勞製造方式。
+                                     預設收合，醫師要看得到、但不會被它們淹沒。 -->
+                                <details v-if="ddiResult && ddiResult.ungraded.length" class="rounded-2xl border-2 border-slate-200 bg-slate-50 p-4">
+                                    <summary class="text-xs font-black text-slate-600 tracking-tight cursor-pointer">
+                                        另有 {{ ddiResult.ungraded.length }} 組交互作用記載未標註嚴重度（點擊展開）
+                                    </summary>
+                                    <p class="text-[10px] font-bold text-slate-500 leading-relaxed mt-2">
+                                        以下組合在知識庫中有交互作用記載，但來源資料未標註嚴重程度，
+                                        亦無作用機轉與處置建議。這代表<span class="font-black">系統無從判斷其臨床重要性</span>，
+                                        不代表可以忽略，也不代表危險——請依臨床情境自行查證。
+                                    </p>
+                                    <div class="mt-2 space-y-1">
+                                        <div v-for="(f, i) in ddiResult.ungraded" :key="'ug' + i" class="bg-white/70 rounded-xl px-3 py-2 flex items-center gap-2 flex-wrap">
+                                            <span class="text-[11px] font-black text-slate-700">{{ f.a.name_en }}（{{ f.a.name_zh }}） × {{ f.b.name_en }}（{{ f.b.name_zh }}）</span>
+                                            <span v-if="f.involvesNew" class="text-[8px] font-black uppercase tracking-widest bg-slate-200 text-slate-700 rounded-lg px-2 py-0.5">涉及本次開立</span>
+                                            <span v-if="f.source" class="text-[9px] font-bold text-slate-400">依據：{{ f.source }}</span>
+                                        </div>
+                                    </div>
+                                </details>
+
                                 <div v-if="ddiResult && ddiResult.unevaluable.length" class="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 space-y-2">
                                     <h4 class="text-xs font-black text-amber-800 tracking-tight">{{ ddiResult.unevaluable.length }} 項藥物無法評估</h4>
                                     <p class="text-[11px] font-bold text-amber-800 leading-relaxed">以下藥物未納入本次比對。這<span class="font-black">不代表它們安全</span>，而是代表本系統無從得知。</p>
@@ -545,7 +578,7 @@
                     <div class="p-8 bg-slate-50 border-t border-slate-100 space-y-4">
                         <div class="p-3 bg-amber-50 border border-amber-200 rounded-2xl">
                             <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 資料上傳警告</p>
-                            <p v-if="fhirIsPublic" class="text-[10px] font-bold text-amber-600 mt-1">處方會上傳至 HL7 公開測試伺服器（<span class="font-mono">hapi.fhir.org</span>），該伺服器全球任何人皆可讀寫且無存取控制。病患身分以化名送出、不含姓名，但<strong>藥品名稱與劑量為明文</strong>，請勿輸入可識別個人的自由文字。</p>
+                            <p v-if="fhirUnprotected" class="text-[10px] font-bold text-amber-600 mt-1">處方會上傳至 <span class="font-mono">{{ fhirHost }}</span>，該伺服器<strong>目前無存取控制</strong>，任何人皆可讀寫。病患身分以化名送出、不含姓名，但<strong>藥品名稱與劑量為明文</strong>，請勿輸入可識別個人的自由文字。</p>
                         </div>
                         <div class="flex gap-4">
                             <button @click="showPrescriptionModal = false; resetAiCheck()" class="flex-1 py-4 font-black text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest text-[10px]">Cancel</button>
@@ -665,6 +698,12 @@
     <script src="js/mockData.js"></script>
     <script src="js/drug-catalog.js"></script>
     <script src="js/ddi-engine.js"></script>
+    <!-- DDInter 2.0 匯入的規則。必須載入於 ddi-engine.js 之後、Vue 應用啟動之前：
+         引擎的 localRuleSet() 在呼叫當下讀取 window.DDINTER_RULES，載入順序錯了
+         不會報錯，只會安靜地少掉 236 條規則——那正是修復前的實際狀況。
+         另一支 js/ddinter-drugs.js（77KB）是給管理後台算涵蓋率用的藥物清單，
+         比對本身用不到，故不載入到醫師端。 -->
+    <script src="js/ddi-rules-ddinter.js"></script>
     <script src="js/fhir-client.js"></script>
     <script src="js/audit.js"></script>
     <script src="js/auth.js"></script>
@@ -702,8 +741,14 @@
                     // FHIR 目標位址供介面顯示。警告文字不可寫死——
                     // 管理者換成自架伺服器後，畫面仍在恐嚇使用者資料會外流，
                     // 而一個永遠亮著的警告燈，使用者很快就學會忽略它。
+                    //
+                    // 但反過來也一樣危險：2026-09-03 實測發現，遷移到自架伺服器後
+                    // 警告會因為「網址不是 hapi.fhir.org」而全部消失，
+                    // 而那台伺服器其實一樣沒有存取控制。判斷因此改綁存取控制本身
+                    // （FhirClient.isUnprotected()），預設為「未受保護」。
                     fhirBaseUrl: '',
-                    fhirIsPublic: true,
+                    fhirHost: '',
+                    fhirUnprotected: true,
                     // 處方安全閘門的狀態（Phase 4）
                     showOverrideModal: false,
                     overrideReasonChoice: '',
@@ -819,7 +864,8 @@
                 // FHIR Base URL 改為實際讀取管理端設定（Phase 5）
                 const _fhirBase = await window.FhirClient.init();
                 this.fhirBaseUrl = _fhirBase;
-                this.fhirIsPublic = window.FhirClient.isPublicSandbox();
+                this.fhirHost = window.FhirClient.host();
+                this.fhirUnprotected = window.FhirClient.isUnprotected();
                 this._charts = {};
                 await waitForAuthReady();
                 // 維護模式查詢失敗過去是一個空的 catch（稽核報告 P1-2）：查不到就當作
@@ -875,15 +921,16 @@
                         // 現在直接以目前的用藥清單重算，並多出一種狀態：
                         // 用藥中有成分不明的複方或系統不認得的藥時標「待確認」，
                         // 而非混入「未發現」。
-                        const _rules = (window.mockData.ddiRules || [])
-                            .concat((window.mockData.graphData || {}).links || []);
+                        const _rules = window.DdiEngine.localRuleSet();
                         this.recentPatients = realPatients.map(p => {
                             const r = window.DdiEngine.analyze(p.medications || [], _rules);
                             let status;
                             if (r.findings.length) {
                                 status = (r.topSeverity === 'major' || r.topSeverity === 'contraindicated')
                                     ? '危險' : '警告';
-                            } else if (r.unevaluable.length) {
+                            } else if (r.unevaluable.length || r.ungraded.length) {
+                                // 未分級的記載也歸「待確認」：知識庫查到了東西，
+                                // 只是不知道多嚴重——那不是「未發現」。
                                 status = '待確認';
                             } else {
                                 // 刻意不叫「安全」：那是臨床斷言，本系統無從保證
@@ -907,6 +954,8 @@
                         for (const p of realPatients) {
                             const r = window.DdiEngine.analyze(p.medications || [], _rules);
                             medTotal += (p.medications || []).length;
+                            // 「交互作用預警」只計已分級者。未分級的若混進這個數字，
+                            // KPI 會虛胖成一個醫師很快就學會忽略的紅色數字。
                             findingTotal += r.findings.length;
                             unevalTotal += r.unevaluable.length;
                         }
@@ -1093,7 +1142,7 @@
                     // 本地內建規則一律納入，雲端 ddi_rules 為「補充」而非「取代」——
                     // 若讓雲端整批覆蓋，雲端未收錄的組合（如 Warfarin–Amiodarone）會突然不再被偵測，
                     // 反而比修復前更危險，且會與同頁的交互作用關係圖互相矛盾。
-                    const localRules = (window.mockData.ddiRules || []).concat(window.mockData.graphData.links || []);
+                    const localRules = window.DdiEngine.localRuleSet();
                     // 等待期間一律只寫區域變數：對 this 的寫入若發生在世代守衛之前，
                     // 已被取消的檢測仍會把自己的失敗狀態蓋到後續成功的檢測上。
                     let cloudRules = [], cloudOk = false, loadFailed = false;
@@ -1123,7 +1172,9 @@
                     // 若把既有用藥之間的問題與新藥造成的問題混在一起呈現，等於沒有回答他的問題。
                     // 兩者都要顯示，但必須分得清楚。
                     const newDrug = window.DrugCatalog ? window.DrugCatalog.resolve(drugNameAtCheck) : null;
-                    for (const f of result.findings) {
+                    // 未分級的那一批同樣要標記——醫師問的是「這個新藥能不能開」，
+                    // 收合區裡若分不出哪幾組是這次新增造成的，等於沒有回答他的問題。
+                    for (const f of result.findings.concat(result.ungraded)) {
                         f.involvesNew = !!newDrug && (f.a.atc === newDrug.atc || f.b.atc === newDrug.atc);
                     }
 
@@ -1213,6 +1264,9 @@
                         topSeverity: r ? r.topSeverity : null,
                         findingCount: r ? r.findings.length : 0,
                         unevaluableCount: r ? r.unevaluable.length : 0,
+                        // 未分級的記載筆數也要留存。事後調查問的是「當時醫師看到了什麼」，
+                        // 而收合區裡那幾組確實有出現在畫面上。
+                        ungradedCount: r ? r.ungraded.length : 0,
                         pairsChecked: r ? r.pairsChecked : 0,
                         ruleCount: this.ddiRuleCount,
                         ruleSource: this.ddiRuleSource,
@@ -1453,9 +1507,7 @@
                 loadScenario(type) {
                     this.activeScenario = type;
                     const meds = this.currentMeds;
-                    const rules = (window.mockData.ddiRules || [])
-                        .concat((window.mockData.graphData || {}).links || []);
-                    const result = window.DdiEngine.analyze(meds, rules);
+                    const result = window.DdiEngine.analyze(meds, window.DdiEngine.localRuleSet());
 
                     // 節點以引擎解析後的身分為準：同一種藥的不同寫法（Warfarin／
                     // warfarin sodium／可邁丁）會被歸戶為同一個節點，不會重複出現。
@@ -1480,10 +1532,16 @@
                     });
 
                     const idOf = (entry, idx) => entry.atc || entry.raw || ("unknown-" + idx);
-                    const conflicts = result.findings.map(f => ({
+                    // 未分級的也要畫進圖裡。圖與下方警示清單若各說各話，
+                    // 醫師會看到一組藥在清單中被提及、在圖上卻是安全的白線——
+                    // 那比兩邊都不提更容易誤導。它們的標籤已是「未分級」，分得出來。
+                    const conflicts = result.findings.concat(result.ungraded).map(f => ({
                         source: idOf(f.a, 0), target: idOf(f.b, 0),
                         conflict: true, severity: f.severity, severityZh: f.severityZh,
-                        effect: f.effect, recommendation: f.recommendation
+                        effect: f.effect, recommendation: f.recommendation,
+                        // 一併帶上，否則關係圖旁的說明會對 DDInter 的規則
+                        // 顯示「處理建議：」後面接一片空白（同 findings 清單的問題）
+                        detailLevel: f.detailLevel
                     }));
                     this.graphConflicts = conflicts;
                     // 節點的紅色與否，由它是否出現在任何一條衝突連線中決定——

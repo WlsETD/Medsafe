@@ -23,6 +23,24 @@
 // `allow read: if isActive()`，等於發給每一位登入者。
 // 要對受保護的 FHIR 伺服器做認證存取，必須由後端代理持有憑證（列於 Phase 6）。
 // 該欄位已從介面移除，而不是留著一個永遠不會生效的輸入框。
+//
+// ── 四、【警告燈綁錯了對象】（2026-09-03 發現並修正）──────────────────
+// 原本的判斷是 isPublicSandbox()：用正規表示式比對網址是不是 hapi.fhir.org，
+// 介面上所有「資料會外流」的警告都掛在它身上。
+//
+// 遷移到自架的 Cloud Run FHIR Server 之後，這個判斷回 false，於是警告全部消失——
+// 但那台伺服器實測 `GET /fhir/Patient` 未帶任何憑證即回 HTTP 200，
+// 讀寫依然對全世界開放。淨效果是「伺服器一樣全開，警告卻不見了」。
+//
+// 錯誤的形狀與稽核報告 P0-3、P0-4 完全相同：**判斷條件綁在一個代理指標上
+// （網址長什麼樣），而不是綁在它真正要描述的那件事上（有沒有存取控制）。**
+// 網址改變時，代理指標與事實就脫鉤了。
+//
+// 因此改為 isUnprotected()，依據兩件事：
+//   1. hapi.fhir.org 恆為未受保護——這不是管理者能宣告的事
+//   2. 其餘位址看管理端是否**明確宣告**已設定存取控制，且預設為「否」
+// 預設為「否」是必要的：系統無法自行驗證對方有沒有存取控制，
+// 而「不知道」不可以呈現為「安全」——那正是本專案從 P0-3 一路反對的事。
 
 window.FhirClient = (function () {
 
@@ -35,6 +53,9 @@ window.FhirClient = (function () {
 
   let _base = DEFAULT_BASE;
   let _fromSettings = false;
+  // 管理端是否宣告「此伺服器已設定存取控制」。預設 false——
+  // 沒有人宣告過，就等於沒有人確認過，不可當作已受保護。
+  let _accessControlDeclared = false;
 
   // 只接受 https。除了避免混合內容被瀏覽器擋下，更實際的理由是：
   // 這條連線送的是病歷資料，用明文 http 傳輸等於沿路都看得到。
@@ -54,6 +75,8 @@ window.FhirClient = (function () {
         const st = await DbService.getSystemSettings();
         const clean = st ? sanitizeBase(st.fhirUrl) : null;
         if (clean) { _base = clean; _fromSettings = true; }
+        // 讀取失敗時這個值維持 false，也就是維持「未受保護」的保守結論。
+        _accessControlDeclared = !!(st && st.fhirAccessControlled);
       } catch (e) {
         console.error('[FhirClient] 設定讀取失敗，沿用預設位址：', e);
       }
@@ -62,9 +85,33 @@ window.FhirClient = (function () {
 
     baseUrl() { return _base; },
     isFromSettings() { return _fromSettings; },
-    // 是否指向 HL7 的公開沙箱。介面據此顯示資料外流警告——
-    // 警告文字不該寫死，否則管理者換成自架伺服器後，畫面仍在恐嚇使用者。
+
+    // 目前位址的主機名，供介面據實顯示，取代寫死的 'hapi.fhir.org'。
+    host() {
+      try { return new URL(_base).host; } catch (e) { return _base; }
+    },
+
+    // 是否指向 HL7 的公開沙箱。僅用於「這台伺服器尖峰時段很慢」這類
+    // 針對該沙箱本身的說明，不再用來決定要不要顯示資料外流警告。
     isPublicSandbox() { return /(^|\/\/)hapi\.fhir\.org/i.test(_base); },
+
+    // 這台伺服器是否**未受存取控制保護**（介面的資料外流警告掛在這裡）。
+    //
+    // 注意它問的不是「這是不是公開沙箱」，而是「有沒有人擋在門口」。
+    // 兩者在遷移到自架伺服器時會分岔：網址不再是 hapi.fhir.org，
+    // 但若沒設存取控制，資料一樣是全世界可讀寫的。
+    //
+    // hapi.fhir.org 恆為 true：那是 HL7 的公開沙箱，
+    // 「已設定存取控制」不是任何管理者能對它宣告的事。
+    isUnprotected() {
+      if (this.isPublicSandbox()) return true;
+      return !_accessControlDeclared;
+    },
+
+    // 管理端宣告過存取控制，但本連線層從不送出任何憑證（見檔頭 API Key 一節）。
+    // 因此這個宣告是**operator 的具結**，不是系統驗證的結果——
+    // 與病患摘要的 attestedBy 同一種處理：系統驗不了的事就標明是誰說的。
+    accessControlIsDeclaredOnly() { return _accessControlDeclared; },
 
     // 統一的請求入口。回傳恆為結構化結果，不拋例外——
     // 呼叫端因此不會有「忘了 catch 而讓整個流程中斷」的路徑。

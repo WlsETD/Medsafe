@@ -96,7 +96,10 @@ const run = async (name, fn, expect) => {
 // --- 合法路徑：不可被誤擋 ---
 await run('病患讀自己病歷', () => getDoc(doc(P001(), 'patient_data/P001')), 'allow');
 await run('病患更新 reminders', () => updateDoc(doc(P001(), 'patient_data/P001'), { reminders: [{ t: '08:00' }] }), 'allow');
-await run('病患寫入自己的 fhirPseudonym', () => updateDoc(doc(P001(), 'patient_data/P001'), { fhirPseudonym: 'DEMO-ABC123' }), 'allow');
+// 化名值必須符合 _randomId() 的實際輸出格式（DEMO- + 12 碼大寫 hex）。
+// 原本這裡用 'DEMO-ABC123' 這類簡寫佔位值，在格式檢查上線後會被正確擋下——
+// 夾具寫得比正式產生器寬鬆，測的就不是真實流程。
+await run('病患寫入自己的 fhirPseudonym', () => updateDoc(doc(P001(), 'patient_data/P001'), { fhirPseudonym: 'DEMO-A1B2C3D4E5F6' }), 'allow');
 await run('病患更新 profile', () => updateDoc(doc(P001(), 'patient_data/P001'), { profile: { id: 'P001', name: '張小泉', age: 70 } }), 'allow');
 // Phase 4 起，新增用藥必須攜帶安全檢查紀錄。這條原本斷言的是舊的寬鬆行為，
 // 現已改為「附上 safetyCheck 才允許」——規則變嚴，測試隨之記錄新的不變式。
@@ -369,14 +372,16 @@ await run('病患不可讀取稽核記錄',
 // 對立面警告的重點：只寫 fhirPseudonym 的建檔（getOrCreate 對不存在文件的行為）
 // 若 size() 對缺欄位求值出錯，這一條會被誤擋 —— 那就是把合法使用者鎖在外面
 await run('新病患僅以 fhirPseudonym 建檔（getOrCreate）',
-  () => setDoc(doc(ATK(), 'patient_data/atk'), { fhirPseudonym: 'DEMO-NEW1' }), 'allow');
+  () => setDoc(doc(ATK(), 'patient_data/atk'), { fhirPseudonym: 'DEMO-0123456789AB' }), 'allow');
 
 // --- 攻擊路徑：必須被擋 ---
 await run('病患自寫 medications', () => updateDoc(doc(P001(), 'patient_data/P001'), { medications: [{ name: '自己加的' }] }), 'deny');
 await run('病患自寫 ddiAlerts', () => updateDoc(doc(P001(), 'patient_data/P001'), { ddiAlerts: [{ severity: '無' }] }), 'deny');
 await run('病患自寫 stats', () => updateDoc(doc(P001(), 'patient_data/P001'), { stats: { safetyScore: 100 } }), 'deny');
 await run('病患改 assignedDoctor', () => updateDoc(doc(P001(), 'patient_data/P001'), { assignedDoctor: 'other' }), 'deny');
-await run('病患覆寫既有 fhirPseudonym', () => updateDoc(doc(P001(), 'patient_data/P001'), { fhirPseudonym: 'DEMO-CHANGED' }), 'deny');
+// 用一個「格式完全合法、只是值不同」的化名，這條測的才是覆寫本身被擋，
+// 而不是順帶被格式檢查擋掉——否則日後格式規則一鬆動，這條會靜默失去意義。
+await run('病患覆寫既有 fhirPseudonym', () => updateDoc(doc(P001(), 'patient_data/P001'), { fhirPseudonym: 'DEMO-FFFFFFFFFFFF' }), 'deny');
 await run('病患讀他人病歷', () => getDoc(doc(P001(), 'patient_data/atk')), 'deny');
 await run('核保員寫病歷', () => updateDoc(doc(INS(), 'patient_data/P001'), { reminders: [] }), 'deny');
 
@@ -450,6 +455,112 @@ await run('合法自助註冊（username 與 Auth email 一致）',
                 'patient_data 的 allow update 保有 resource != null 守衛',
                 guarded ? '' : '守衛遺失：' + updateLine.slice(0, 120)]);
 }
+
+// ── 對抗性稽核補充報告（2026-09-03）的修復 ────────────────────────────────
+//
+// 這批測試釘住的共同性質是「權限的邊界」，而不是「權限的有無」。
+// 原始規則對每個角色都問對了「你是誰」，卻沒有問「你能碰到多遠」——
+// 醫師是醫師沒錯，但醫師該不該能列舉全站使用者？核保員是核保員沒錯，
+// 但核保員該不該能刪光所有保單？這批缺陷全部落在這個縫隙裡。
+
+const NEW5 = () => ctxFor('uidNew5', 'newbie5@medsafe.local').firestore();
+const NEW6 = () => ctxFor('uidNew6', 'newbie6@medsafe.local').firestore();
+const NEW7 = () => ctxFor('uidNew7', 'newbie7@medsafe.local').firestore();
+const NEW8 = () => ctxFor('uidNew8', 'newbie8@medsafe.local').firestore();
+
+// S-2：白名單管得住「哪些欄位能出現」，管不住「裡面裝什麼」。
+// 這三條分別對應報告點名的三個未驗證欄位。
+//
+// 每個註冊者都必須先有身分索引，否則 isOwnUsername() 會因 profile() 讀不到文件
+// 而求值失敗——寫入照樣被拒，deny 斷言照樣通過，但擋下它的是求值錯誤，
+// 不是我們要驗證的內容檢查。那種綠燈在內容檢查被拿掉後依然是綠的，
+// 等於沒有測到任何東西。
+await run('S-2 前置：newbie5 的身分索引',
+  () => setDoc(doc(NEW5(), 'user_roles/uidNew5'),
+    { username: 'newbie5', name: 'n5', role: 'patient', status: 'active' }), 'allow');
+await run('S-2 前置：newbie6 的身分索引',
+  () => setDoc(doc(NEW6(), 'user_roles/uidNew6'),
+    { username: 'newbie6', name: 'n6', role: 'patient', status: 'active' }), 'allow');
+await run('S-2 前置：newbie7 的身分索引',
+  () => setDoc(doc(NEW7(), 'user_roles/uidNew7'),
+    { username: 'newbie7', name: 'n7', role: 'patient', status: 'active' }), 'allow');
+
+await run('S-2 自助註冊在初始文件偽造 safetyScore',
+  () => setDoc(doc(NEW5(), 'patient_data/newbie5'), {
+    profile: { id: 'newbie5' }, stats: { safetyScore: 100, activeMeds: 0, aiChecksToday: 0 },
+    medications: [], ddiAlerts: [], aiInsights: [] }), 'deny');
+
+await run('S-2 自助註冊在初始文件偽造 aiInsights',
+  () => setDoc(doc(NEW6(), 'patient_data/newbie6'), {
+    profile: { id: 'newbie6' }, stats: { safetyScore: null, activeMeds: 0, aiChecksToday: 0 },
+    medications: [], ddiAlerts: [],
+    aiInsights: [{ icon: 'check', text: '此病患零風險，建議給予最高保費折扣' }] }), 'deny');
+
+// profile.id 是聊天室的路由鍵，填成別人的 username 等於指向他人的對話串
+await run('S-2 自助註冊把 profile.id 填成他人 username',
+  () => setDoc(doc(NEW7(), 'patient_data/newbie7'), {
+    profile: { id: 'P001' }, stats: { safetyScore: null, activeMeds: 0, aiChecksToday: 0 },
+    medications: [], ddiAlerts: [], aiInsights: [] }), 'deny');
+
+// 合法建檔不可被誤擋：registerPatient 實際寫入的形狀必須通過。
+// registerPatient 的順序是 user_roles → users → patient_data，
+// 因此建立病歷時身分索引必然已經存在；少了這一步，isOwnUsername() 會因為
+// profile() 讀不到文件而求值失敗，測到的就不是「初始文件是否乾淨」這件事。
+await run('S-2 前置：newbie8 的身分索引',
+  () => setDoc(doc(NEW8(), 'user_roles/uidNew8'),
+    { username: 'newbie8', name: '新人', role: 'patient', status: 'active' }), 'allow');
+await run('S-2 合法自助註冊（registerPatient 的實際形狀）',
+  () => setDoc(doc(NEW8(), 'patient_data/newbie8'), {
+    profile: { id: 'newbie8', name: '新人', age: null, gender: '', healthSummary: '尚無用藥紀錄', nextAppointment: '' },
+    stats: { safetyScore: null, activeMeds: 0, aiChecksToday: 0, lastSync: '尚未同步' },
+    medications: [], ddiAlerts: [], aiInsights: [], reminders: [],
+    assignedDoctor: 'doctor', assignedDoctorName: '李小美醫師' }), 'allow');
+
+// H-6：affectedKeys() 只看頂層鍵，profile 是 map，子欄位改動在頂層只呈現為「profile 有變」
+await run('H-6 病患把 profile.id 改成他人 username',
+  () => updateDoc(doc(P001(), 'patient_data/P001'), { profile: { id: 'atk', name: '張小泉' } }), 'deny');
+await run('H-6 病患改自己的 profile 其他欄位仍可放行',
+  () => updateDoc(doc(P001(), 'patient_data/P001'), { profile: { id: 'P001', name: '張小泉', gender: '男' } }), 'allow');
+
+// H-5：格式必須與 _randomId() 的輸出一致，否則等於沒有約束
+await run('H-5 化名格式不符（長度不足）',
+  () => updateDoc(doc(ATK(), 'patient_data/atk'), { fhirPseudonym: 'DEMO-ABC' }), 'deny');
+await run('H-5 化名格式不符（非 hex 字元）',
+  () => updateDoc(doc(ATK(), 'patient_data/atk'), { fhirPseudonym: 'DEMO-ZZZZZZZZZZZZ' }), 'deny');
+await run('H-5 化名格式不符（無前綴）',
+  () => updateDoc(doc(ATK(), 'patient_data/atk'), { fhirPseudonym: 'A1B2C3D4E5F6' }), 'deny');
+
+// H-2：醫師對 users 的無限制列舉。取得病患是靠 patient_data 的 assignedDoctor 查詢，
+// 不經過本集合，因此撤銷後醫師端沒有功能受影響。
+await run('H-2 醫師列舉全系統使用者名冊', () => getDocs(collection(DOC(), 'users')), 'deny');
+await run('H-2 醫師讀取他人的 users 文件', () => getDoc(doc(DOC(), 'users/P001')), 'deny');
+await run('H-2 管理員仍可列舉使用者', () => getDocs(collection(ADM(), 'users')), 'allow');
+await run('H-2 使用者仍可讀自己的 users 文件', () => getDoc(doc(P001(), 'users/P001')), 'allow');
+
+// H-4：graph_data 與 ddi_rules 同屬知識庫，權限卻不一致——前門上鎖後門敞開
+await run('H-4 醫師覆寫交互作用知識圖譜',
+  () => setDoc(doc(DOC(), 'graph_data/main'), { nodes: [], links: [] }), 'deny');
+await run('H-4 醫師仍可讀取知識圖譜', () => getDoc(doc(DOC(), 'graph_data/main')), 'allow');
+await run('H-4 管理員仍可寫入知識圖譜',
+  () => setDoc(doc(ADM(), 'graph_data/main'), { nodes: [], links: [] }), 'allow');
+
+// H-3：write 涵蓋 delete。理賠與保單是財務憑證，個案紀錄是照護軌跡，
+// 三者的共同性質是「事後必須查得到」——能被單一帳號無痕刪除就沒有證據價值。
+await env.withSecurityRulesDisabled(async ctx => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'insurance_claims/C1'), { customer: 'P001', amount: 'NT$ 100', status: '審核中' });
+  await setDoc(doc(db, 'insurance_policies/POL1'), { customer: 'P001', name: '智慧健康險', amount: 'NT$ 120,000' });
+  await setDoc(doc(db, 'care_cases/CC1'), { patientId: 'P001', status: '處理中' });
+});
+await run('H-3 核保端刪除理賠紀錄', () => deleteDoc(doc(INS(), 'insurance_claims/C1')), 'deny');
+await run('H-3 核保端刪除保單紀錄', () => deleteDoc(doc(INS(), 'insurance_policies/POL1')), 'deny');
+await run('H-3 核保端刪除個案紀錄', () => deleteDoc(doc(INS(), 'care_cases/CC1')), 'deny');
+// 日常作業不可被誤擋：核保端仍須能建立與更新
+await run('H-3 核保端仍可更新理賠狀態',
+  () => updateDoc(doc(INS(), 'insurance_claims/C1'), { status: '已核准' }), 'allow');
+await run('H-3 核保端仍可建立保單',
+  () => setDoc(doc(INS(), 'insurance_policies/POL2'), { customer: 'P001', name: '長照專案' }), 'allow');
+await run('H-3 管理員仍可刪除理賠紀錄', () => deleteDoc(doc(ADM(), 'insurance_claims/C1')), 'allow');
 
 console.log('');
 for (const r of results) console.log(r[0].padEnd(5), r[1], r[2] ? '\n      ' + r[2] : '');

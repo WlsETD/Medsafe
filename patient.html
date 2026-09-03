@@ -516,7 +516,7 @@
                     <div class="p-8 bg-slate-50 border-t border-slate-100 space-y-4 shrink-0">
                         <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left">
                             <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 資料上傳警告</p>
-                            <p v-if="fhirIsPublic" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">上傳目標為 HL7 公開測試伺服器（<span class="font-mono">hapi.fhir.org</span>），供全球開發者共用、任何人皆可讀取。因此本系統<strong>不會送出您的姓名</strong>：改以固定化名代表您，出生日期模糊為 5 年級距的年份，僅用藥品項與劑量會被上傳，用於展示跨院資料交換格式。</p>
+                            <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">上傳目標（<span class="font-mono">{{ fhirHost }}</span>）<strong>目前沒有存取控制</strong>，任何人皆可讀取上面的資料。因此本系統<strong>不會送出您的姓名</strong>：改以固定化名代表您，出生日期模糊為 5 年級距的年份，僅用藥品項與劑量會被上傳，用於展示跨院資料交換格式。</p>
                             <p class="text-[11px] font-bold text-red-600 mt-1.5 leading-relaxed">但這<strong>不等於去識別化</strong>：化名由帳號名稱以公開演算法推導，任何人讀了本站原始碼都能還原對應關係；藥品組合本身也可能足以指認個人。<strong>請勿以真實個人資料操作本功能。</strong></p>
                         </div>
                         <div class="flex justify-end">
@@ -685,7 +685,7 @@
                     <div class="p-8 md:p-10 bg-slate-50 border-t border-slate-100 space-y-4 shrink-0 text-left">
                         <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
                             <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 資料上傳警告</p>
-                            <p v-if="fhirIsPublic" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">按下確認會以 FHIR Flag 資源，將本次交互作用的藥品名稱上傳至 HL7 公開測試伺服器（<span class="font-mono">hapi.fhir.org</span>）。該伺服器全球任何人皆可讀取。您的身分以固定化名代表，<strong>不會送出姓名或系統帳號</strong>；但化名由公開演算法推導、可被還原，故此非去識別化，請勿以真實資料操作。</p>
+                            <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">按下確認會以 FHIR Flag 資源，將本次交互作用的藥品名稱上傳至 <span class="font-mono">{{ fhirHost }}</span>。該伺服器<strong>目前沒有存取控制</strong>，任何人皆可讀取。您的身分以固定化名代表，<strong>不會送出姓名或系統帳號</strong>；但化名由公開演算法推導、可被還原，故此非去識別化，請勿以真實資料操作。</p>
                         </div>
                         <div class="flex justify-end">
                         <button @click="confirmDdiAwareness()" :disabled="confirmingAwareness" class="bg-danger text-white font-black px-12 py-5 rounded-[24px] shadow-2xl shadow-danger/20 hover:scale-[1.03] active:scale-[0.97] transition-all uppercase tracking-widest text-xs flex justify-center items-center gap-3 disabled:opacity-60 disabled:scale-100 disabled:cursor-not-allowed">
@@ -774,6 +774,10 @@
     <script src="js/mockData.js"></script>
     <script src="js/drug-catalog.js"></script>
     <script src="js/ddi-engine.js"></script>
+    <!-- DDInter 2.0 匯入的規則，須在引擎之後載入（理由見 dashboard.html 同處註解）。
+         病患端的藥箱標示與首頁摘要都經由引擎計算，少載這一支會讓病患端與醫師端
+         對同一份用藥清單得出不同結論。 -->
+    <script src="js/ddi-rules-ddinter.js"></script>
     <script src="js/fhir-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/chatStore.js"></script>
@@ -824,8 +828,14 @@
                     // FHIR 目標位址供介面顯示。警告文字不可寫死——
                     // 管理者換成自架伺服器後，畫面仍在恐嚇使用者資料會外流，
                     // 而一個永遠亮著的警告燈，使用者很快就學會忽略它。
+                    //
+                    // 但反過來也一樣危險：2026-09-03 實測發現，遷移到自架伺服器後
+                    // 警告會因為「網址不是 hapi.fhir.org」而全部消失，
+                    // 而那台伺服器其實一樣沒有存取控制。判斷因此改綁存取控制本身
+                    // （FhirClient.isUnprotected()），預設為「未受保護」。
                     fhirBaseUrl: '',
-                    fhirIsPublic: true,
+                    fhirHost: '',
+                    fhirUnprotected: true,
                     chatMessages: [],
                     chatInput: '',
                     awaitingReply: false,
@@ -842,17 +852,30 @@
                     showToast: false,
                     toastTitle: '系統通知',
                     toastMessage: '同步成功',
-                    notifications: [
-                        { title: 'AI 分析完成', content: '您的最新跨院處方箋已完成安全性比對，無重大風險。', time: '10 分鐘前', icon: Icons.AI, bg: 'bg-primary' },
-                        { title: '用藥提醒', content: '該服用「二甲雙胍 (500mg)」了，建議飯後服用。', time: '1 小時前', icon: Icons.Reminder, bg: 'bg-golden' },
-                        { title: '資料同步成功', content: '您的電子病歷存取權限已成功在連網節點更新。', time: '3 小時前', icon: Icons.System, bg: 'bg-indigo-500' }
-                    ],
-                    detailedInsights: [
-                        { title: '用藥遵從度極佳', content: '您過去 30 天的準時服藥率達到 98%，這對於心血管疾病的長期管理至關重要。', icon: Icons.Safety, bg: 'bg-primary/10 text-primary', tag: 'High Compliance' },
-                        { title: '血壓管控趨勢穩定', content: '根據您的健康回饋，目前收縮壓平均維持在 125mmHg 左右，表示當前藥物組合效果良好。', icon: Icons.Heart, bg: 'bg-red-50 text-danger', tag: 'Stable Trend' },
-                        { title: '飲食交互作用提醒', content: '檢測到您正在服用 Warfarin，請避免大量攝取深綠色蔬菜（如菠菜）或葡萄柚，這可能會影響抗凝血藥效。', icon: Icons.Apple, bg: 'bg-golden/10 text-golden', tag: 'Dietary Warning' },
-                        { title: '生活習慣優化建議', content: 'AI 偵測到您近期睡眠時間較短，充足的休息能有效降低高血壓併發風險，建議維持每日 7 小時睡眠。', icon: Icons.Light, bg: 'bg-indigo-50 text-indigo-500', tag: 'Lifestyle' }
-                    ]
+                    // 通知清單只放「真的發生過的事」。實際會寫入的是醫師回覆（見 chatStore 監聽處）。
+                    //
+                    // 原本這裡預載三則寫死的通知，第一則的問題最嚴重：
+                    //   「您的最新跨院處方箋已完成安全性比對，無重大風險。」
+                    // 這位示範病患的用藥中有 Warfarin × Aspirin 的重大交互作用，
+                    // 而同一頁的警示區塊正確地顯示了它。同一個畫面對同一件事給出兩種說法，
+                    // 且先被看到的是「無重大風險」——這與 healthSummaryText 修復前的錯誤完全同型。
+                    //
+                    // 另外兩則同樣無來源：「該服用二甲雙胍了」寫死了不一定屬於這位病患的藥，
+                    // 「電子病歷存取權限已在連網節點更新」則沒有對應的任何系統行為。
+                    //
+                    // 空清單有既有的「沒有新通知」狀態可以顯示，不需要用假通知填版面。
+                    notifications: [],
+                    // detailedInsights 原本是四則寫死的散文，已改為 computed（見下方）。
+                    // 保留這行註解是因為那四則的內容值得記住是怎麼錯的：
+                    //   「過去 30 天準時服藥率 98%」   —— 系統沒有 30 天的服藥歷史，只有今日提醒
+                    //   「收縮壓平均維持在 125mmHg」    —— 系統從未收集任何生理量測值
+                    //   「AI 偵測到您近期睡眠時間較短」 —— 系統沒有睡眠資料，也沒有任何偵測管道
+                    //   「服用 Warfarin 請避免⋯⋯葡萄柚」—— 事實錯誤：葡萄柚抑制 CYP3A4，
+                    //        影響的是 Atorvastatin；Warfarin 要注意的是維生素 K（深綠色蔬菜）。
+                    //        把兩者混在同一句話裡，正確的部分反而讓錯誤的部分更可信。
+                    //
+                    // 前三則是 P0-8 已清除過的同類缺陷在此處的漏網；第四則更糟——
+                    // 它不只是無中生有，而是給出了錯誤的用藥衛教。
                 }
             },
             computed: {
@@ -862,9 +885,7 @@
                 // 同一頁對同一位病患給出兩種互相矛盾的說法。
                 ddiForMe() {
                     if (!window.DdiEngine || !this.medications) return null;
-                    const rules = (window.mockData.ddiRules || [])
-                        .concat((window.mockData.graphData || {}).links || []);
-                    return window.DdiEngine.analyze(this.medications, rules);
+                    return window.DdiEngine.analyze(this.medications, window.DdiEngine.localRuleSet());
                 },
 
                 // 首頁的一句話摘要。取代資料中寫死的 healthSummary——那句話指的是
@@ -884,6 +905,13 @@
                     if (r.unevaluable.length) {
                         return `您的用藥中有 ${r.unevaluable.length} 項無法評估交互作用，`
                              + '請攜帶實際產品向藥師確認。';
+                    }
+                    // 只有未分級記載時。措辭刻意保守：對病患說「有 N 組交互作用」
+                    // 會造成不必要的恐慌（可能導致自行停藥），但說「未發現」是不實陳述——
+                    // 知識庫確實查到了，只是沒有標註嚴重程度。
+                    if (r.ungraded.length) {
+                        return `您的用藥中有 ${r.ungraded.length} 組交互作用記載未標註嚴重程度，`
+                             + '請於回診時向醫師或藥師確認，不需自行調整用藥。';
                     }
                     if (!this.medications.length) return '目前沒有用藥紀錄。';
                     return '本系統的知識庫未收錄您目前用藥之間的交互作用。這不代表用藥必然安全，'
@@ -966,6 +994,81 @@
                     return out;
                 },
 
+                // 「用藥健康策略建議」彈窗的內容。與 computedInsights 同一個原則：
+                // 每一則都必須有實際資料來源，算不出來就不顯示。
+                //
+                // 這裡比 computedInsights 詳細，因為彈窗有版面可以放完整的機轉與處置建議——
+                // 而那些內容全部來自 DDI 引擎回傳的 effect／recommendation／source，
+                // 不是另外寫一份給病患看的說法。同一件事在系統各處必須是同一個答案。
+                detailedInsights() {
+                    const out = [];
+                    const r = this.ddiForMe;
+
+                    if (!r) return out;
+
+                    // 一、逐組交互作用的完整說明。最多列三組，其餘引導到下方警示區，
+                    // 避免一次倒出十幾張卡片而讓最嚴重的那組被淹沒。
+                    for (const f of r.findings.slice(0, 3)) {
+                        const parts = [];
+                        if (f.effect) parts.push('可能影響：' + f.effect);
+                        if (f.recommendation) parts.push('處置建議：' + f.recommendation);
+                        // 沒有機轉說明時不要編一段——說明缺漏本身就是該告知的事實
+                        if (!parts.length) parts.push('本知識庫僅記載此組合存在交互作用，未收錄詳細機轉，請向醫師或藥師確認。');
+                        if (f.source) parts.push('資料來源：' + f.source);
+                        out.push({
+                            title: `${f.a.name_zh} × ${f.b.name_zh}`,
+                            content: parts.join('　'),
+                            icon: Icons.Safety,
+                            bg: f.severityUnknown ? 'bg-slate-100 text-slate-500' : 'bg-golden/10 text-golden',
+                            tag: f.severityUnknown ? '嚴重度未標註' : f.severityZh
+                        });
+                    }
+                    if (r.findings.length > 3) {
+                        out.push({
+                            title: `另有 ${r.findings.length - 3} 組交互作用`,
+                            content: '完整清單請見主畫面下方的用藥警示區塊。',
+                            icon: Icons.System, bg: 'bg-slate-100 text-slate-500', tag: null
+                        });
+                    }
+
+                    // 二、無法評估的品項。這是最需要病患自己採取行動的一類，
+                    // 且「無法評估」不可被讀成「安全」。
+                    for (const u of r.unevaluable.slice(0, 2)) {
+                        out.push({
+                            title: '需要向藥師確認的品項',
+                            content: u.reason,
+                            icon: Icons.Apple, bg: 'bg-slate-100 text-slate-500', tag: '無法評估'
+                        });
+                    }
+
+                    // 三、回診安排。日期來自 profile，逾期與否據實陳述。
+                    const appt = this.nextAppointmentText;
+                    if (appt.text !== '尚未安排回診') {
+                        out.push({
+                            title: appt.overdue ? '回診已逾期' : '下次回診',
+                            content: appt.text + (appt.overdue
+                                ? '，建議儘早聯繫診所安排。用藥組合需要定期由醫師覆核。'
+                                : '，回診時請攜帶完整用藥清單，讓醫師掌握您在各院所的所有用藥。'),
+                            icon: Icons.Heart,
+                            bg: appt.overdue ? 'bg-red-50 text-danger' : 'bg-primary/10 text-primary',
+                            tag: appt.overdue ? '已逾期' : null
+                        });
+                    }
+
+                    // 全部算不出來時，明說系統目前沒有可據以建議的資料，
+                    // 而不是留一個空白的彈窗讓使用者以為載入失敗。
+                    if (!out.length) {
+                        out.push({
+                            title: '目前沒有可提供的用藥建議',
+                            content: this.medications && this.medications.length
+                                ? '本系統的知識庫未收錄您目前用藥之間的交互作用。這不代表用藥必然安全，仍請依醫囑服用並定期回診。'
+                                : '您目前沒有用藥紀錄。待醫師建立用藥檔案後，本頁會依實際用藥提供交互作用說明。',
+                            icon: Icons.System, bg: 'bg-slate-100 text-slate-500', tag: null
+                        });
+                    }
+                    return out;
+                },
+
                 // 每一筆用藥的安全標示（稽核報告 P0-3、P1-12）。
                 //
                 // 修復前，status／color／icon 是 mockData 中逐筆手寫的常數：
@@ -998,6 +1101,11 @@
                             return { label: '風險', tone: 'danger' };
                         }
                         if (r.unevaluable.some(u => u.entry === e)) {
+                            return { label: '待確認', tone: 'warn' };
+                        }
+                        // 只出現在未分級記載中的藥同樣不可標成「未發現」——
+                        // 知識庫查到了這組，只是沒說多嚴重。
+                        if (r.ungraded.some(f => f.a === e || f.b === e)) {
                             return { label: '待確認', tone: 'warn' };
                         }
                         return { label: '未發現', tone: 'ok' };
@@ -1058,7 +1166,8 @@
                     // 原本三個端點各自硬寫 hapi.fhir.org，管理後台那個欄位從未生效。
                     const _fhirBase = await window.FhirClient.init();
                     this.fhirBaseUrl = _fhirBase;
-                    this.fhirIsPublic = window.FhirClient.isPublicSandbox();
+                    this.fhirHost = window.FhirClient.host();
+                    this.fhirUnprotected = window.FhirClient.isUnprotected();
                     const data = await DbService.getPatientData(this._username);
                     if (data) {
                         this.profile = data.profile;

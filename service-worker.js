@@ -25,7 +25,11 @@
 // v18：管理端 ATC 欄改顯示引擎實際使用的碼，並標示不會生效的規則
 // v19：醫師端交互作用檢測改以病患實際用藥為輸入（原本讀寫死的情境藥單）
 // v20：Phase 6 —— img alt、響應式斷點、清除最後一批寫死統計
-const CACHE_VERSION = 'medsafe-static-v20';
+// v21：DDInter 規則真正接上比對——修復前 236 條規則已產生並進版控，
+//      但醫師端與病患端都沒有載入，只有管理後台拿來顯示統計數字
+// v22：藥物目錄 26→60 種（全數對照 WHO 官方索引查證），DDInter 可用規則 236→1,565 條；
+//      並更正 glipizide 誤收「瑪爾胰」（實為 glimepiride 商品名）的藥物身分錯誤
+const CACHE_VERSION = 'medsafe-static-v22';
 
 const PRECACHE_URLS = [
   './index.html',

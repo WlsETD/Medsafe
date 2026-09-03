@@ -114,9 +114,17 @@ async function verifyRole(expectedRole) {
   if (!profile || profile.status !== 'active') { denyAndRedirect(); return null; }
 
   // 角色不符：身分合法，只是走錯房間。導回自己的首頁，不登出、不清資料。
-  if (expectedRole && profile.role !== expectedRole) {
-    redirectToOwnHome(profile.role);
-    return null;
+  //
+  // expectedRole 可以是單一角色，也可以是一組允許的角色。
+  // 有了陣列形式，「這頁給誰看」才能精確表達；否則只剩「指定唯一角色」與
+  // 「傳 null 開放給所有登入者」兩種選擇，而後者實際上等於沒有限制
+  // ——detail.html 原本正是傳 null，使病患與核保員都讀得到院內庫存與價格。
+  if (expectedRole) {
+    const allowed = Array.isArray(expectedRole) ? expectedRole : [expectedRole];
+    if (allowed.indexOf(profile.role) === -1) {
+      redirectToOwnHome(profile.role);
+      return null;
+    }
   }
 
   _verifiedUser = { username: profile.username, role: profile.role, name: profile.name };

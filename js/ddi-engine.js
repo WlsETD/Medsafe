@@ -94,6 +94,43 @@ window.DdiEngine = (function () {
     normalizeSeverity: normalizeSeverity,
     atcMatches: atcMatches,
 
+    // 【本機規則庫的唯一組裝點】
+    //
+    // 修復前，這段 concat 在四個地方各寫一次（醫師端病患清單、交互作用檢測、
+    // 關係圖、病患端藥箱），測試檔裡還有第五份。DDInter 匯入後問題就浮現了：
+    // 規則檔已經產生並進了版控，但那四個地方沒有一個載入它——
+    // 236 條規則只在管理後台被拿來顯示統計數字，實際比對從未用到。
+    //
+    // 這正是稽核報告 P0-7 記下的那個教訓的另一種形式：
+    // 「測試通過不等於使用者看到的是對的」。這裡是「資料匯入了不等於引擎用得到」。
+    // 收斂成單一入口之後，測試與畫面必然吃到同一份規則，不可能再各自漂移。
+    //
+    // 【合併順序有臨床意義，不可調換】
+    // 人工維護的規則排在前面。normalizeRules 去重時「取先到者」，因此同一組藥
+    // 若兩邊都有收錄，保留的是帶有作用機轉、處置建議與 ACR 出處的那一條，
+    // 而不是 DDInter 只有嚴重度的版本。Warfarin × Aspirin 就是實例：
+    // 反過來合併會讓醫師從「應避免併用，必須併用時監測 INR 與出血徵兆」
+    // 退化成一個沒有下文的「major」。
+    localRuleSet() {
+      const M = window.mockData || {};
+      const D = window.DDINTER_RULES;
+      const curated = (M.ddiRules || []).concat((M.graphData || {}).links || []);
+      // 出處在合併時才掛上，不寫進產生檔——產生檔應該是原始資料的忠實副本，
+      // 「這批資料是誰給的」屬於引用它的程式該負責交代的事。
+      const imported = (D && Array.isArray(D.rules))
+        ? D.rules.map(function (r) {
+            return Object.assign({}, r, {
+              source: D.source,
+              reviewedOn: D.importedOn,
+              // 只有嚴重度、沒有機轉與處置建議。UI 必須據實說明，
+              // 不可留白讓醫師以為系統對這組藥沒有話說。
+              detailLevel: D.detailLevel || 'severity-only'
+            });
+          })
+        : [];
+      return curated.concat(imported);
+    },
+
     // 規則正規化。雲端與本地規則的欄位命名不一致（graphData.links 用 source/target，
     // ddi_rules 用 drugA/drugB），在此收斂為單一形狀，讓比對邏輯只需認識一種規則。
     //
@@ -135,7 +172,13 @@ window.DdiEngine = (function () {
           //（詳見 js/mockData.js 的說明），證明臨床規則會變、且變了不會有人通知你。
           // 沒有出處的規則無法複核，等同於無法維護。
           source: r.source || null,
-          reviewedOn: r.reviewedOn || null
+          reviewedOn: r.reviewedOn || null,
+          // 'severity-only' 代表這條規則只有嚴重度分級，沒有作用機轉與處置建議
+          //（DDInter 匯入的規則皆是如此，原始 CSV 只提供 Drug_A/Drug_B/Level）。
+          // 少了這個旗標，UI 只會看到 effect 與 recommendation 都是空字串，
+          // 於是畫面上出現一則沒有任何說明的警示——醫師無從判斷那是
+          // 「系統沒查到細節」還是「這組藥本來就沒什麼好說的」。
+          detailLevel: r.detailLevel || 'full'
         });
       }
       return { rules: out, dropped: dropped };
@@ -183,12 +226,31 @@ window.DdiEngine = (function () {
               effect: rule.effect,
               recommendation: rule.recommendation,
               source: rule.source,
-              reviewedOn: rule.reviewedOn
+              reviewedOn: rule.reviewedOn,
+              detailLevel: rule.detailLevel
             });
           }
         }
       }
       findings.sort((x, y) => y.severityRank - x.severityRank);
+
+      // 【分級與未分級分開回報：警示疲勞的控制點】
+      //
+      // DDInter 匯入的規則中有一半以上（116/224）的嚴重度是原始資料庫自己標的
+      // 「Unknown」。把它們與 Warfarin × Aspirin 以同樣的重量呈現，實測的後果是：
+      // 示範病患 P001–P003 從「未發現」全部翻成 risk，病患端首頁會寫
+      // 「您的用藥中有 11 組已知交互作用」，其中 6 組是未分級的。
+      //
+      // 稽核報告 P1-13 對這件事的判斷很明確：「一個『過度警示』的系統不是
+      // 『比較安全』的系統——它會訓練醫師忽略所有警示，連真正重要的那一則
+      // 也一起被忽略。」把未分級的塞進主要警示區，等於用 6 則不知道多嚴重的
+      // 記載去稀釋那 1 則真正需要停下來看的。
+      //
+      // 但也不能把它們丟掉：DDInter 確實記載了這些組合，丟掉等於對醫師宣稱
+      // 「這些交互作用不存在」。因此改為分層——分級的決定結論，未分級的
+      // 另列一區據實呈現。
+      const graded = findings.filter(f => !f.severityUnknown);
+      const ungraded = findings.filter(f => f.severityUnknown);
 
       // 無法評估的藥分兩類，理由不同，對醫師的意義也不同：
       //   unknown-drug：系統不認得這個藥名，可能是拼寫、可能是目錄未收錄
@@ -207,21 +269,33 @@ window.DdiEngine = (function () {
       //
       // 注意 no-known-interaction 這個名稱：它說的是知識庫沒有記載，
       // 不是臨床上安全。UI 的措辭必須守住這個區別（P0-3）。
+      // 【verdict 只有三種值，不可自行擴充】
+      // firestore.rules 第 288 行強制 safetyCheck.verdict 必須是
+      // ['risk', 'unevaluable', 'no-known-interaction'] 其中之一。
+      // 多加一種「找到了但未分級」的第四種值，處方會直接被規則擋下寫不進去。
+      //
+      // 因此只有未分級結果時歸入 unevaluable，而不是 no-known-interaction——
+      // 知識庫明明查到了東西，說「未發現已知交互作用」是不實陳述，
+      // 而那正是稽核報告 P0-3 反覆在講的那個錯誤形狀。
       let verdict;
-      if (findings.length > 0) verdict = 'risk';
-      else if (unevaluable.length > 0) verdict = 'unevaluable';
+      if (graded.length > 0) verdict = 'risk';
+      else if (unevaluable.length > 0 || ungraded.length > 0) verdict = 'unevaluable';
       else verdict = 'no-known-interaction';
 
       return {
         verdict: verdict,
-        findings: findings,
+        // findings 只含已分級者。呼叫端沿用既有欄位名即可得到「該停下來看的那幾則」，
+        // 不必逐一改寫判斷條件——漏改的地方會是未分級混入主要警示區的破口。
+        findings: graded,
+        ungraded: ungraded,
         unevaluable: unevaluable,
         entries: entries,
         pairsChecked: pairsChecked,
         ruleCount: rules.length,
         droppedRules: norm.dropped,
-        // 最高嚴重度，供 UI 決定整體配色與是否需要二次確認
-        topSeverity: findings.length ? findings[0].severity : null
+        // 最高嚴重度只由已分級者決定。未分級的不得觸發 Phase 4 的處方攔截：
+        // 攔截是強制性的臨床流程約束，不能建立在一個「不知道多嚴重」的記載上。
+        topSeverity: graded.length ? graded[0].severity : null
       };
     }
   };

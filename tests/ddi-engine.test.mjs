@@ -62,8 +62,12 @@ for (let i = 0; i < ALL.length; i++) {
 check('窮舉全部 ' + pairCount + ' 組兩兩配對，結果與實證對照表一致',
       wrongPairs.length === 0, wrongPairs.join('\n        '));
 // 2026-09-02：目錄由 9 種擴充為 26 種，C(26,2) = 325。
-// 這條斷言的用途就是在目錄變動時失敗，強迫回頭複核 EXPECTED 表——它做到了。
-check('配對總數為 C(26,2) = 325（目錄擴充後此數需同步更新）', pairCount === 325,
+// 2026-09-03：再擴充為 60 種（DDInter 涵蓋率由 0.10% 提升至 0.67%），C(60,2) = 1770。
+// 這條斷言的用途就是在目錄變動時失敗，強迫回頭複核 EXPECTED 表——它兩次都做到了。
+// 本次複核結果：新增的 34 種藥沒有任何一組落入人工規則的涵蓋範圍
+//（人工規則只涉及 B01AA03／B01AC06／C01BD01／C10AA05／A10BA02／V08A／A11A），
+// 因此 EXPECTED 表維持原本 5 組不變，已逐一實測確認。
+check('配對總數為 C(60,2) = 1770（目錄擴充後此數需同步更新）', pairCount === 1770,
       '實際為 ' + pairCount + '，表示目錄藥物數已變動，EXPECTED 表需複核');
 
 // ---------------------------------------------------------------
@@ -173,8 +177,14 @@ check('無法辨識的嚴重度回傳 null（由呼叫端決定如何處理）',
 // 分級對不上時，規則本身不可被丟棄——丟棄會讓一條真實的交互作用消失
 const rWeird = E.analyze([{ atc: 'C09AA03' }, { atc: 'A11CC05' }],
   [{ atcA: 'C09AA03', atcB: 'A11CC05', severity: '莫名其妙', effect: '測試用' }]);
-check('嚴重度無法辨識的規則仍會命中，並標記 severityUnknown',
-      rWeird.findings.length === 1 && rWeird.findings[0].severityUnknown === true);
+// 嚴重度無法辨識者歸入 ungraded（分層呈現），但絕不可被丟棄——
+// 丟棄會讓一條真實存在的交互作用從畫面上消失。
+check('嚴重度無法辨識的規則仍會命中，並歸入 ungraded 而非被丟棄',
+      rWeird.ungraded.length === 1 && rWeird.ungraded[0].severityUnknown === true
+      && rWeird.findings.length === 0);
+check('只有未分級結果時，結論為 unevaluable 而非 no-known-interaction',
+      rWeird.verdict === 'unevaluable',
+      '實得 ' + rWeird.verdict + '——知識庫查到了東西，說「未發現」是不實陳述');
 
 // ---------------------------------------------------------------
 // 七、規則正規化
@@ -236,6 +246,137 @@ for (const [label, input] of [['null', null], ['空陣列', []], ['只有一種�
 const rNoRules = E.analyze([{ atc: 'B01AA03' }, { atc: 'B01AC06' }], []);
 check('規則庫為空時結論為 no-known-interaction 而非 risk（且 ruleCount 為 0 可供 UI 示警）',
       rNoRules.verdict === 'no-known-interaction' && rNoRules.ruleCount === 0);
+
+// ---------------------------------------------------------------
+// 十、DDInter 匯入的規則必須真的進到引擎裡
+// ---------------------------------------------------------------
+// 這一節的來由值得記下來：DDInter 的匯入工具寫好了、236 條規則產生了、
+// 檔案也進了版控——但四個實際做比對的地方沒有一個載入它。
+// 規則只在管理後台被拿來顯示「知識庫共 N 條」的統計數字，
+// 醫師端與病患端的比對從頭到尾用的還是人工維護的那 5 條。
+//
+// 這是稽核報告 P0-7 那個教訓的另一種形式：
+// 「測試通過不等於使用者看到的是對的」，這次是「資料匯入了不等於引擎用得到」。
+// 上面第一到九節全部用 LOCAL_RULES（人工規則）測，所以 45 項全過，
+// 卻完全沒有察覺畫面上少了 236 條規則。
+//
+// 因此本節一律改用 E.localRuleSet()——production 四個呼叫點用的同一個函式。
+// 測試與畫面吃同一份規則，才不可能再各自漂移。
+require('../js/ddi-rules-ddinter.js');
+const MERGED = E.localRuleSet();
+const nCurated = E.normalizeRules(LOCAL_RULES).rules.length;
+const nMerged = E.normalizeRules(MERGED).rules.length;
+
+check('localRuleSet() 確實含入 DDInter 規則（修復前這 236 條從未進入比對）',
+      nMerged > nCurated,
+      '人工規則 ' + nCurated + ' 條，合併後 ' + nMerged + ' 條——沒有增加代表 DDInter 未被載入');
+check('DDInter 規則檔本身非空且標記為 severity-only',
+      !!global.window.DDINTER_RULES && global.window.DDINTER_RULES.rules.length > 0
+      && global.window.DDINTER_RULES.detailLevel === 'severity-only');
+
+// 【合併順序的臨床意義】人工維護的規則帶有作用機轉、處置建議與 ACR 出處；
+// DDInter 的同一組只有一個嚴重度。去重時若讓 DDInter 勝出，醫師會從
+// 「應避免併用，必須併用時監測 INR 與出血徵兆」退化成一個沒有下文的「major」。
+const rWA = E.analyze([{ atc: 'B01AA03' }, { atc: 'B01AC06' }], MERGED);
+check('人工規則不被 DDInter 覆蓋：Warfarin × Aspirin 仍保有處置建議與作用機轉',
+      rWA.findings.length >= 1 && !!rWA.findings[0].recommendation && !!rWA.findings[0].effect,
+      '合併後該組的處置建議遺失，代表去重取到了 DDInter 的精簡版本');
+check('人工規則合併後仍標記為 full（不會被誤標為僅有嚴重度）',
+      rWA.findings[0].detailLevel === 'full');
+
+// 【單調性】增加規則只會讓警示變多，不會讓原本查得到的組合突然查不到。
+// 這是合併邏輯最容易出錯的地方：去重的鍵若寫錯，會把兩條不同的規則當成同一條丟掉一條。
+const lost = [];
+for (const [key, expected] of Object.entries(EXPECTED)) {
+  const [a, b] = key.split('|');
+  const r = E.analyze([{ atc: a }, { atc: b }], MERGED);
+  const got = r.findings.length ? r.findings[0].severity : null;
+  if (got !== expected) lost.push(key + ' 預期仍為 ' + expected + '，實得 ' + (got || '無'));
+}
+check('合併 DDInter 後，原有的 5 組人工規則結論完全不變（增加規則不得使既有警示消失）',
+      lost.length === 0, lost.join('\n        '));
+
+// 【出處可稽核】第八節要求每條人工規則都有出處與複核日期。DDInter 的規則
+// 做不到「處置建議」那一項（原始資料就沒有），但出處與匯入日期必須有——
+// 否則畫面上會出現一則沒有任何依據、也不知道是什麼時候進來的警示。
+const merged = E.normalizeRules(MERGED).rules;
+const fromDdinter = merged.filter(r => r.detailLevel === 'severity-only');
+check('DDInter 規則確實佔多數且可辨識（' + fromDdinter.length + ' 條）',
+      fromDdinter.length > 0);
+check('每條 DDInter 規則都帶有出處，可供醫師判斷依據',
+      fromDdinter.every(r => !!r.source),
+      '有 ' + fromDdinter.filter(r => !r.source).length + ' 條缺出處');
+check('每條 DDInter 規則都帶有匯入日期（相當於複核日期）',
+      fromDdinter.every(r => !!r.reviewedOn));
+check('DDInter 規則不得憑空生出處置建議（原始資料沒有，就不可以有）',
+      fromDdinter.every(r => !r.recommendation));
+
+// 【未分級不可被當成中度】DDInter 有 4 萬餘筆嚴重度為 Unknown，
+// 匯入時 severity 為 null。若正規化把它當成 moderate，畫面會斗大地寫「中度」，
+// 那是引擎替原始資料捏造了一個它沒說的分級。
+const nullSev = global.window.DDINTER_RULES.rules.filter(r => r.severity === null);
+check('DDInter 中確實存在嚴重度未分級的規則（' + nullSev.length + ' 條）', nullSev.length > 0);
+if (nullSev.length) {
+  const one = nullSev[0];
+  const rNull = E.analyze([{ atc: one.atcA }, { atc: one.atcB }], MERGED);
+  const hit = rNull.ungraded.find(f => f.severityUnknown);
+  check('嚴重度未分級的規則命中後標記為 unknown 而非 moderate',
+        !!hit && hit.severity === 'unknown',
+        '實得 ' + (hit ? hit.severity : '未命中'));
+  check('未分級的排序權重低於 minor（不可壓過有明確記載的輕微交互作用）',
+        E.SEVERITY.unknown.rank < E.SEVERITY.minor.rank);
+}
+
+// ---------------------------------------------------------------
+// 十一、分級與未分級的分層（警示疲勞控制）
+// ---------------------------------------------------------------
+// DDInter 匯入的 224 條中有 116 條的嚴重度是原始資料庫標的 Unknown。
+// 實測若與已分級者並列呈現：示範病患 P001–P003 全數從「未發現」翻成 risk，
+// 病患端首頁會寫「有 11 組已知交互作用」，其中 6 組不知道多嚴重。
+// 稽核報告 P1-13：過度警示會訓練醫師忽略所有警示，連真正重要的那則也一起。
+//
+// 分層的兩個方向都要守住：既不能讓未分級的淹沒主要警示，
+// 也不能讓它們消失（丟掉等於宣稱這些記載不存在）。
+const rWangMing = E.analyze(mock.patient.medications || [], MERGED);
+check('王大明：已分級與未分級確實被分開',
+      rWangMing.findings.length > 0 && rWangMing.ungraded.length > 0,
+      '已分級 ' + rWangMing.findings.length + '，未分級 ' + rWangMing.ungraded.length);
+check('主要警示區不含任何未分級項目（警示疲勞的控制點）',
+      rWangMing.findings.every(f => !f.severityUnknown));
+check('未分級項目全數保留未被丟棄（丟掉等於宣稱這些記載不存在）',
+      rWangMing.ungraded.every(f => f.severityUnknown));
+check('王大明最嚴重者仍為 major，未被未分級項目稀釋掉',
+      rWangMing.topSeverity === 'major');
+
+// topSeverity 只由已分級者決定，這是 Phase 4 處方攔截的輸入。
+// 攔截是強制性的臨床流程約束，不能建立在「不知道多嚴重」的記載上。
+const onlyUngraded = E.analyze([{ atc: 'B01AC06' }, { atc: 'C01BD01' }], MERGED);
+check('只有未分級結果時 topSeverity 為 null（不得觸發 Phase 4 處方攔截）',
+      onlyUngraded.ungraded.length > 0 && onlyUngraded.topSeverity === null,
+      '未分級 ' + onlyUngraded.ungraded.length + '，topSeverity ' + onlyUngraded.topSeverity);
+check('只有未分級結果時 verdict 為 unevaluable（三種合法值之一，Firestore 規則才收）',
+      ['risk', 'unevaluable', 'no-known-interaction'].includes(onlyUngraded.verdict)
+      && onlyUngraded.verdict === 'unevaluable');
+
+// 分層之後，P001–P003 不應再因為未分級的記載而被整批標成 risk
+const p001 = E.analyze(mock.patients.P001.medications || [], MERGED);
+check('P001 的 risk 判定只來自已分級的交互作用',
+      p001.verdict === (p001.findings.length ? 'risk' : 'unevaluable'));
+
+// 【誠實結論不因規則變多而失守】規則庫擴大後最容易鬆掉的就是這一條：
+// 成分不明的複方仍然不可被判定為「未發現交互作用」。
+const rMultiMerged = E.analyze([{ atc: 'A11A' }, { atc: 'C09AA03' }], MERGED);
+check('合併後，成分不明的複方仍不可呈現為未發現交互作用',
+      rMultiMerged.verdict !== 'no-known-interaction');
+
+// 【防禦性】DDInter 檔案未載入時（例如某個頁面漏掉 script 標籤），
+// localRuleSet() 必須安靜地退回人工規則，而不是整個崩掉讓畫面空白。
+const savedDdinter = global.window.DDINTER_RULES;
+global.window.DDINTER_RULES = undefined;
+const fallback = E.localRuleSet();
+check('DDInter 未載入時 localRuleSet() 退回人工規則而不拋錯',
+      Array.isArray(fallback) && fallback.length === LOCAL_RULES.length);
+global.window.DDINTER_RULES = savedDdinter;
 
 // --- 輸出 ---
 console.log('');

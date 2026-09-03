@@ -186,9 +186,19 @@ window.DrugCatalog = (function () {
       class_zh: '抗血小板劑', ddd: '75 mg (O)', verifiedOn: '2026-09-02',
       atcAliases: [], aliases: ['plavix', '保栓通', '氯吡多'] },
 
+    // 【2026-09-03 更正】原本把「瑪爾胰」列為本藥別名，那是錯的：
+    // 瑪爾胰是 Amaryl 的中文商品名，成分為 glimepiride（A10BB12），不是 glipizide。
+    // 已依衛福部藥品許可證「衛署藥輸字第022671號」查證（Sanofi，2 mg 錠）。
+    //
+    // 這個錯誤是在本次擴充目錄、加入 glimepiride 時被 index() 的別名衝突守衛
+    // 擋下來才發現的——兩種藥同時宣告同一個商品名，載入就直接拋錯。
+    // 若沒有那道守衛，結果會是「取決於陣列順序的靜默誤判」：
+    // 處方寫「瑪爾胰」會被解析成 glipizide，此後交互作用比對一律套用錯的那一種藥。
+    // 兩者同為磺醯脲類，危害有限，但它是不折不扣的藥物身分誤判——
+    // 而藥物身分正是 P1-10 要消滅的那一類問題。
     { atc: 'A10BB07', name_en: 'Glipizide', name_zh: '格列吡嗪',
       class_zh: '降血糖藥（磺醯尿素類）', ddd: '10 mg (O)', verifiedOn: '2026-09-02',
-      atcAliases: [], aliases: ['minidiab', '瑪爾胰', '格力匹來'] },
+      atcAliases: [], aliases: ['minidiab', '格力匹來'] },
 
     { atc: 'C07AB02', name_en: 'Metoprolol', name_zh: '美托洛爾',
       class_zh: '乙型阻斷劑', ddd: '150 mg (O)', verifiedOn: '2026-09-02',
@@ -224,7 +234,183 @@ window.DrugCatalog = (function () {
 
     { atc: 'M05BA04', name_en: 'Alendronate', name_zh: '阿侖膦酸鈉',
       class_zh: '骨質疏鬆用藥（雙磷酸鹽）', ddd: '10 mg (O)', verifiedOn: '2026-09-02',
-      atcAliases: [], aliases: ['fosamax', '福善美', 'alendronic acid', '阿侖磷酸鹽'] }
+      atcAliases: [], aliases: ['fosamax', '福善美', 'alendronic acid', '阿侖磷酸鹽'] },
+
+    // ──────────────────────────────────────────────────────────────────
+    // 【2026-09-03　目錄擴充：34 種】
+    //
+    // 擴充的依據不是「哪些藥常見」，而是實際算出來的：
+    // tools/import-ddinter.mjs 的報告顯示，DDInter 去重後有 234,981 組交互作用，
+    // 而本目錄只認得其中 236 組（0.10%）。涵蓋率低不是因為 DDInter 資料不足，
+    // 是因為目錄太小——兩端都要認得規則才成立，所以涵蓋率大約是收錄比例的平方。
+    //
+    // 本批 34 種是按「加入後可立即啟用幾條規則」排序挑出來的，
+    // 且多為 CYP450 的強誘導劑或抑制劑（rifampicin、carbamazepine、phenytoin、
+    // clarithromycin、erythromycin、ciprofloxacin、verapamil、diltiazem、
+    // cimetidine、ciclosporin），這正是交互作用最密集的一群。
+    //
+    // 修復前缺了它們的實際後果：Warfarin × Clarithromycin、Warfarin × Ciprofloxacin
+    // 這類重大交互作用，系統不是「規則沒收錄」，而是「不認得那個藥」而完全靜默。
+    //
+    // 【ATC 碼與 DDD 的查證方式】
+    // 本批 34 筆全數於 2026-09-03 逐一對照 WHO Collaborating Centre 官方索引
+    // （https://atcddd.fhi.no/atc_ddd_index/）以群組頁面確認，非依記憶填寫，
+    // 因此 verifiedOn 一律為 2026-09-03。
+    //
+    // 【別名必須含 DDInter 的拼法，否則等於沒加】
+    // 匯入工具是拿 DDInter CSV 裡的藥名去 resolve()。有兩個名字對不上就會整批漏掉：
+    //   ·「Glyburide」是美國藥典名，WHO 的 INN 是 glibenclamide（A10BB01）
+    //   ·「Cyclosporine」是美國藥典名，WHO 的 INN 是 ciclosporin（L04AD01）
+    // 兩者都已收進 aliases。這類拼法差異無法靠演算法推導，漏一個就是靜默漏判。
+    // ──────────────────────────────────────────────────────────────────
+
+    // --- 消化道與代謝 ---
+    { atc: 'A02BA01', name_en: 'Cimetidine', name_zh: '西咪替丁',
+      class_zh: '制酸劑（H2 受體拮抗劑）', ddd: '0.8 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['tagamet', '泰胃美', '希每得定', '甲氰咪胍'] },
+
+    { atc: 'A02BA02', name_en: 'Ranitidine', name_zh: '雷尼替丁',
+      class_zh: '制酸劑（H2 受體拮抗劑）', ddd: '0.3 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['zantac', '善胃得', '雷尼替定'] },
+
+    { atc: 'A02BA03', name_en: 'Famotidine', name_zh: '法莫替丁',
+      class_zh: '制酸劑（H2 受體拮抗劑）', ddd: '40 mg (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['pepcid', '蓋舒泰', '法莫替定'] },
+
+    // 【DDInter 寫作 Glyburide】美國藥典名與 WHO 的 INN 不同，兩者都必須收。
+    { atc: 'A10BB01', name_en: 'Glibenclamide', name_zh: '格列本脲',
+      class_zh: '口服降血糖藥（磺醯脲類）', ddd: '10 mg (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['glyburide', 'daonil', 'euglucon', '優降糖', '格利本脲'] },
+
+    { atc: 'A10BB12', name_en: 'Glimepiride', name_zh: '格列美脲',
+      class_zh: '口服降血糖藥（磺醯脲類）', ddd: '2 mg (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['amaryl', '瑪爾胰', '格美脲'] },
+
+    // --- 心血管 ---
+    { atc: 'C01BA01', name_en: 'Quinidine', name_zh: '奎尼丁',
+      class_zh: '抗心律不整藥（Class Ia）', ddd: '1.2 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['quinidine sulfate', '奎尼丁硫酸鹽', '奎尼定'] },
+
+    { atc: 'C07AG02', name_en: 'Carvedilol', name_zh: '卡維地洛',
+      class_zh: 'α／β 受體阻斷劑', ddd: '37.5 mg (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['dilatrend', '心達悅', '卡維洛爾'] },
+
+    { atc: 'C08CA01', name_en: 'Amlodipine', name_zh: '氨氯地平',
+      class_zh: '鈣離子通道阻斷劑（雙氫吡啶類）', ddd: '5 mg (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['norvasc', '脈優', '安脈狄平', 'amlodipine besylate'] },
+
+    { atc: 'C08CA05', name_en: 'Nifedipine', name_zh: '硝苯地平',
+      class_zh: '鈣離子通道阻斷劑（雙氫吡啶類）', ddd: '30 mg (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['adalat', '冠達悅', '硝苯吡啶'] },
+
+    { atc: 'C08DA01', name_en: 'Verapamil', name_zh: '維拉帕米',
+      class_zh: '鈣離子通道阻斷劑（苯烷胺類）', ddd: '0.24 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['isoptin', '心舒平', '異搏定'] },
+
+    { atc: 'C08DB01', name_en: 'Diltiazem', name_zh: '地爾硫卓',
+      class_zh: '鈣離子通道阻斷劑（苯并噻氮平類）', ddd: '0.24 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['herbesser', '合必爽', '硫氮卓酮', 'diltiazem hcl'] },
+
+    // --- 荷爾蒙 ---
+    { atc: 'H02AB02', name_en: 'Dexamethasone', name_zh: '地塞米松',
+      class_zh: '腎上腺皮質類固醇', ddd: '1.5 mg (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['decadron', '地塞美松', '待克蘇'] },
+
+    // --- 抗感染（本批交互作用最密集的一群：多為 CYP3A4 抑制或誘導） ---
+    { atc: 'J01AA02', name_en: 'Doxycycline', name_zh: '多西環素',
+      class_zh: '四環素類抗生素', ddd: '0.1 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['vibramycin', '去氧羥四環素', '多喜黴素'] },
+
+    { atc: 'J01FA01', name_en: 'Erythromycin', name_zh: '紅黴素',
+      class_zh: '巨環內酯類抗生素', ddd: '1 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['erythrocin', 'erythromycin stearate', '紅霉素'] },
+
+    { atc: 'J01FA09', name_en: 'Clarithromycin', name_zh: '克拉黴素',
+      class_zh: '巨環內酯類抗生素', ddd: '0.5 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['klaricid', 'biaxin', '開羅理黴素', '克拉霉素'] },
+
+    { atc: 'J01FA10', name_en: 'Azithromycin', name_zh: '阿奇黴素',
+      class_zh: '巨環內酯類抗生素', ddd: '0.3 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['zithromax', '日舒', '阿齊黴素', '阿奇霉素'] },
+
+    { atc: 'J01MA02', name_en: 'Ciprofloxacin', name_zh: '環丙沙星',
+      class_zh: '氟喹諾酮類抗生素', ddd: '1 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['cipro', '速博新', '環丙氟哌酸'] },
+
+    { atc: 'J01MA12', name_en: 'Levofloxacin', name_zh: '左氧氟沙星',
+      class_zh: '氟喹諾酮類抗生素', ddd: '0.24 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['cravit', '可樂必妥', '左旋氧氟沙星'] },
+
+    // 強效 CYP3A4 誘導劑，與極多藥物有交互作用。美國藥典名為 rifampin。
+    { atc: 'J04AB02', name_en: 'Rifampicin', name_zh: '利福平',
+      class_zh: '抗結核藥', ddd: '0.6 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['rifampin', 'rifadin', '立汎黴素', '理福黴素'] },
+
+    // --- 免疫抑制劑 ---
+    // 【DDInter 寫作 Cyclosporine】同 Glyburide，美國藥典名與 INN 不同。
+    { atc: 'L04AD01', name_en: 'Ciclosporin', name_zh: '環孢素',
+      class_zh: '免疫抑制劑（鈣調磷酸酶抑制劑）', ddd: '0.25 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['cyclosporine', 'cyclosporin', 'sandimmun', '新體睦', '環孢靈'] },
+
+    { atc: 'L04AD02', name_en: 'Tacrolimus', name_zh: '他克莫司',
+      class_zh: '免疫抑制劑（鈣調磷酸酶抑制劑）', ddd: '5 mg (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['prograf', '普樂可復', 'fk506', '他克羅姆'] },
+
+    // --- 肌肉骨骼 ---
+    { atc: 'M01AE02', name_en: 'Naproxen', name_zh: '萘普生',
+      class_zh: '非類固醇消炎止痛藥（NSAID）', ddd: '0.5 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['naposin', 'naprosyn', '那普洛先', '奈普生'] },
+
+    // --- 神經系統 ---
+    { atc: 'N03AB02', name_en: 'Phenytoin', name_zh: '苯妥英',
+      class_zh: '抗癲癇藥（乙內醯脲類）', ddd: '0.3 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['dilantin', '癲能停', '苯妥英鈉', 'phenytoin sodium'] },
+
+    { atc: 'N03AF01', name_en: 'Carbamazepine', name_zh: '卡馬西平',
+      class_zh: '抗癲癇藥（carboxamide 類）', ddd: '1 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['tegretol', '癲通', '卡巴氮平', '痛痙寧'] },
+
+    { atc: 'N05AB04', name_en: 'Prochlorperazine', name_zh: '丙氯拉嗪',
+      class_zh: '抗精神病藥／止吐劑（phenothiazine 類）', ddd: '0.1 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['novamin', 'compazine', '普魯氯嗪', '丙氯培拉嗪'] },
+
+    { atc: 'N05AH02', name_en: 'Clozapine', name_zh: '氯氮平',
+      class_zh: '非典型抗精神病藥', ddd: '0.3 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['clozaril', '可致律', '氯薩平'] },
+
+    { atc: 'N05AH04', name_en: 'Quetiapine', name_zh: '喹硫平',
+      class_zh: '非典型抗精神病藥', ddd: '0.4 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['seroquel', '思樂康', '奎硫平'] },
+
+    { atc: 'N06AB04', name_en: 'Citalopram', name_zh: '西酞普蘭',
+      class_zh: '抗憂鬱劑（SSRI）', ddd: '20 mg (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['celexa', 'cipramil', '西酞普林', '舒憂'] },
+
+    { atc: 'N06AB06', name_en: 'Sertraline', name_zh: '舍曲林',
+      class_zh: '抗憂鬱劑（SSRI）', ddd: '50 mg (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['zoloft', '樂復得', '色特寧'] },
+
+    { atc: 'N06AB10', name_en: 'Escitalopram', name_zh: '艾司西酞普蘭',
+      class_zh: '抗憂鬱劑（SSRI）', ddd: '10 mg (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['lexapro', 'cipralex', '立普能', '依地普侖'] },
+
+    { atc: 'N06AX16', name_en: 'Venlafaxine', name_zh: '文拉法辛',
+      class_zh: '抗憂鬱劑（SNRI）', ddd: '0.1 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['effexor', '速悅', '萬拉法新'] },
+
+    { atc: 'N06AX21', name_en: 'Duloxetine', name_zh: '度洛西汀',
+      class_zh: '抗憂鬱劑（SNRI）', ddd: '60 mg (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['cymbalta', '千憂解', '度洛悉汀'] },
+
+    // --- 抗寄生蟲／免疫調節 ---
+    { atc: 'P01BA02', name_en: 'Hydroxychloroquine', name_zh: '羥氯喹',
+      class_zh: '抗瘧疾藥／抗風濕免疫調節劑', ddd: '0.516 g (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['plaquenil', '必賴克廔', '羥氯奎寧', '氫氧氯奎'] },
+
+    // --- 呼吸系統 ---
+    { atc: 'R06AD02', name_en: 'Promethazine', name_zh: '異丙嗪',
+      class_zh: '抗組織胺（phenothiazine 類）', ddd: '25 mg (O)', verifiedOn: '2026-09-03',
+      atcAliases: [], aliases: ['phenergan', '非那根', '普魯米近', '異丙唪'] }
   ];
 
   // 鹽類與劑型後綴。跨院傳來的藥名常帶這些字尾，但它們不改變成分身分：

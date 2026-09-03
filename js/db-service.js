@@ -417,13 +417,62 @@ window.DbService = {
   },
 
   // 用獨立的 secondaryAuth 建立 Firebase Auth 帳號，不影響目前登入的管理員 session
+  //
+  // 【原子性】（對抗性稽核 H-15）Auth 帳號與兩份 Firestore 文件必須一起成立。
+  // 原本三個寫入各自獨立且沒有 rollback：只要後面任一步失敗，就留下一個孤兒 Auth 帳號——
+  // email 被永久佔用（重建會得到 already-in-use），卻又登不進系統（user_roles 不存在），
+  // 只能進 Firebase Console 手動刪除。自助註冊的 registerPatient 早就有回收邏輯，
+  // 管理端建帳卻漏了這段。
+  //
+  // signOut 也必須移到寫入之後：一旦登出，cred.user 就失去憑證，
+  // 回收用的 delete() 會以 requires-recent-login 失敗，rollback 形同虛設。
+  // （Firestore 寫入走的是管理員的 window.db，與 secondaryAuth 無關，移動順序不影響權限。）
   async createUser(username, password, name, role) {
     const email = username.trim().toLowerCase() + '@medsafe.local';
     const cred = await window.secondaryAuth.createUserWithEmailAndPassword(email, password);
     const uid = cred.user.uid;
+    try {
+      const batch = window.db.batch();
+      batch.set(window.db.collection('user_roles').doc(uid), { username, name, role, status: 'active' });
+      batch.set(window.db.collection('users').doc(username), { uid, name, role, status: 'active' });
+      await batch.commit();
+    } catch (e) {
+      try { await cred.user.delete(); } catch (_) { /* 回收失敗只能靠 Console，但錯誤仍要往上拋 */ }
+      try { await window.secondaryAuth.signOut(); } catch (_) {}
+      throw e;
+    }
     await window.secondaryAuth.signOut();
-    await window.db.collection('user_roles').doc(uid).set({ username, name, role, status: 'active' });
-    await window.db.collection('users').doc(username).set({ uid, name, role, status: 'active' });
     return uid;
+  },
+
+  // ── 角色與狀態變更：必須橫跨兩份文件且不可各自為政 ──────────────────────
+  // （對抗性稽核 H-13、H-16）
+  //
+  // users/{username} 只供後台列表顯示；user_roles/{uid} 才是安全規則唯一採信的身分索引
+  // （見 firestore.rules 的 profile()）。兩者分開 update 會產生最危險的一種不一致：
+  // 前一個成功、後一個失敗時，列表顯示「已停用」，規則卻仍然放行——
+  // 帳號看似被停權，實際保有完整權限。用 batch 讓兩份文件同生共死。
+  //
+  // 沒有 uid 就寫不到 user_roles，而規則只看 user_roles，此時變更對權限毫無效果。
+  // 這種情況一律回報 { ok: false }，絕不可靜默視為成功——那正是 P1-2 修過的錯誤形狀。
+  async setUserStatus(username, uid, status) {
+    if (!uid) return { ok: false, reason: 'no-uid' };
+    const batch = window.db.batch();
+    batch.update(window.db.collection('users').doc(username), { status });
+    batch.update(window.db.collection('user_roles').doc(uid), { status });
+    await batch.commit();
+    return { ok: true };
+  },
+
+  // 角色變更原本完全沒有落地——只改了 Vue 記憶體中的列表，重新整理即回復原狀，
+  // 系統卻照樣寫下一筆 USER_ROLE_CHANGE 稽核記錄。
+  // 稽核軌跡記載一件從未發生的事，比沒有稽核更危險：事後調查會據此做出錯誤結論。
+  async setUserRole(username, uid, role) {
+    if (!uid) return { ok: false, reason: 'no-uid' };
+    const batch = window.db.batch();
+    batch.update(window.db.collection('users').doc(username), { role });
+    batch.update(window.db.collection('user_roles').doc(uid), { role });
+    await batch.commit();
+    return { ok: true };
   }
 };
