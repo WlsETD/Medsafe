@@ -140,8 +140,12 @@ await run('附覆蓋理由的高風險處方可開立',
   () => updateDoc(doc(DOC(), 'patient_data/P900'),
     { medications: [MED0, { name: 'Aspirin', safetyCheck: { ...RISK_CHECK, overrideReason: '已知此交互作用，評估後臨床效益大於風險' } }] }), 'allow');
 
+// 原本這裡改的是 assignedDoctor（改成 'doctor2'）。在醫師可無條件讀寫任何病歷的
+// 時期沒有問題，但 S-1 修復後 assignedDoctor 決定授權，這一改會讓 DOC 失去對 P900
+// 的權限，導致下一條測試連帶失敗——一個潛伏已久的測試間狀態污染。
+// 改用不影響授權的欄位，測的仍是「未變動用藥清單時不受處方閘門限制」。
 await run('修改其他欄位而未動用藥清單，不受閘門限制',
-  () => updateDoc(doc(DOC(), 'patient_data/P900'), { assignedDoctor: 'doctor2' }), 'allow');
+  () => updateDoc(doc(DOC(), 'patient_data/P900'), { stats: { activeMeds: 1 } }), 'allow');
 
 await run('移除用藥（清單變短）不受閘門限制',
   () => updateDoc(doc(DOC(), 'patient_data/P900'), { medications: [] }), 'allow');
@@ -447,9 +451,14 @@ await run('合法自助註冊（username 與 Auth email 一致）',
 // 在那個訊號上做斷言只會製造永遠的紅燈或假綠燈。
 {
   const src = fs.readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
-  const m = src.match(/match\s*\/patient_data\/\{username\}\s*\{[\s\S]*?\n\s*\}/);
-  const block = m ? m[0] : '';
-  const updateLine = (block.match(/allow update:[\s\S]*?;/) || [''])[0];
+  // 原本以非貪婪的 `{[\s\S]*?\n\s*\}` 擷取整個 match 區塊。該寫法假設區塊內
+  // 沒有巢狀大括號——一旦在區塊內宣告函式（S-1 修復加入了 isAssignedDoctorOf），
+  // 擷取會在該函式的右括號提前結束，於是找不到 allow update 而誤報守衛遺失。
+  // 測試本身不該因為被測程式多了一個函式就失效，改為從 match 起點往後找第一條
+  // allow update，不再嘗試判斷區塊在哪裡結束。
+  const start = src.search(/match\s*\/patient_data\/\{username\}\s*\{/);
+  const after = start === -1 ? '' : src.slice(start);
+  const updateLine = (after.match(/allow update:[\s\S]*?;/) || [''])[0];
   const guarded = /allow update:\s*if\s+resource\s*!=\s*null\s*&&/.test(updateLine);
   results.push([guarded ? 'PASS' : 'FAIL',
                 'patient_data 的 allow update 保有 resource != null 守衛',
@@ -641,6 +650,90 @@ await run('掛號 核保端讀取掛號', () => getDoc(doc(INS(), 'appointments/
 // 就診紀錄不可刪除：能被單方面抹除的紀錄沒有證據價值
 await run('掛號 病患刪除掛號紀錄', () => deleteDoc(doc(P001(), 'appointments/AP1')), 'deny');
 await run('掛號 管理員刪除掛號紀錄', () => deleteDoc(doc(ADM(), 'appointments/AP1')), 'deny');
+
+// ── S-1 修復：醫師不再無條件讀得到任何病歷 ──────────────────────────────
+//
+// 這是本專案追蹤最久的缺口。原本 patient_data 的 allow read 是
+// `isAdmin() || isDoctor() || isOwnUsername(username)`——isDoctor() 不帶任何
+// 醫病關係檢查，任何醫師帳號可讀全系統每一份病歷。
+//
+// 這批測試釘住的性質是：**醫師必須有理由才讀得到**，而理由有兩種——
+// 有效的照護關係（新制），或既有的 assignedDoctor 指派（過渡）。
+// 兩者皆無時必須被擋下，包括今天還不存在的新病患。
+await env.withSecurityRulesDisabled(async ctx => {
+  const db = ctx.firestore();
+  const future = Timestamp.fromDate(new Date(Date.now() + 30 * 86400000));
+  const past = Timestamp.fromDate(new Date(Date.now() - 86400000));
+  // 與 doctor 有有效照護關係
+  await setDoc(doc(db, 'care_relations/rel1__doctor'), {
+    patient: 'rel1', doctor: 'doctor', status: 'active', grantedAt: new Date(), expiresAt: future });
+  await setDoc(doc(db, 'patient_data/rel1'), {
+    profile: { id: 'rel1', name: '有關係' }, medications: [], ddiAlerts: [], reminders: [] });
+  // 關係已過期
+  await setDoc(doc(db, 'care_relations/rel2__doctor'), {
+    patient: 'rel2', doctor: 'doctor', status: 'active', grantedAt: new Date(), expiresAt: past });
+  await setDoc(doc(db, 'patient_data/rel2'), {
+    profile: { id: 'rel2', name: '已過期' }, medications: [], ddiAlerts: [], reminders: [] });
+  // 關係已撤銷
+  await setDoc(doc(db, 'care_relations/rel3__doctor'), {
+    patient: 'rel3', doctor: 'doctor', status: 'revoked', grantedAt: new Date(), expiresAt: future });
+  await setDoc(doc(db, 'patient_data/rel3'), {
+    profile: { id: 'rel3', name: '已撤銷' }, medications: [], ddiAlerts: [], reminders: [] });
+  // 完全沒有關係、也沒有 assignedDoctor
+  await setDoc(doc(db, 'patient_data/nobody'), {
+    profile: { id: 'nobody', name: '無關係' }, medications: [], ddiAlerts: [], reminders: [] });
+  // 指派給別的醫師
+  await setDoc(doc(db, 'patient_data/otherpt'), {
+    profile: { id: 'otherpt', name: '他醫師的病患' }, assignedDoctor: 'otherdoc',
+    medications: [], ddiAlerts: [], reminders: [] });
+});
+
+// 【核心】沒有任何理由時必須被擋下——這一條若失守，S-1 就沒有修好
+await run('S-1 醫師讀無醫病關係的病歷', () => getDoc(doc(DOC(), 'patient_data/nobody')), 'deny');
+await run('S-1 醫師讀指派給其他醫師的病歷', () => getDoc(doc(DOC(), 'patient_data/otherpt')), 'deny');
+await run('S-1 醫師寫入無醫病關係的病歷',
+  () => updateDoc(doc(DOC(), 'patient_data/nobody'), { reminders: [] }), 'deny');
+// 只擋讀取是不夠的：沒有關係卻能寫入用藥，比讀取更危險
+await run('S-1 醫師對無關係病歷新增用藥',
+  () => updateDoc(doc(DOC(), 'patient_data/nobody'), {
+    medications: [{ name: 'X', safetyCheck: { verdict: 'no-known-interaction', checkedAt: 'x', by: 'doctor' } }]
+  }), 'deny');
+// 時效與撤銷必須真的生效，否則等於永久授權
+await run('S-1 照護關係已過期', () => getDoc(doc(DOC(), 'patient_data/rel2')), 'deny');
+await run('S-1 照護關係已撤銷', () => getDoc(doc(DOC(), 'patient_data/rel3')), 'deny');
+// 醫師不可自行建立關係替自己開門——那是自我授權
+await run('S-1 醫師自行建立照護關係',
+  () => setDoc(doc(DOC(), 'care_relations/nobody__doctor'), {
+    patient: 'nobody', doctor: 'doctor', status: 'active',
+    grantedAt: serverTimestamp(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)) }), 'deny');
+
+// 合法路徑不可被誤擋——擋錯人的代價是醫師打不開病歷
+await run('S-1 有效照護關係可讀', () => getDoc(doc(DOC(), 'patient_data/rel1')), 'allow');
+await run('S-1 有效照護關係可寫',
+  () => updateDoc(doc(DOC(), 'patient_data/rel1'), { reminders: [{ t: '08:00' }] }), 'allow');
+await run('S-1 舊制 assignedDoctor 仍可讀（過渡）',
+  () => getDoc(doc(DOC(), 'patient_data/P001')), 'allow');
+await run('S-1 病患仍可讀自己的病歷', () => getDoc(doc(P001(), 'patient_data/P001')), 'allow');
+await run('S-1 管理員仍可讀任何病歷', () => getDoc(doc(ADM(), 'patient_data/nobody')), 'allow');
+
+// 照護關係文件本身的邊界
+await run('care_relations 病患授予自己的關係',
+  () => setDoc(doc(P001(), 'care_relations/P001__doctor'), {
+    patient: 'P001', doctor: 'doctor', status: 'active',
+    grantedAt: serverTimestamp(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)) }), 'allow');
+await run('care_relations 病患替他人授予',
+  () => setDoc(doc(P001(), 'care_relations/atk__doctor'), {
+    patient: 'atk', doctor: 'doctor', status: 'active',
+    grantedAt: serverTimestamp(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)) }), 'deny');
+// 內容與文件 ID 不一致時，規則的 O(1) 查找會指向錯誤的授權
+await run('care_relations 文件 ID 與內容不符',
+  () => setDoc(doc(P001(), 'care_relations/P001__doctor2'), {
+    patient: 'P001', doctor: 'doctor', status: 'active',
+    grantedAt: serverTimestamp(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)) }), 'deny');
+await run('care_relations 醫師讀指向自己的關係',
+  () => getDoc(doc(DOC(), 'care_relations/rel1__doctor')), 'allow');
+await run('care_relations 不可刪除',
+  () => deleteDoc(doc(P001(), 'care_relations/rel1__doctor')), 'deny');
 
 console.log('');
 for (const r of results) console.log(r[0].padEnd(5), r[1], r[2] ? '\n      ' + r[2] : '');

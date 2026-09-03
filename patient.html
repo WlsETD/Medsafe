@@ -1675,8 +1675,14 @@
                     const before = a.status;
                     a.status = 'cancelled';
                     try {
-                        await DbService.appointments.setStatus(a.id, 'cancelled');
-                        this.triggerToast('已取消掛號', '該名醫師已無法再從掛號紀錄看到您的資料');
+                        const r = await DbService.appointments.cancel(a);
+                        // 與同一位醫師還有其他掛號時，存取權不會被收回——
+                        // 說成「已無法看到」會是不實陳述
+                        this.triggerToast('已取消掛號',
+                            r.relationRevoked
+                                ? '該名醫師已無法再從掛號紀錄看到您的資料'
+                                : `您與該名醫師尚有 ${r.remaining} 筆掛號，其存取權仍然有效`);
+                        await this.loadAppointments();
                     } catch (e) {
                         // 還原畫面：取消沒有成功，醫師其實仍看得到——
                         // 顯示成已取消會讓病患誤以為存取已經被收回

@@ -288,6 +288,42 @@ window.DbService = {
     // 只有 booked 與 arrived 算「進行中的就診」，也就是醫師清單要顯示的對象。
     ACTIVE: ['booked', 'arrived'],
 
+    // 照護關係的有效期。掛號給予的存取權必須有時間上限——
+    // 一份永久有效的授權在個資法下與未取得授權無異。
+    // 90 天足以涵蓋回診與追蹤，又不至於讓一次就診換來無限期的病歷存取權。
+    RELATION_DAYS: 90,
+
+    // 規則層無法查詢集合，因此另寫一份以 {病患}__{醫師} 為 ID 的關係文件，
+    // 讓 hasActiveCareRelation() 能 O(1) 定位（見 firestore.rules 的說明）。
+    async _grantRelation(patient, doctor) {
+      const id = patient + '__' + doctor;
+      const ref = window.db.collection('care_relations').doc(id);
+      const expires = new Date();
+      expires.setDate(expires.getDate() + this.RELATION_DAYS);
+      const snap = await ref.get();
+      if (snap.exists) {
+        // 重新掛號等於續期。規則允許病患本人改 status/expiresAt。
+        await ref.update({
+          status: 'active',
+          expiresAt: window.firebase.firestore.Timestamp.fromDate(expires),
+          updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        await ref.set({
+          patient, doctor, status: 'active',
+          grantedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+          expiresAt: window.firebase.firestore.Timestamp.fromDate(expires)
+        });
+      }
+    },
+
+    async _revokeRelation(patient, doctor) {
+      await window.db.collection('care_relations').doc(patient + '__' + doctor).update({
+        status: 'revoked',
+        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+      });
+    },
+
     async create({ patient, patientName, doctor, doctorName, department, scheduledAt, note }) {
       const ref = await window.db.collection('appointments').add({
         patient, patientName: patientName || patient,
@@ -299,6 +335,15 @@ window.DbService = {
         createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
         note: note || ''
       });
+      // 掛號本身不會讓醫師看得到病歷——規則查的是照護關係文件。
+      // 順序上先建掛號再授予關係：反過來的話，關係文件寫成功而掛號失敗時，
+      // 會出現「醫師讀得到病歷，但系統中沒有任何就診紀錄可以解釋為什麼」。
+      //
+      // 兩次寫入不具原子性（Firestore 的 batch 無法混用 add 的自動 ID）。
+      // 授予失敗時掛號已存在但醫師看不到——失效方向是「看不到」，
+      // 而非「不該看卻看得到」，這是可接受的方向。錯誤仍往上拋，
+      // 由呼叫端據實告知，不可靜默當作成功。
+      await this._grantRelation(patient, doctor);
       return ref.id;
     },
 
@@ -322,6 +367,22 @@ window.DbService = {
         status,
         updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
       });
+    },
+
+    // 取消掛號，並在「與該醫師已無其他進行中的掛號」時一併撤銷照護關係。
+    //
+    // 【為什麼要先確認沒有其他掛號】
+    // 同一位病患對同一位醫師可能有多筆掛號（回診、不同科別）。
+    // 取消其中一筆就撤銷關係，會讓醫師在其餘尚未就診的預約上失去病歷存取權——
+    // 病患只是改了一次時間，主治醫師卻打不開病歷了。
+    async cancel(appointment) {
+      const { id, patient, doctor } = appointment;
+      await this.setStatus(id, 'cancelled');
+      const remaining = (await this.byPatient(patient)).filter(a =>
+        a.id !== id && a.doctor === doctor && this.ACTIVE.indexOf(a.status) !== -1);
+      if (remaining.length) return { relationRevoked: false, remaining: remaining.length };
+      await this._revokeRelation(patient, doctor);
+      return { relationRevoked: true, remaining: 0 };
     }
   },
 

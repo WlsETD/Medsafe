@@ -368,13 +368,41 @@ service cloud.firestore {
       // isInsurance() 已移除（P1-6）：核保端不再讀得到任何病歷，
       // 改為經病患同意後讀取 patient_summaries 中的最小必要欄位。
       //
-      // isDoctor() 暫時保留，但這是一個已知的缺口：任何醫師可讀任何病歷，
-      // 沒有醫病關係（care relationship）驗證。修復需要轉診與代班的授權模型，
-      // 若只用 assignedDoctor 做等值比對，代班醫師與會診醫師會被鎖在門外——
-      // 那在急診情境下會直接致命。此項列於 Phase 6，不在本次修復範圍。
-      allow read: if isAdmin() || isDoctor() || isOwnUsername(username);
-      allow create: if pseudonymWellFormedIfNew() && (isAdmin() || isDoctor()
-        || (isOwnUsername(username) && patientInitialDocIsClean(username)));
+      // ── S-1 修復：醫師不再無條件讀得到任何病歷 ────────────────────────
+      //
+      // 原本是 `isAdmin() || isDoctor() || isOwnUsername(username)`——
+      // isDoctor() 不帶任何醫病關係檢查，任何醫師帳號可讀全系統每一份病歷。
+      // 先前判定「以 assignedDoctor 等值比對會鎖死代班與會診醫師，
+      // 急診情境下會致命」，因此列為已知限制。掛號模型正是該問題的解法：
+      // 會診是再建一筆關係、代班是換人、轉診是建立新的關係。
+      //
+      // 現在的條件是「存在有效的照護關係」，其中包含兩條路徑：
+      //   一、hasActiveCareRelation() —— 病患掛號時授予，有到期時間（新制）
+      //   二、resource.data.assignedDoctor 等於自己 —— 既有病患的舊制欄位
+      //
+      // 【為什麼保留第二條】既有病患都只有 assignedDoctor、沒有照護關係文件。
+      // 只留第一條會讓他們的主治醫師當場失去存取權——那不是把系統變安全，
+      // 是讓正在看診的醫師打不開病歷。本專案在處方攔截政策上已論證過
+      // 「可用性失效同樣會傷害病人」。
+      //
+      // 重點是：即使保留第二條，S-1 也已經關閉——因為 assignedDoctor
+      // 指向的是「特定一位醫師」，而不再是「任何醫師」。
+      // 第二條屬於過渡措施，待既有病患完成掛號後即可移除。
+      //
+      // 效能上第二條不需要額外讀取：read 規則中 resource 就是被讀的那份文件。
+      function isAssignedDoctorOf() {
+        return isDoctor() && resource != null
+          && resource.data.assignedDoctor == profile().username;
+      }
+      allow read: if isAdmin() || isOwnUsername(username)
+        || isAssignedDoctorOf() || hasActiveCareRelation(username);
+      // create 的 isDoctor() 一併收斂。resource 為 null 時 isAssignedDoctorOf()
+      // 不成立，因此醫師建檔須先有照護關係。原本任何醫師都能替尚無病歷的
+      // username 建檔並把 assignedDoctor 寫成自己——那是自我授權。
+      allow create: if pseudonymWellFormedIfNew()
+        && (isAdmin()
+            || (isDoctor() && hasActiveCareRelation(username))
+            || (isOwnUsername(username) && patientInitialDocIsClean(username)));
       // resource != null 守衛：Security Rules 的布林運算子是容錯的（error || true 會得到 true），
       // 因此「求值錯誤必然拒絕」並不是保證，只是目前這條 OR 鏈剛好沒有為真的分支。
       // 少了守衛，日後任何人在此鏈加上一個新條件，都可能讓 resource 為 null 時的求值錯誤
@@ -386,8 +414,11 @@ service cloud.firestore {
       // 因此 profile.id 可被改寫成他人的 username，使聊天室路由指向別人的對話串。
       //（對抗性稽核 H-6）此處只釘住 id；healthSummary 等自述欄位本就該由病患自行維護，
       // 核保端也已看不到它（改讀 patient_summaries 的固定白名單）。
+      // 寫入同樣受醫病關係限制。只擋讀取是不夠的——沒有關係的醫師
+      // 即使看不到病歷，仍可對它寫入用藥，那比讀取更危險。
       allow update: if resource != null && prescriptionIsAccountable() && pseudonymWellFormedIfNew()
-        && (isAdmin() || isDoctor()
+        && (isAdmin()
+        || isAssignedDoctorOf() || hasActiveCareRelation(username)
         || (isOwnUsername(username) && patientOnlyTouchesOwnFields()
             && pseudonymNotOverwritten() && profileIdMatchesOwner(username)));
       allow delete: if isAdmin();
@@ -419,6 +450,58 @@ service cloud.firestore {
         && request.resource.data.action.size() > 0
         && request.resource.data.action.size() <= 64;
       allow update, delete: if false;
+    }
+
+    // ── 照護關係：規則層可 O(1) 查驗的醫病關係 ──────────────────────────
+    //
+    // 【為什麼掛號本身不夠】
+    // Security Rules 不能查詢集合，只能對「已知路徑」做 exists()／get()。
+    // appointments 用的是 auto ID，規則無從得知「這位病患與這位醫師之間
+    // 有沒有一筆有效掛號」。因此另立一份以 {病患}__{醫師} 為文件 ID 的關係文件，
+    // 讓規則能以 O(1) 直接定位——與 consents/{病患}__{保險端} 完全相同的手法。
+    //
+    // 這份文件由病患端在掛號時寫入、取消時撤銷。語意上也正確：
+    // 授予醫師存取自己病歷的權限，本來就該是病患的動作。
+    //
+    // 【誠實的限制】它與 appointments 是兩份文件，前端分兩次寫入，
+    // 不具原子性。掛號成功而關係文件寫入失敗時，醫師看不到該病患——
+    // 失效方向是「看不到」而非「不該看卻看得到」，這是可接受的方向。
+    // 反向的殘留（關係還在但掛號已取消）則由 expiresAt 設下時間上限。
+    // 要真正一致需由後端 trigger 維護，列於 Phase 6。
+    match /care_relations/{rid} {
+      allow read: if isActive() && (
+        isAdmin()
+        || (resource != null && isOwnUsername(resource.data.patient))
+        || (resource != null && isDoctor() && resource.data.doctor == profile().username)
+      );
+      // 只有病患本人能授予，且文件 ID 必須與內容一致——
+      // 否則可用「內容寫 A、ID 寫 B」讓規則的 O(1) 查找指向錯誤的授權。
+      allow create: if isActive()
+        && isOwnUsername(request.resource.data.patient)
+        && rid == request.resource.data.patient + '__' + request.resource.data.doctor
+        && request.resource.data.status == 'active'
+        && request.resource.data.grantedAt == request.time
+        && request.resource.data.expiresAt is timestamp;
+      // 撤銷或續期：只有病患本人，且只能動這幾個欄位。
+      // 不可改 patient／doctor，那會把關係轉移到別人身上。
+      allow update: if isActive() && resource != null
+        && isOwnUsername(resource.data.patient)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'expiresAt', 'updatedAt']);
+      // 授予與撤銷的歷程本身即為證據，不可刪除
+      allow delete: if false;
+    }
+
+    function careRelationPath(patientUsername) {
+      return /databases/$(database)/documents/care_relations/$(patientUsername + '__' + profile().username);
+    }
+    // 有效的照護關係需同時滿足：文件存在、狀態為 active、未過期。
+    // 一份「永久有效」的授權在個資法下與未取得授權無異。
+    function hasActiveCareRelation(patientUsername) {
+      return isDoctor()
+        && exists(careRelationPath(patientUsername))
+        && get(careRelationPath(patientUsername)).data.status == 'active'
+        && get(careRelationPath(patientUsername)).data.expiresAt > request.time;
     }
 
     // ── 掛號：醫病關係的來源 ────────────────────────────────────────────
