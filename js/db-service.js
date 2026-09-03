@@ -199,6 +199,59 @@ window.DbService = {
     });
   },
 
+  // ── 用藥回報：逐日記錄 ────────────────────────────────────────────────
+  //
+  // 【為什麼不能沿用 reminders[].completed】
+  // 原本勾選是直接把 completed 翻面存回 reminders，而系統沒有任何地方會重置它。
+  // 因此那個布林值的實際語意是「這位病患曾在某個不明時點勾過這一格」——
+  // 沒有日期、沒有歷史，明天打開還是勾著的。
+  //
+  // 病患端只看今天，這個缺陷看起來無害；但一旦要讓醫師看見遵從狀況，
+  // 它就會變成「拿一個沒有意義的數字做臨床判斷」。改為逐日記錄之後，
+  // 「每天重置」是新的一天沒有記錄的自然結果，不需要排程去清空任何東西——
+  // 而且過去的資料被保留下來，醫師才有趨勢可看。
+  //
+  // 【每日記錄是自足的】
+  // 每一天連同當天的排程內容一起存（time/text/total），而不是只存索引。
+  // 醫師日後調整用藥排程時，舊記錄仍然描述得出「那天要吃的是什麼」；
+  // 若只存索引，改一次排程就會讓所有歷史記錄指向錯誤的藥。
+  adherence: {
+    KEEP_DAYS: 30,
+
+    // 用當地日期，不可用 toISOString().slice(0,10)——那是 UTC。
+    // 在 UTC+8，早上 8 點以前勾的藥會被記進前一天，
+    // 於是「今天」永遠顯示未回報，而昨天莫名其妙多了一筆。
+    dayKey(d) {
+      const t = d || new Date();
+      const p = (n) => String(n).padStart(2, '0');
+      return t.getFullYear() + '-' + p(t.getMonth() + 1) + '-' + p(t.getDate());
+    },
+
+    // 一則提醒在當天的識別。時間是排程的自然鍵，但同一天可能有兩則同時間的提醒，
+    // 因此併用內容一起當鍵。
+    slotKey(reminder) {
+      return (reminder.time || '') + '|' + (reminder.text || '');
+    },
+
+    async record(username, dayKey, dayRecord) {
+      const ref = window.db.collection('patient_data').doc(username);
+      const snap = await ref.get();
+      // 與 addMedicationToPatient 同樣的處理（P1-2）：查無病歷時回報事實，
+      // 不要正常返回讓呼叫端以為已經寫入
+      if (!snap.exists) return { persisted: false, reason: 'no-record' };
+      const log = Object.assign({}, snap.data().adherenceLog || {});
+      log[dayKey] = dayRecord;
+      // 只保留最近 KEEP_DAYS 天。Firestore 單一文件有 1MB 上限，
+      // 一份無限成長的每日記錄最終會讓整份病歷寫不進去——
+      // 屆時連開藥與交互作用警示的寫入都會一起失敗，
+      // 而失敗的原因會非常難查。
+      const kept = {};
+      for (const k of Object.keys(log).sort().reverse().slice(0, this.KEEP_DAYS)) kept[k] = log[k];
+      await ref.update({ adherenceLog: kept });
+      return { persisted: true };
+    }
+  },
+
   // 【回傳寫入結果，不再靜默假裝成功】（稽核報告 P1-2）
   //
   // 原本查無病歷時是一句 `if (!snap.exists) return;`——函式正常返回，呼叫端

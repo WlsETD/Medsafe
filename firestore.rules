@@ -90,8 +90,11 @@ service cloud.firestore {
     // 這在 currentMeds 改讀真實 medications 之後尤其重要：屆時病患自寫 medications
     // 不只是污染核保判斷，而是直接污染交互作用檢測的輸入，屬於臨床安全問題。
     // ddiAlerts 與 stats 同理——那是系統評估的結果，不是使用者可宣告的事實。
+    // adherenceLog 是病患對自己服藥情形的逐日回報，性質上就是自述資料，
+    // 由病患本人寫入是正確的。醫師端必須據此標示為自述，
+    // 不可呈現為系統觀測到的事實（處理方式與 patient_summaries 的 attestedBy 相同）。
     function patientWritableFields() {
-      return ['reminders', 'profile', 'fhirPseudonym'];
+      return ['reminders', 'profile', 'fhirPseudonym', 'adherenceLog'];
     }
     function patientOnlyTouchesOwnFields() {
       return request.resource.data.diff(resource.data)
@@ -145,7 +148,7 @@ service cloud.firestore {
             || request.resource.data.assignedDoctor == 'doctor')
         && request.resource.data.keys().hasOnly(
              ['profile', 'stats', 'medications', 'ddiAlerts', 'aiInsights', 'reminders',
-              'assignedDoctor', 'assignedDoctorName', 'fhirPseudonym']);
+              'assignedDoctor', 'assignedDoctorName', 'fhirPseudonym', 'adherenceLog']);
     }
 
     // 化名只能從無到有寫入一次。允許反覆更改會讓公開 FHIR 伺服器上

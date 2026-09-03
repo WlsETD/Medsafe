@@ -268,18 +268,18 @@
                             <div v-for="(reminder, i) in reminders" :key="i" 
                                  class="flex items-center gap-6 p-5 rounded-2xl border-2 transition-all cursor-pointer group text-left"
                                  @click="toggleReminder(reminder)"
-                                 :class="reminder.completed ? 'bg-mint/30 border-primary/10 shadow-sm' : 'bg-bgMain border-transparent hover:bg-white hover:border-slate-100 hover:shadow-md'">
+                                 :class="isReminderDone(reminder) ? 'bg-mint/30 border-primary/10 shadow-sm' : 'bg-bgMain border-transparent hover:bg-white hover:border-slate-100 hover:shadow-md'">
                                 <div class="custom-checkbox flex-shrink-0 flex items-center justify-center transition-transform group-active:scale-90"
-                                     :class="{ 'checked shadow-lg': reminder.completed }">
-                                    <svg v-if="reminder.completed" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                     :class="{ 'checked shadow-lg': isReminderDone(reminder) }">
+                                    <svg v-if="isReminderDone(reminder)" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
                                     </svg>
                                 </div>
-                                <div class="flex-shrink-0 w-16 text-sm font-black text-title" :class="{ 'opacity-30': reminder.completed }">{{ reminder.time }}</div>
-                                <div class="flex-1 font-bold text-title transition-all" :class="{ 'line-through opacity-30 italic': reminder.completed }">{{ reminder.text }}</div>
-                                <div class="hidden sm:block text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition-all" 
-                                     :class="reminder.completed ? 'bg-primary text-white shadow-sm' : 'bg-white text-lightText border border-slate-100'">
-                                    {{ reminder.completed ? 'Completed' : 'Upcoming' }}
+                                <div class="flex-shrink-0 w-16 text-sm font-black text-title" :class="{ 'opacity-30': isReminderDone(reminder) }">{{ reminder.time }}</div>
+                                <div class="flex-1 font-bold text-title transition-all" :class="{ 'line-through opacity-30 italic': isReminderDone(reminder) }">{{ reminder.text }}</div>
+                                <div class="hidden sm:block text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition-all"
+                                     :class="isReminderDone(reminder) ? 'bg-primary text-white shadow-sm' : 'bg-white text-lightText border border-slate-100'">
+                                    {{ isReminderDone(reminder) ? 'Completed' : 'Upcoming' }}
                                 </div>
                             </div>
                         </div>
@@ -823,6 +823,10 @@
                     medications: patientData.medications,
                     ddiAlerts: patientData.ddiAlerts,
                     reminders: patientData.reminders,
+                    // 逐日服藥回報。「每天重置」是新的一天沒有記錄的自然結果，
+                    // 不需要任何排程去清空——同時過去的資料被保留，醫師才有趨勢可看。
+                    adherenceLog: {},
+                    todayKey: DbService.adherence.dayKey(),
                     showInsightsModal: false,
                     syncing: false,
                     // FHIR 目標位址供介面顯示。警告文字不可寫死——
@@ -1117,8 +1121,15 @@
                     const summary = DbService.buildUnderwritingSummary(this._username, { profile: this.profile });
                     return summary.ageBand;
                 },
+                // 今天已回報的項目。改讀 adherenceLog 之後，reminders[].completed
+                // 不再被使用——那個布林值沒有日期，語意只是「曾經勾過」。
+                todayTakenKeys() {
+                    const rec = this.adherenceLog[this.todayKey];
+                    if (!rec || !Array.isArray(rec.taken)) return [];
+                    return rec.taken.map(t => DbService.adherence.slotKey(t));
+                },
                 completedCount() {
-                    return this.reminders.filter(r => r.completed).length;
+                    return (this.reminders || []).filter(r => this.isReminderDone(r)).length;
                 },
                 // 依目前用藥與交互作用警示即時計算，取代原本寫死於資料中的常數
                 safetyScore() {
@@ -1175,6 +1186,10 @@
                         this.medications = data.medications;
                         this.ddiAlerts = data.ddiAlerts;
                         this.reminders = data.reminders;
+                        this.adherenceLog = data.adherenceLog || {};
+                        // 跨日仍開著頁面時，日界一過就該換到新的一天。
+                        // 沒有這行的話，過了午夜的勾選會寫進昨天的記錄。
+                        this.todayKey = DbService.adherence.dayKey();
                         if (data.assignedDoctorName) this.doctorName = data.assignedDoctorName;
                         // 主治醫師的帳號決定了誰能讀這串對話（conversations.participants），
                         // 因此必須取自病歷中的指派結果，不可由病患自行指定。
@@ -1460,15 +1475,44 @@
                     }
                     this.consentBusy = false;
                 },
+                // 勾選寫進「今天」這一格，而不是翻轉 reminders[].completed。
+                // 舊作法沒有日期也沒有重置，勾過就永遠是勾著的（見 db-service 的說明）。
+                slotKey(reminder) { return DbService.adherence.slotKey(reminder); },
+                isReminderDone(reminder) { return this.todayTakenKeys.indexOf(this.slotKey(reminder)) !== -1; },
+
                 async toggleReminder(reminder) {
-                    const before = reminder.completed;
-                    reminder.completed = !before;
+                    const key = this.slotKey(reminder);
+                    const day = this.todayKey;
+                    const prev = this.adherenceLog[day]
+                        ? JSON.parse(JSON.stringify(this.adherenceLog[day]))
+                        : null;
+
+                    const taken = prev ? prev.taken.slice() : [];
+                    const at = taken.findIndex(t => DbService.adherence.slotKey(t) === key);
+                    if (at === -1) {
+                        // 連同當天的排程內容一起存，日後排程改了也還讀得懂這筆記錄
+                        taken.push({ time: reminder.time, text: reminder.text, at: Date.now() });
+                    } else {
+                        taken.splice(at, 1);
+                    }
+                    const record = { total: this.reminders.length, taken: taken };
+                    this.adherenceLog = Object.assign({}, this.adherenceLog, { [day]: record });
+
                     try {
-                        await DbService.updateReminders(this._username, this.reminders);
+                        const r = await DbService.adherence.record(this._username, day, record);
+                        // 查無病歷時不可靜默當作成功（P1-2）——病患會以為已回報，
+                        // 而醫師端永遠看不到這筆
+                        if (!r.persisted) {
+                            throw new Error(r.reason === 'no-record' ? '查無您的病歷資料' : '未寫入');
+                        }
                     } catch (e) {
-                        console.error('用藥提醒同步失敗：', e);
-                        reminder.completed = before;
-                        this.triggerToast('同步失敗', '服藥狀態未能儲存，畫面已還原為先前狀態，請確認網路後重試。');
+                        console.error('用藥回報同步失敗：', e);
+                        // 還原成寫入前的狀態，而不是單純把這一格翻回去——
+                        // 失敗時整筆記錄都沒有寫進去
+                        const restored = Object.assign({}, this.adherenceLog);
+                        if (prev) restored[day] = prev; else delete restored[day];
+                        this.adherenceLog = restored;
+                        this.triggerToast('同步失敗', '服藥回報未能儲存，畫面已還原為先前狀態，請確認網路後重試。');
                     }
                 },
                 openPasswordModal() {

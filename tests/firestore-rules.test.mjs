@@ -562,6 +562,28 @@ await run('H-3 核保端仍可建立保單',
   () => setDoc(doc(INS(), 'insurance_policies/POL2'), { customer: 'P001', name: '長照專案' }), 'allow');
 await run('H-3 管理員仍可刪除理賠紀錄', () => deleteDoc(doc(ADM(), 'insurance_claims/C1')), 'allow');
 
+// ── 服藥回報 adherenceLog ──────────────────────────────────────────────
+//
+// 逐日服藥回報。性質上是病患自述，由病患本人寫入是正確的；
+// 醫師讀得到（沿用既有的 patient_data 讀取權），但不該由核保端碰到——
+// 那是臨床追蹤資料，不在核保摘要的最小必要欄位之內。
+await run('adherenceLog 病患寫自己的服藥回報',
+  () => updateDoc(doc(P001(), 'patient_data/P001'), {
+    adherenceLog: { '2026-09-03': { total: 3, taken: [{ time: '08:00', text: '服用華法林', at: 1 }] } }
+  }), 'allow');
+await run('adherenceLog 病患寫他人的服藥回報',
+  () => updateDoc(doc(P001(), 'patient_data/atk'), { adherenceLog: { '2026-09-03': { total: 3, taken: [] } } }), 'deny');
+await run('adherenceLog 核保端寫入服藥回報',
+  () => updateDoc(doc(INS(), 'patient_data/P001'), { adherenceLog: { '2026-09-03': { total: 3, taken: [] } } }), 'deny');
+await run('adherenceLog 主治醫師讀得到病患的服藥回報',
+  () => getDoc(doc(DOC(), 'patient_data/P001')), 'allow');
+// 回報欄位不可成為夾帶臨床欄位的入口：affectedKeys() 的白名單必須照擋
+await run('adherenceLog 夾帶 medications 一併寫入',
+  () => updateDoc(doc(P001(), 'patient_data/P001'), {
+    adherenceLog: { '2026-09-03': { total: 1, taken: [] } },
+    medications: [{ name: '自己加的' }]
+  }), 'deny');
+
 console.log('');
 for (const r of results) console.log(r[0].padEnd(5), r[1], r[2] ? '\n      ' + r[2] : '');
 const failed = results.filter(r => r[0] === 'FAIL');
