@@ -312,7 +312,7 @@
                                 </div>
                                 <div class="flex-1 min-w-0 text-left">
                                     <div class="flex justify-between items-start mb-1 text-left text-left">
-                                        <span class="text-lg font-black text-title truncate text-left">{{ med.zhName }}</span>
+                                        <span class="text-lg font-black text-title truncate text-left">{{ medName(med).zh }}</span>
                                         <span :class="['text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter shrink-0', safetyOf(i).tone === 'danger' ? 'bg-red-50 text-danger' : (safetyOf(i).tone === 'warn' ? 'bg-amber-50 text-amber-700' : 'bg-mint text-primary')]">
                                             {{ safetyOf(i).label }}
                                         </span>
@@ -566,8 +566,8 @@
                                 <tbody>
                                     <tr v-for="(med, i) in medications" :key="i" class="bg-bgMain rounded-[32px] group transition-all hover:bg-white hover:shadow-xl hover:-translate-y-1 text-left text-left">
                                         <td class="py-8 pl-10 rounded-l-[32px] border-l-8 text-left" :class="safetyOf(i).tone === 'danger' ? 'border-danger' : (safetyOf(i).tone === 'warn' ? 'border-amber-400' : 'border-primary')">
-                                            <div class="font-black text-xl text-title leading-none mb-1 text-left">{{ med.zhName }}</div>
-                                            <div class="text-[11px] font-black text-lightText uppercase tracking-widest text-left">{{ med.name }}</div>
+                                            <div class="font-black text-xl text-title leading-none mb-1 text-left">{{ medName(med).zh }}</div>
+                                            <div class="text-[11px] font-black text-lightText uppercase tracking-widest text-left">{{ medName(med).en }}</div>
                                         </td>
                                         <td class="py-8 text-left">
                                             <div class="text-sm font-black text-title text-left">{{ med.dosage }}</div>
@@ -1311,9 +1311,16 @@
                                     };
                                     const variant = shortHash([med.dosage, med.freq, med.hospital]
                                         .map(x => String(x == null ? '' : x)).join('|'));
+                                    // 名稱必須經正規化再取用。醫師開立的處方存的是
+                                    // name_en/name_zh，而這裡原本只讀 name/zhName——
+                                    // 兩者皆為 undefined 時，identifier 會退化成固定的 'med'，
+                                    // 使該病患所有醫師開立的藥在 FHIR 伺服器上共用同一個
+                                    // identifier 而互相覆蓋；medicationCodeableConcept
+                                    // 更會直接上傳字串 "undefined (undefined)"。
+                                    const nm = window.DrugCatalog.medDisplayName(med);
                                     const medIdent = {
                                         system: deid.NAMESPACE + ':medication',
-                                        value: [ident.value, asciiSlug(med.name || med.zhName) || 'med', variant].join('-')
+                                        value: [ident.value, asciiSlug(nm.en || nm.zh) || 'med', variant].join('-')
                                     };
                                     return {
                                         resource: {
@@ -1321,7 +1328,7 @@
                                             identifier: [medIdent],
                                             status: 'active',
                                             subject: { reference: patientUrn },
-                                            medicationCodeableConcept: { text: `${med.name} (${med.zhName})` },
+                                            medicationCodeableConcept: { text: nm.zh && nm.en && nm.zh !== nm.en ? `${nm.en} (${nm.zh})` : (nm.en || nm.zh) },
                                             dosage: [{ text: `${med.dosage}，${med.freq}` }],
                                             note: [{ text: med.category }]
                                         },
@@ -1477,6 +1484,16 @@
                 },
                 // 勾選寫進「今天」這一格，而不是翻轉 reminders[].completed。
                 // 舊作法沒有日期也沒有重置，勾過就永遠是勾著的（見 db-service 的說明）。
+                // 用藥記錄的顯示名稱。正規化在 DrugCatalog（藥物身分的擁有者），
+                // 此處只是轉呼叫——系統中有兩種用藥記錄形狀並存
+                //（種子的 name/zhName、醫師開立的 name_en/name_zh），
+                // 直接讀單一欄位會讓另一種來源的藥顯示空白。
+                medName(med) {
+                    return window.DrugCatalog
+                        ? window.DrugCatalog.medDisplayName(med)
+                        : { zh: (med && (med.name_zh || med.zhName)) || '', en: (med && (med.name_en || med.name)) || '' };
+                },
+
                 slotKey(reminder) { return DbService.adherence.slotKey(reminder); },
                 isReminderDone(reminder) { return this.todayTakenKeys.indexOf(this.slotKey(reminder)) !== -1; },
 

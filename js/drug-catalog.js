@@ -505,6 +505,42 @@ window.DrugCatalog = (function () {
       return d.kind === 'group' ? d.atc : d.atc.slice(0, 5);
     },
 
+    // ── 用藥記錄的顯示名稱（單一正規化點）─────────────────────────────────
+    //
+    // 【為什麼需要這個函式】
+    // 系統裡有兩種用藥記錄形狀並存，來自兩個不同的寫入端：
+    //   種子與既有病歷： { name, zhName }
+    //   醫師開立的處方： { name_en, name_zh }
+    // 而每個讀取端各自只認得其中一種，於是：
+    //   dashboard 的處方卡讀 name_zh —— 種子用藥顯示空白
+    //   patient.html 讀 zhName     —— 醫師開立的藥顯示空白
+    //   patient.html 的 FHIR 同步以 `${med.name} (${med.zhName})` 組字串
+    //                              —— 醫師開立的藥上傳成 "undefined (undefined)"
+    //
+    // 每個讀取端各自補 fallback 只會讓四份幾乎相同的判斷散落各處，
+    // 下一個新欄位出現時再錯一次。名稱屬於藥物身分，本檔是它的擁有者，
+    // 正規化就放在這裡，讓所有讀取端問同一個問題。
+    //
+    // ATC 優先：那是系統中藥物的唯一身分，且目錄的名稱是正規寫法。
+    // 醫師可能輸入「可邁丁」，病歷可能存「warfarin sodium」，
+    // 兩者都應顯示為同一個名字，否則同一種成分在不同畫面上看起來像不同的藥。
+    //
+    // 【命名】本檔已有一個 displayName(atc)：收 ATC 碼、回傳
+    // 「Warfarin（華法林）」這樣的單一字串。兩者用途不同，
+    // 同名會讓後定義者靜默覆蓋先定義者——物件字面值中的重複鍵不會報錯，
+    // 只會安靜地少掉一個函式。故此處另取名 medDisplayName。
+    medDisplayName(med) {
+      if (!med) return { zh: '', en: '' };
+      const byCode = med.atc ? this.byAtc(med.atc) : null;
+      // 目錄查不到時退回記錄自身的欄位。此處刻意涵蓋兩種形狀，
+      // 並與 ddi-engine 的 rawName 取用順序一致（name_en || name || zhName || name_zh）。
+      const en = (byCode && byCode.name_en) || med.name_en || med.name || '';
+      const zh = (byCode && byCode.name_zh) || med.name_zh || med.zhName || '';
+      // 兩者皆空時，寧可顯示英文名或空字串，也不要顯示 "undefined"——
+      // 畫面上出現 undefined 會讓使用者以為系統壞了，而不是資料不全。
+      return { zh: zh || en, en: en || zh };
+    },
+
     // 是否為單一成分（而非類別碼）。劑量檢核、重複用藥偵測等只適用於成分。
     isSubstance(atc) {
       const d = this.byAtc(atc);

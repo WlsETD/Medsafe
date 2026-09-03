@@ -429,21 +429,26 @@
                                 </div>
                             </div>
                             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                                <div v-for="med in currentMeds" :key="med.id"
-                                     :class="['p-5 border rounded-3xl transition-all relative overflow-hidden group hover:shadow-xl hover:bg-white', getMedTheme(med.name_en).card]">
-                                    <div :class="['absolute top-0 left-0 w-1 h-full', getMedTheme(med.name_en).bar]"></div>
+                                <!-- 名稱一律經 medName() 取得。系統中有兩種用藥記錄形狀
+                                     （種子的 name/zhName、醫師開立的 name_en/name_zh），
+                                     直接讀單一欄位會讓另一種來源的藥顯示空白。
+                                     key 也不可只用 med.id——種子用藥沒有 id，
+                                     多筆 undefined 會造成 Vue 的 key 重複。 -->
+                                <div v-for="(med, mi) in currentMeds" :key="med.id || (med.atc + '-' + mi)"
+                                     :class="['p-5 border rounded-3xl transition-all relative overflow-hidden group hover:shadow-xl hover:bg-white', getMedTheme(medName(med).en).card]">
+                                    <div :class="['absolute top-0 left-0 w-1 h-full', getMedTheme(medName(med).en).bar]"></div>
                                     <div class="flex justify-between items-start mb-2">
                                         <div class="flex flex-col">
-                                            <div :class="['text-[9px] font-black uppercase tracking-widest', getMedTheme(med.name_en).text]">{{ med.hospital }}</div>
-                                            <div :class="['text-[7px] font-bold uppercase mt-0.5 px-1.5 py-0.5 rounded w-fit', getMedTheme(med.name_en).bar, 'text-white']">{{ getMedTheme(med.name_en).label }}</div>
+                                            <div :class="['text-[9px] font-black uppercase tracking-widest', getMedTheme(medName(med).en).text]">{{ med.hospital }}</div>
+                                            <div :class="['text-[7px] font-bold uppercase mt-0.5 px-1.5 py-0.5 rounded w-fit', getMedTheme(medName(med).en).bar, 'text-white']">{{ getMedTheme(medName(med).en).label }}</div>
                                         </div>
-                                        <div :class="['w-2.5 h-2.5 rounded-full ring-4 ring-white shadow-sm', getMedTheme(med.name_en).dot]"></div>
+                                        <div :class="['w-2.5 h-2.5 rounded-full ring-4 ring-white shadow-sm', getMedTheme(medName(med).en).dot]"></div>
                                     </div>
-                                    <div class="text-base font-black text-slate-800 group-hover:text-primary transition-colors leading-tight mb-0.5">{{ med.name_zh }}</div>
-                                    <div class="text-[10px] font-bold text-slate-400 mb-4">{{ med.name_en }}</div>
+                                    <div class="text-base font-black text-slate-800 group-hover:text-primary transition-colors leading-tight mb-0.5">{{ medName(med).zh }}</div>
+                                    <div class="text-[10px] font-bold text-slate-400 mb-4">{{ medName(med).en }}</div>
                                     <div class="flex justify-between items-center text-[10px] font-bold text-slate-500 border-t border-black/5 pt-3">
                                         <span>{{ med.dosage }}</span>
-                                        <span :class="getMedTheme(med.name_en).text">{{ med.freq }}</span>
+                                        <span :class="getMedTheme(medName(med).en).text">{{ med.freq }}</span>
                                     </div>
                                 </div>
                             </div>
@@ -1405,6 +1410,14 @@
                     const total = typeof rec.total === 'number' ? rec.total : reminders.length;
                     if (total > 0 && taken >= total) return { state: 'full', text: taken + '/' + total };
                     return { state: 'partial', text: taken + '/' + total };
+                },
+
+                // 用藥記錄的顯示名稱。正規化邏輯在 DrugCatalog（藥物身分的擁有者），
+                // 此處只是轉呼叫，避免同一份判斷散落在各個樣板裡。
+                medName(med) {
+                    return window.DrugCatalog
+                        ? window.DrugCatalog.medDisplayName(med)
+                        : { zh: (med && (med.name_zh || med.zhName)) || '', en: (med && (med.name_en || med.name)) || '' };
                 },
 
                 // 從選單挑一個藥。填入中文名——目錄的 resolve() 認得中英文與別名，
