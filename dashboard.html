@@ -147,7 +147,18 @@
                     </div>
                     <div class="flex-1 overflow-hidden">
                         <div class="text-sm font-bold truncate">{{ p.name }}</div>
+                        <!-- 顯示的是病歷號，不是身分證字號。診間畫面上不放跨系統的
+                             直接識別符——臨床上用不到，外洩代價卻極高。
+                             需要區分同名病患時應加出生年月日。 -->
                         <div class="text-[10px] font-medium opacity-50 uppercase tracking-wider">{{ p.id }}</div>
+                        <!-- 今日服藥回報（病患自述）。沒設提醒的病患不顯示，
+                             否則畫面上會出現一排需要逐一排除的灰點。 -->
+                        <div v-if="adherenceTodayFor(p)" class="flex items-center gap-1.5 mt-1">
+                            <span :class="['w-1.5 h-1.5 rounded-full shrink-0',
+                                           adherenceTodayFor(p).state === 'full' ? 'bg-success' :
+                                           adherenceTodayFor(p).state === 'partial' ? 'bg-amber-400' : 'bg-slate-600']"></span>
+                            <span class="text-[9px] font-bold opacity-60 truncate">{{ adherenceTodayFor(p).text }}</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -331,7 +342,15 @@
                                     <span class="text-[10px] font-bold text-slate-400">{{ adherenceReportedDays }}/7 天有回報</span>
                                 </div>
                                 <p class="text-[9px] font-bold text-slate-400 mb-3">病患自述，非系統觀測值</p>
-                                <div class="flex gap-1.5">
+
+                                <!-- 沒有排程時「未回報」是必然結果，不是遵從性問題。
+                                     把兩者畫成同一種灰色，醫師會把前者誤讀成後者。 -->
+                                <div v-if="!adherenceHasSchedule" class="p-4 bg-slate-50 rounded-xl text-center">
+                                    <div class="text-[10px] font-black text-slate-500">尚未設定用藥提醒</div>
+                                    <div class="text-[9px] font-bold text-slate-400 mt-1 leading-relaxed">此病患沒有服藥排程，因此沒有可回報的項目。這不是遵從性問題。</div>
+                                </div>
+
+                                <div v-else class="flex gap-1.5">
                                     <div v-for="d in adherenceDays" :key="d.key" class="flex-1 text-center"
                                          :title="d.key + '（' + (d.state === 'none' ? '無回報記錄' : d.taken + '/' + d.total + ' 項') + '）'">
                                         <div :class="['h-9 rounded-lg flex items-center justify-center text-[9px] font-black transition-all',
@@ -345,11 +364,17 @@
                                         <div class="text-[8px] font-bold text-slate-400 mt-1">{{ d.weekday }}</div>
                                     </div>
                                 </div>
-                                <div class="mt-3 p-3 bg-slate-50 rounded-xl">
+                                <div v-if="adherenceHasSchedule" class="mt-3 p-3 bg-slate-50 rounded-xl">
                                     <div class="text-[10px] font-black text-slate-600">今日：{{ adherenceTodayText }}</div>
                                     <!-- 今天還沒過完，早上看到 0/3 是正常的，不是遵從性問題 -->
-                                    <div class="text-[9px] font-bold text-slate-400 mt-1 leading-relaxed">
+                                    <div v-if="adherenceEverReported" class="text-[9px] font-bold text-slate-400 mt-1 leading-relaxed">
                                         灰色代表<strong>該日無回報記錄</strong>——病患當天未開啟系統，不代表未服藥。今日進度仍在累計中。
+                                    </div>
+                                    <!-- 七天全無記錄時要說得更明白：這是「還沒開始用這個功能」，
+                                         不是「連續七天沒吃藥」。兩者在畫面上長得一樣，
+                                         但醫師據此採取的行動完全不同。 -->
+                                    <div v-else class="text-[9px] font-bold text-amber-600 mt-1 leading-relaxed">
+                                        近 7 日<strong>完全沒有回報記錄</strong>。最可能的原因是病患尚未使用服藥回報功能，而非連續漏服；建議回診時確認其實際用藥情形。
                                     </div>
                                 </div>
                             </div>
@@ -490,9 +515,43 @@
                     
                     <div class="p-8 space-y-6">
                         <div class="grid grid-cols-2 gap-6">
-                            <div>
+                            <!-- 【可搜尋，但仍接受自由文字】
+                                 醫師本來就可能開立目錄以外的藥，禁止輸入會讓系統擋住合法處置。
+                                 因此選單只是輔助，真正重要的是下方那行提示——
+                                 它讓「這個藥不會參與交互作用比對」這件事在開立前就看得見，
+                                 而不是等到檢測回報「未發現」時被誤讀成安全。 -->
+                            <div class="relative">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">藥品名稱</label>
-                                <input v-model="newRx.drugName" :disabled="aiCheckStatus === 'checking'" type="text" placeholder="輸入藥名..." class="w-full disabled:opacity-60 bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-primary/20 focus:bg-white transition-all outline-none">
+                                <input v-model="newRx.drugName" :disabled="aiCheckStatus === 'checking'" type="text"
+                                       @focus="drugPickerOpen = true"
+                                       @input="drugPickerOpen = true"
+                                       @keydown.escape="drugPickerOpen = false"
+                                       @blur="drugPickerOpen = false"
+                                       autocomplete="off"
+                                       placeholder="輸入藥名或 ATC 碼搜尋..."
+                                       class="w-full disabled:opacity-60 bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-primary/20 focus:bg-white transition-all outline-none">
+
+                                <div v-if="drugPickerOpen && drugOptions.length" class="absolute z-30 left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 max-h-64 overflow-y-auto">
+                                    <button v-for="d in drugOptions" :key="d.atc" type="button"
+                                            @mousedown.prevent="pickDrug(d)"
+                                            class="w-full text-left px-5 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors">
+                                        <div class="flex items-baseline justify-between gap-3">
+                                            <span class="font-black text-sm text-slate-800">{{ d.name_zh }}</span>
+                                            <span class="font-mono text-[10px] font-bold text-primary shrink-0">{{ d.atc }}</span>
+                                        </div>
+                                        <div class="text-[10px] font-bold text-slate-400 mt-0.5">{{ d.name_en }} · {{ d.class_zh }}</div>
+                                    </button>
+                                </div>
+
+                                <!-- 解析狀態。這是醫師最需要知道、而原本完全看不到的一件事。 -->
+                                <div v-if="newRx.drugName.trim()" class="mt-2 px-1">
+                                    <div v-if="rxResolved" class="text-[10px] font-bold text-primary">
+                                        ✓ 已對應 {{ rxResolved.name_zh }}（{{ rxResolved.atc }}），會納入交互作用比對
+                                    </div>
+                                    <div v-else class="text-[10px] font-bold text-amber-600 leading-relaxed">
+                                        ⚠️ 此藥名不在系統目錄中。仍可開立，但<strong>不會參與交互作用比對</strong>——檢測結果的「未發現」不涵蓋這個藥。
+                                    </div>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">劑量</label>
@@ -766,6 +825,10 @@
                     toastTitle: '系統通知', toastMessage: '同步成功',
                     showPrescriptionModal: false,
                     newRx: { drugName: '', dosage: '', instruction: '' },
+                    // 藥品選單的開闔。選單只是輔助輸入——欄位仍接受自由文字，
+                    // 因為醫師本來就可能開立目錄以外的藥；系統該做的是
+                    // 明白告知那些藥無法比對交互作用，而不是禁止輸入。
+                    drugPickerOpen: false,
                     aiCheckStatus: 'idle',
                     ddiRuleCount: 0,
                     ddiRuleSource: 'local',
@@ -952,6 +1015,44 @@
                     const t = this.adherenceDays.find(d => d.isToday);
                     if (!t || t.state === 'none') return '今日尚未回報';
                     return t.taken + '/' + t.total + ' 項已回報';
+                },
+                // 這位病患有沒有設定用藥提醒。沒有排程時，「未回報」是必然的結果，
+                // 與「有排程卻沒回報」是兩件完全不同的事——後者才需要關心。
+                adherenceHasSchedule() {
+                    return !!(this.selectedPatient && (this.selectedPatient.reminders || []).length);
+                },
+                adherenceEverReported() {
+                    return this.adherenceDays.some(d => d.state !== 'none');
+                },
+
+                // ── 藥品搜尋 ────────────────────────────────────────────────
+                //
+                // 原本只是一個純文字輸入框。醫師得自己記得系統認得哪些寫法，
+                // 而 resolve() 查不到就回傳 null——那個藥會被開立，但永遠不會
+                // 進入交互作用比對。輸入「阿斯匹靈」有效、輸入「阿斯匹林」也有效，
+                // 但輸入「Aspirin 100mg tab」是否有效，醫師只能猜。
+                //
+                // 選單把目錄變成可見的，同時保留自由文字輸入。
+                drugOptions() {
+                    if (!window.DrugCatalog) return [];
+                    const q = (this.newRx.drugName || '').trim().toLowerCase();
+                    const all = window.DrugCatalog.all();
+                    if (!q) return all.slice(0, 12);
+                    const hit = (d) => {
+                        if ((d.name_en || '').toLowerCase().indexOf(q) !== -1) return true;
+                        if ((d.name_zh || '').indexOf(q) !== -1) return true;
+                        if ((d.atc || '').toLowerCase().indexOf(q) !== -1) return true;
+                        if ((d.class_zh || '').indexOf(q) !== -1) return true;
+                        return (d.aliases || []).some(a => String(a).toLowerCase().indexOf(q) !== -1);
+                    };
+                    return all.filter(hit).slice(0, 12);
+                },
+                // 目前輸入的字串能不能解析為藥物身分。這是醫師最需要知道、
+                // 而原本完全看不到的一件事：解析不到的藥不會參與交互作用比對。
+                rxResolved() {
+                    const n = (this.newRx.drugName || '').trim();
+                    if (!n || !window.DrugCatalog) return null;
+                    return window.DrugCatalog.resolve(n);
                 }
             },
             async created() {
@@ -1212,6 +1313,29 @@
                         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     });
                 },
+                // 側欄每一位病患的今日回報狀態。醫師要能一眼掃過清單看出
+                // 「誰今天還沒回報」，而不是逐一點開才看得到。
+                //
+                // 沒有設定用藥提醒的病患不顯示任何標記——對他們而言「未回報」
+                // 是必然結果，畫一個灰點只會製造需要逐一排除的雜訊。
+                adherenceTodayFor(p) {
+                    const reminders = (p && p.reminders) || [];
+                    if (!reminders.length) return null;
+                    const rec = ((p && p.adherenceLog) || {})[DbService.adherence.dayKey()];
+                    if (!rec) return { state: 'none', text: '今日未回報' };
+                    const taken = Array.isArray(rec.taken) ? rec.taken.length : 0;
+                    const total = typeof rec.total === 'number' ? rec.total : reminders.length;
+                    if (total > 0 && taken >= total) return { state: 'full', text: taken + '/' + total };
+                    return { state: 'partial', text: taken + '/' + total };
+                },
+
+                // 從選單挑一個藥。填入中文名——目錄的 resolve() 認得中英文與別名，
+                // 而中文名是醫囑上實際會出現的寫法。
+                pickDrug(d) {
+                    this.newRx.drugName = d.name_zh || d.name_en;
+                    this.drugPickerOpen = false;
+                },
+
                 switchToPatient(p) {
                     // 換病患後舊的檢測結論即失效，必須清掉，否則會對新病患顯示上一位的比對結果
                     this.resetAiCheck();
