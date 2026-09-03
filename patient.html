@@ -129,8 +129,25 @@
                     <button @click="showMobileMenu = false" aria-label="關閉選單" class="lg:hidden p-2 text-slate-400 hover:text-primary"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
                 </div>
 
+                <!-- 資料授權獨立為一個檢視，而非首頁下方的一個區塊。
+                     它是病患對自己資料的控制權入口——決定保險端看不看得到自己的
+                     用藥摘要。放在長頁面底部要捲很久才看得到，等於把一個
+                     「隨時可以撤回」的權利藏起來。個資法上的同意要能被有效行使，
+                     前提是使用者找得到它。 -->
                 <nav class="flex-1 space-y-2">
-                    <a href="#" class="sidebar-item flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold bg-primary/10 text-primary"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> 健康首頁</a>
+                    <button @click="activeView = 'home'; showMobileMenu = false"
+                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all text-left', activeView === 'home' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+                        <span>健康首頁</span>
+                    </button>
+                    <button @click="activeView = 'consent'; showMobileMenu = false"
+                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all text-left', activeView === 'consent' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                        <span class="flex-1">資料授權</span>
+                        <!-- 目前有幾份有效授權。這個數字要在側欄就看得到——
+                             「誰現在讀得到我的資料」不該需要點進去才知道。 -->
+                        <span v-if="activeConsents.length" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary text-white shrink-0">{{ activeConsents.length }}</span>
+                    </button>
                 </nav>
 
                 <div class="mt-auto pt-6 border-t border-slate-100">
@@ -197,7 +214,7 @@
             </header>
 
             <!-- Welcome Hero -->
-            <section class="rounded-[32px] p-8 sm:p-12 text-white relative overflow-hidden shadow-premium animate-fade-in text-left" style="background: url('images/customer.png') center/cover no-repeat;">
+            <section v-show="activeView === 'home'" class="rounded-[32px] p-8 sm:p-12 text-white relative overflow-hidden shadow-premium animate-fade-in text-left" style="background: url('images/customer.png') center/cover no-repeat;">
                 <div class="absolute inset-0 bg-black/75 rounded-[32px]"></div>
                 <div class="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl"></div>
                 <div class="relative z-10 flex flex-col lg:flex-row justify-between lg:items-center gap-8">
@@ -240,7 +257,7 @@
             </section>
 
             <!-- Dashboard Grid -->
-            <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+            <div v-show="activeView === 'home'" class="grid grid-cols-1 xl:grid-cols-3 gap-8">
                 <!-- Left: Medications & Reminders -->
                 <div class="xl:col-span-2 space-y-8">
                     <!-- Today's Schedule -->
@@ -383,7 +400,7 @@
             </div>
 
             <!-- Urgent Alerts Section -->
-            <section v-if="ddiAlerts.length > 0" class="animate-fade-in text-left">
+            <section v-if="ddiAlerts.length > 0" v-show="activeView === 'home'" class="animate-fade-in text-left">
                 <div class="bg-red-50 border-2 border-danger/10 rounded-[32px] p-8 text-left">
                     <div class="flex items-center gap-4 mb-6 text-left">
                         <div class="w-12 h-12 bg-danger text-white rounded-2xl flex items-center justify-center animate-pulse shadow-lg shrink-0">
@@ -419,7 +436,7 @@
             <!-- 資料授權（稽核報告 P1-6）
                  修復前，保險端可讀取每一位病患的完整用藥史，病患既不知情也無從拒絕。
                  現在改為：預設不提供，病患主動授權後才提供，且只提供核保所需的最小欄位。 -->
-            <section class="animate-fade-in text-left">
+            <section v-show="activeView === 'consent'" class="animate-fade-in text-left">
                 <div class="flex items-center gap-3 mb-6">
                     <span class="w-1.5 h-7 bg-primary rounded-full"></span>
                     <h2 class="text-2xl font-black text-title tracking-tight">資料授權</h2>
@@ -808,6 +825,8 @@
                     _username: user.username || 'patient01',
                     // 資料授權（P1-6）
                     myConsents: [],
+                    // 側欄的檢視切換。資料授權獨立成一個檢視，不再是首頁底部的區塊。
+                    activeView: 'home',
                     consentInsurer: '',
                     consentDays: 90,
                     consentBusy: false,
@@ -1120,6 +1139,11 @@
                 myAgeBand() {
                     const summary = DbService.buildUnderwritingSummary(this._username, { profile: this.profile });
                     return summary.ageBand;
+                },
+                // 目前仍然有效的授權（未撤回、未到期）。側欄的數字用它，
+                // 讓「現在有幾個人讀得到我的資料」不必點進去才知道。
+                activeConsents() {
+                    return (this.myConsents || []).filter(c => this.consentState(c) === '有效');
                 },
                 // 今天已回報的項目。改讀 adherenceLog 之後，reminders[].completed
                 // 不再被使用——那個布林值沒有日期，語意只是「曾經勾過」。
