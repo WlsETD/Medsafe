@@ -48,7 +48,7 @@
     
     <style>
         body { font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif; background-color: #F8FAF9; }
-        [v-cloak] { display: none; }
+        [v-cloak] { display: none !important; }
         .hero-gradient { background: linear-gradient(135deg, #24A15D 0%, #175C3A 100%); }
         .animate-float { animation: float 6s ease-in-out infinite; }
         @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-20px); } }
@@ -202,7 +202,7 @@
                     </div>
                     <div>
                         <label class="block text-sm font-bold text-title mb-1">帳號</label>
-                        <input type="text" v-model="regUsername" name="new-username" autocomplete="username" placeholder="英數字、底線，3-20 字元" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-2.5 px-5 outline-none transition-all font-medium">
+                        <input type="text" v-model="regUsername" name="new-username" autocomplete="username" placeholder="英數字、底線與句點，3-20 字元" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-2.5 px-5 outline-none transition-all font-medium">
                     </div>
                     <div>
                         <label class="block text-sm font-bold text-title mb-1">密碼</label>
@@ -402,6 +402,15 @@
 
                     if (!name || !username || !password) { this.error = '請完整填寫姓名、帳號與密碼'; return; }
                     if (!/^[a-z0-9_.]{3,20}$/.test(username)) { this.error = '帳號限英數字、底線與句點，長度 3-20'; return; }
+                    // 帳號不可為身分證字號格式（首碼英文字母 + 1/2/8/9 + 8 碼數字）。
+                    // username 轉大寫後若符合此格式，即與真實身分證字號的命名空間重疊——
+                    // 一旦有人選了自己的證號當帳號，它會被明文用在畫面、聊天路由鍵與稽核記錄裡，
+                    // 而 patient_data 的遮罩與查閱留痕機制只保護 profile.nationalId 欄位本身，
+                    // 保護不到「帳號 ID 本身就是證號」這件事。
+                    if (/^[a-z][1289][0-9]{8}$/.test(username)) {
+                        this.error = '帳號不可使用身分證字號格式，請另外設定帳號';
+                        return;
+                    }
                     if (password.length < 6) { this.error = '密碼至少需要 6 碼'; return; }
                     if (password !== this.regPasswordConfirm) { this.error = '兩次輸入的密碼不一致'; return; }
                     if (!this.agreeTerms) { this.error = '請先閱讀並勾選同意使用者條款'; return; }

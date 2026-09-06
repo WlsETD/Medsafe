@@ -171,6 +171,19 @@ await run('核保端讀取醫病對話',
 await run('非參與者讀取對話中繼資料',
   () => getDoc(doc(ATK(), 'conversations/P001')), 'deny');
 
+// 【本次修復的迴歸測試】對話文件的 ID 就是病患 username，chatStore.js 的
+// addMessage() 在送出第一則訊息前必須先 get() 一次判斷要 create 還是直接
+// 寫子集合。文件尚不存在時 resource 為 null，原本的規則沒有處理這個情況，
+// 導致這次讀取本身就被拒絕——第一則訊息永遠送不出去，症狀看起來像是
+// 「沒有權限傳訊息」，實際上是「沒有權限確認一份還不存在的文件不存在」。
+// 這裡用 'atk' 是因為它此刻確實還沒有任何 conversations 文件。
+await run('病患讀自己尚不存在的對話（首次送出訊息前的判斷讀取）',
+  () => getDoc(doc(ATK(), 'conversations/atk')), 'allow');
+// 但放行不可寬到成為存在性神諭：非參與者、非本人不可探測「這位病患是否
+// 已有對話」，那等於洩漏就醫或聯繫事實本身
+await run('非參與者探測他人尚不存在的對話',
+  () => getDoc(doc(INS(), 'conversations/atk')), 'deny');
+
 // from 必須等於自己的角色：少了這條，病患可以貼出一則「醫師說可以加倍劑量」
 await run('病患冒用醫師身分發言',
   () => addDoc(MSGS(P001(), 'P001'), { from: 'doctor', text: '可以加倍劑量', at: serverTimestamp() }), 'deny');
@@ -282,6 +295,35 @@ await run('授予時即宣稱已撤回（狀態不一致的同意書）',
 // 撤回只能由病患，且只能改 revokedAt
 await run('病患撤回自己給出的同意',
   () => updateDoc(doc(P001(), 'consents/P001__insurance01'), { revokedAt: serverTimestamp() }), 'allow');
+
+// ── 重新授權（regrant，本次修復）────────────────────────────────────────
+//
+// 文件 ID 固定為 {病患}__{保險端}，撤回後若要再次授權同一保險端，寫入的
+// 是同一個文件——Firestore 依「文件是否已存在」分辨 create/update，
+// 不看客戶端呼叫的是 set() 還是 update()，因此永遠落在 update 規則裡，
+// create 規則不會再被求值。修復前 update 只允許改 revokedAt 這一個欄位，
+// 等於撤回是單向門：同一保險端一旦被撤回，病患再也無法重新打開，
+// 只能改找別的保險端帳號——這在 DEPLOY_CHECKLIST 建議的「先撤回、
+// 再重新授權」demo 流程中會直接卡死。
+const regrantExpiry = Timestamp.fromDate(new Date(Date.now() + 30 * 86400000));
+// 先測 cid 不符：此時文件仍處於上一步撤回後的狀態（revokedAt != null），
+// 這樣才是真的在測 isConsentRegrant() 的 cid 檢查，而不是被
+// 「文件目前非撤回狀態」這個更早的條件擋下
+await run('重新授權時夾帶不同的保險端（內容與文件 ID 不符）',
+  () => setDoc(doc(P001(), 'consents/P001__insurance01'), {
+    patient: 'P001', insurer: 'insurance02', scope: 'underwriting-summary',
+    grantedAt: serverTimestamp(), expiresAt: regrantExpiry, revokedAt: null }), 'deny');
+await run('病患重新授權已撤回的同一保險端',
+  () => setDoc(doc(P001(), 'consents/P001__insurance01'), {
+    patient: 'P001', insurer: 'insurance01', scope: 'underwriting-summary',
+    grantedAt: serverTimestamp(), expiresAt: regrantExpiry, revokedAt: null }), 'allow');
+// 非撤回狀態（例如已過期但未撤回）的同意書不可被整批改寫——
+// regrant 分支要求 resource.data.revokedAt != null，這條路徑仍然只認
+// 「先撤回、才能重新授權」，不能用來繞過一般的 update 欄位限制
+await run('非撤回狀態的同意書不可整批改寫',
+  () => setDoc(doc(ATK(), 'consents/atk__insurance01'), {
+    patient: 'atk', insurer: 'insurance01', scope: 'underwriting-summary',
+    grantedAt: serverTimestamp(), expiresAt: regrantExpiry, revokedAt: null }), 'deny');
 
 await run('保險端撤改同意書（延長自己的授權）',
   () => updateDoc(doc(INS(), 'consents/P900__insurance01'),
@@ -434,6 +476,20 @@ await run('偽造的 user_roles 仍無法讀取他人病歷（token.email 第二
 await run('合法自助註冊（username 與 Auth email 一致）',
   () => setDoc(doc(NEW4(), 'user_roles/uidNew4'),
     { username: 'newbie4', name: '新使用者', role: 'patient', status: 'active' }), 'allow');
+
+// ── username 不可為身分證字號格式（本次修復）──────────────────────────
+//
+// 實測發現正式資料庫存在一個帳號 username 恰好是一組檢查碼有效的身分證字號
+// （轉大寫後即為標準格式），且該值會被明文用於畫面顯示、聊天路由鍵與稽核
+// actor 欄位，未受 patient_data.nationalId 的遮罩與查閱留痕保護。
+// looksLikeNationalId() 只驗格式（不驗檢查碼），與 nationalIdFormatOk() 同一個理由。
+const NIDUSER = () => ctxFor('uidNidUser', 'k223319166@medsafe.local').firestore();
+await run('自助註冊 username 為身分證字號格式（user_roles）',
+  () => setDoc(doc(NIDUSER(), 'user_roles/uidNidUser'),
+    { username: 'k223319166', name: '測試', role: 'patient', status: 'active' }), 'deny');
+await run('自助註冊 username 為身分證字號格式（users，大小寫不敏感）',
+  () => setDoc(doc(NIDUSER(), 'users/K223319166'),
+    { uid: 'uidNidUser', name: '測試', role: 'patient', status: 'active' }), 'deny');
 
 // 第 18 條：`allow update` 必須保有 resource != null 守衛。
 //
@@ -1009,6 +1065,59 @@ await run('指派 醫師具名建立照護關係',
     expiresAt: Timestamp.fromDate(new Date(Date.now() + 90 * 86400000)) }), 'allow');
 await run('指派 建立後即可讀取該病歷',
   () => getDoc(doc(DOC(), 'patient_data/nid2')), 'allow');
+
+// ── 到期時間上限（本次修復）──────────────────────────────────────────
+//
+// id-presented 與緊急調閱是同一種「醫師自行宣告即可取得存取權」的語意，
+// 但原本只有緊急調閱受 4 小時上限約束，這裡完全沒有上限——對照組實測
+// 曾證實醫師可自行建立 10 年期關係並隨即讀到完整病歷。用一個獨立於
+// nid2 的病患名（nidcap）測試，避免影響上面 nid2 既有的關係狀態。
+await run('指派 到期時間超過 91 天上限（id-presented，建立）',
+  () => setDoc(doc(DOC(), 'care_relations/nidcap__doctor'), {
+    patient: 'nidcap', doctor: 'doctor', status: 'active', basis: 'id-presented',
+    grantedAt: serverTimestamp(),
+    expiresAt: Timestamp.fromDate(new Date(Date.now() + 365 * 86400000)) }), 'deny');
+await run('指派 到期時間在 91 天上限內可正常建立（id-presented）',
+  () => setDoc(doc(DOC(), 'care_relations/nidcap__doctor'), {
+    patient: 'nidcap', doctor: 'doctor', status: 'active', basis: 'id-presented',
+    grantedAt: serverTimestamp(),
+    expiresAt: Timestamp.fromDate(new Date(Date.now() + 90 * 86400000)) }), 'allow');
+// 續期／重新報到同樣受上限約束，否則「先建立在上限內、再用 update 續到很久以後」
+// 就成了繞過上限的後門
+await run('指派 續期延到超過上限同樣被拒（update）',
+  () => updateDoc(doc(DOC(), 'care_relations/nidcap__doctor'), {
+    expiresAt: Timestamp.fromDate(new Date(Date.now() + 365 * 86400000)) }), 'deny');
+// 只改 status（撤銷）不涉及 expiresAt，不受本次上限檢查影響
+await run('指派 只改 status 不受到期上限檢查影響',
+  () => updateDoc(doc(DOC(), 'care_relations/nidcap__doctor'), { status: 'revoked' }), 'allow');
+// 病患本人授予（basis: 'patient'）走的是同一個 create 規則，上限同樣適用——
+// 不是只挑 id-presented 這條路徑收斂，而是整個集合都不該有「永久授權」
+await run('指派 病患自行授予時到期時間同樣受上限約束',
+  () => setDoc(doc(NID1(), 'care_relations/nid1__otherdoc2'), {
+    patient: 'nid1', doctor: 'otherdoc2', status: 'active',
+    grantedAt: serverTimestamp(),
+    expiresAt: Timestamp.fromDate(new Date(Date.now() + 365 * 86400000)) }), 'deny');
+
+// 【本次修復的迴歸測試】上面的 care_relations 已經授予成功，但 appointments
+// 的 create 規則原本只認得「病患本人掛號」這一條路徑。confirmAssign() 在
+// 授予關係後緊接著建立一筆掛號紀錄（清單來源），這筆寫入原本會被拒絕——
+// 醫師讀得到病歷，卻不會出現在「進行中」清單上，F5 後就像這位病患消失了。
+await run('指派 醫師報到後建立掛號紀錄（清單來源）',
+  () => setDoc(doc(DOC(), 'appointments/apt-nid2'), apptDoc({
+    patient: 'nid2', patientName: 'nid2', note: '櫃檯報到（持證件）' })), 'allow');
+// 沒有先建立照護關係就不能無中生有一筆掛號，否則醫師能替任意病患
+// 捏造一次不曾發生的診療
+await run('指派 醫師對無照護關係的病患建立掛號紀錄',
+  () => setDoc(doc(DOC(), 'appointments/apt-nid1'), apptDoc({
+    patient: 'nid1', patientName: 'nid1', note: '櫃檯報到（持證件）' })), 'deny');
+
+// 報到後醫師同樣要能開啟與這位病患的對話（同一個 resource == null 判斷讀取），
+// 但僅限於已有進行中照護關係的病患——不是任意病患
+await run('指派 醫師讀有照護關係病患尚不存在的對話',
+  () => getDoc(doc(DOC(), 'conversations/nid2')), 'allow');
+await run('指派 醫師讀無照護關係病患尚不存在的對話',
+  () => getDoc(doc(DOC(), 'conversations/nid1')), 'deny');
+
 // 少了 basis 就無從分辨這份授權是誰給的
 await run('指派 醫師建立但未標示 basis',
   () => setDoc(doc(DOC(), 'care_relations/nid1__doctor'), {

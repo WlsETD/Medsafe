@@ -46,7 +46,7 @@
 
     <style>
         body { font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif; background-color: #F5F4F5; color: #292E4C; }
-        [v-cloak] { display: none; }
+        [v-cloak] { display: none !important; }
         .hero-navy { background: linear-gradient(135deg, #292E4C 0%, #3D446A 100%); }
         .sidebar-item.active { background: rgba(29, 211, 176, 0.15); color: #1DD3B0; }
         .turquoise-gradient { background: linear-gradient(135deg, #1DD3B0 0%, #17A890 100%); }
@@ -323,7 +323,7 @@
                             </div>
                             <div class="space-y-4 mb-8 flex-1">
                                 <div class="flex justify-between text-left"><span class="text-xs font-bold text-lightText uppercase">保戶 ID</span><span class="text-xs font-black text-navy">#{{ user.id }}</span></div>
-                                <div class="flex justify-between text-left"><span class="text-xs font-bold text-lightText uppercase">年齡</span><span class="text-xs font-black text-navy">{{ user.age }} 歲</span></div>
+                                <div class="flex justify-between text-left"><span class="text-xs font-bold text-lightText uppercase">年齡</span><span class="text-xs font-black text-navy">{{ user.age }}</span></div>
                                 <div class="flex justify-between text-left"><span class="text-xs font-bold text-lightText uppercase">持有保單</span><span class="text-xs font-black text-navy">{{ user.policies }} 份</span></div>
                             </div>
                             <div class="bg-slate-50 p-5 rounded-3xl flex justify-between items-center mb-6 text-left">

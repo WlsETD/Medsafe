@@ -74,12 +74,24 @@ service cloud.firestore {
         && (ridStartsWithMe(rid) || (isDoctor() && ridEndsWithMe(rid)));
     }
 
+    // username 不可為身分證字號格式（首碼英文字母 + 1/2/8/9 + 8 碼數字）。
+    // 前端的 login.html 已擋，但前端檢查繞得過去——client-side 只是提示，
+    // 真正的邊界在這裡。username 會被明文用在畫面顯示、聊天路由鍵與稽核記錄的
+    // actor 欄位，不像 profile.nationalId 有遮罩與查閱留痕保護；一旦有人選了
+    // 自己的身分證字號當帳號，等於把證號公開展示在整個系統裡。
+    // 只驗格式（不驗檢查碼），與 nationalIdFormatOk() 同一個理由：
+    // 目的是避免命名空間與真實證號重疊，不是要驗證這是不是一組「有效」的號碼。
+    function looksLikeNationalId(u) {
+      return u is string && u.lower().matches('[a-z][1289][0-9]{8}');
+    }
+
     // 自助註冊限定只能建立「patient」角色、狀態為 active 的自己身分，防止自我提權
     function isSelfRegisteringPatient(uid) {
       return isAuthed() && request.auth.uid == uid
         && request.resource.data.role == 'patient'
         && request.resource.data.status == 'active'
-        && ownsUsername(request.resource.data.username);
+        && ownsUsername(request.resource.data.username)
+        && !looksLikeNationalId(request.resource.data.username);
     }
 
     // 身分索引：只有本人能讀自己的 profile；新增只能是 admin，或使用者本人自助註冊為 patient；
@@ -106,7 +118,8 @@ service cloud.firestore {
         || (isAuthed() && request.resource.data.uid == request.auth.uid
             && request.resource.data.role == 'patient'
             && request.resource.data.status == 'active'
-            && ownsUsername(username));
+            && ownsUsername(username)
+            && !looksLikeNationalId(username));
       allow update, delete: if isAdmin();
     }
 
@@ -325,8 +338,16 @@ service cloud.firestore {
           && profile().username in convData().participants;
       }
 
+      // 對話文件的 ID 就是病患 username，因此在它被第一則訊息建立之前，
+      // 呼叫端（chatStore.js 的 addMessage）必須先 get() 一次判斷要 create 還是
+      // 直接寫子集合。resource == null 時若沒有這一條，這次判斷用的讀取本身
+      // 就會被拒絕——第一則訊息永遠送不出去，而規則的錯誤訊息看起來像是
+      // 「沒有權限傳訊息」，實際上只是「沒有權限確認一份還不存在的文件不存在」。
+      // 與 care_relations 的 ridNamesMe() 同一個道理，開放對象限縮到
+      // 病患本人或與這位病患有進行中照護關係的醫師，不對外洩漏參與者名單。
       allow read: if isAdmin()
-        || (isActive() && resource != null && profile().username in resource.data.participants);
+        || (isActive() && resource != null && profile().username in resource.data.participants)
+        || (isActive() && resource == null && (isOwnUsername(pid) || hasActiveCareRelation(pid)));
       // 建立者必須是參與者之一，且病患本人必須在名單內——
       // 一串「病患不在參與者中」的病患對話，等於在病患不知情下建立的病歷。
       allow create: if isActive()
@@ -407,13 +428,34 @@ service cloud.firestore {
         && request.resource.data.grantedAt == request.time
         && request.resource.data.expiresAt is timestamp
         && request.resource.data.revokedAt == null;
+      // 重新授權（regrant）：撤回後若要再次授權同一保險端，寫入的是
+      // 同一個文件 ID（{病患}__{保險端}），因此永遠落在 update 規則裡——
+      // Firestore 依「文件是否已存在」分辨 create/update，不是依客戶端
+      // 呼叫的是 set() 還是 update()。少了這一條，撤回會變成單向門：
+      // 病患再也無法把同一份授權重新打開，只能改找別的保險端帳號。
+      // 只在目前確實是撤回狀態時才放行，且驗證條件與 create 相同——
+      // 不可趁機把 patient/insurer 改成別人，也不可讓 revokedAt 以外的
+      // 條件比 create 更寬鬆。
+      function isConsentRegrant() {
+        return resource.data.revokedAt != null
+          && request.resource.data.patient == resource.data.patient
+          && request.resource.data.insurer == resource.data.insurer
+          && cid == request.resource.data.patient + '__' + request.resource.data.insurer
+          && request.resource.data.scope == 'underwriting-summary'
+          && request.resource.data.grantedAt == request.time
+          && request.resource.data.expiresAt is timestamp
+          && request.resource.data.revokedAt == null;
+      }
       // 撤回：只能由病患本人，且只能改 revokedAt。
       // 不允許刪除——同意與撤回的歷程本身就是需要保存的證據。
       allow update: if isActive()
         && resource != null
         && isOwnUsername(resource.data.patient)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revokedAt'])
-        && request.resource.data.revokedAt == request.time;
+        && (
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revokedAt'])
+           && request.resource.data.revokedAt == request.time)
+          || isConsentRegrant()
+        );
       allow delete: if false;
     }
 
@@ -650,11 +692,26 @@ service cloud.firestore {
       // 不阻擋，而是要求宣告者具名、時間由伺服器決定、且記錄不可竄改。
       // 差別在於這是常規流程，故不像緊急調閱那樣要求填寫理由——
       // 「病患持證件臨櫃」本身就是理由，而 basis 欄位已經說明了它。
+      // 到期時間必須有上限，不論哪一種建立路徑——一份可以填任意未來時間的
+      // 「有效期」與永久授權沒有差別。90 天（RELATION_DAYS，見 db-service.js
+      // 的 _grantRelation/grantByIdPresented）已是應用程式自訂的上限，足以
+      // 涵蓋回診與追蹤；這裡把它落實成規則層真正擋得住的邊界，而不只是
+      // 「正常情況下前端不會送出更長的值」。
+      //
+      // 這一點對 id-presented 尤其關鍵：對照 break_glass 同樣是醫師自行宣告
+      // 即可取得存取權，那裡有 4 小時上限與具名理由把關，這裡若沒有對應的
+      // 上限，等於留了一條不受節制的自我授權路徑（曾為對抗性稽核發現的缺口）。
+      // 加 1 天緩衝，容忍前端以日曆天數（而非精確 86400 秒）計算到期日
+      // 所產生的時區/夏令時誤差，不因此誤擋合法的建立請求。
+      function withinRelationCap() {
+        return request.resource.data.expiresAt < request.time + duration.value(91, 'd');
+      }
       allow create: if isActive()
         && rid == request.resource.data.patient + '__' + request.resource.data.doctor
         && request.resource.data.status == 'active'
         && request.resource.data.grantedAt == request.time
         && request.resource.data.expiresAt is timestamp
+        && withinRelationCap()
         && (
           (isOwnUsername(request.resource.data.patient)
            && request.resource.data.get('basis', 'patient') == 'patient')
@@ -673,7 +730,13 @@ service cloud.firestore {
         && (isOwnUsername(resource.data.patient)
             || (isDoctor() && resource.data.doctor == profile().username))
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['status', 'expiresAt', 'updatedAt']);
+             .hasOnly(['status', 'expiresAt', 'updatedAt'])
+        // 續期（重新掛號／重新報到）同樣受 90 天上限約束，理由同 create：
+        // 沒有這條，撤銷關係後的「重新指派」就成了繞過上限的後門。
+        // 只在 expiresAt 真的被這次寫入動到時才檢查——單純撤銷（只改 status）
+        // 不受影響。
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['expiresAt'])
+            || withinRelationCap());
       // 授予與撤銷的歷程本身即為證據，不可刪除
       allow delete: if false;
     }
@@ -781,6 +844,14 @@ service cloud.firestore {
       // 掛號：只能替自己掛。status 與 createdAt 不可由呼叫端自訂——
       // 否則病患可直接建立一筆 status 為「已完成」的就診紀錄，
       // 那是在病歷中捏造一次不曾發生的診療。
+      //
+      // 第二條路徑：醫護櫃檯持證件報到（db-service.js 的 confirmAssign 流程）。
+      // 這一步永遠緊接在 care_relations 已授予 id-presented 關係之後執行
+      // （見 appointments.create() 的呼叫順序），因此要求 hasActiveCareRelation()
+      // 而非放行任意醫師替任意病患建立就診紀錄——否則等同讓醫師自行捏造
+      // 一筆與自己無關的診療。少了這條路徑時，掛號本身會因權限不足而寫入失敗，
+      // 但 care_relations 已經授予成功：醫師讀得到病歷，畫面上卻不出現在
+      // 「進行中」清單裡（清單只認 appointments），F5 之後這位病患就像消失了一樣。
       allow create: if isActive() && (
         isAdmin()
         || (isOwnUsername(request.resource.data.patient)
@@ -793,6 +864,19 @@ service cloud.firestore {
             && request.resource.data.keys().hasOnly(
                  ['patient', 'patientName', 'doctor', 'doctorName', 'department',
                   'scheduledAt', 'status', 'createdAt', 'note'])
+           )
+        || (isDoctor()
+            && request.resource.data.doctor == profile().username
+            && ownsUsername(request.resource.data.doctor)
+            && request.resource.data.patient is string
+            && request.resource.data.patient.size() > 0
+            && request.resource.data.status == 'booked'
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.scheduledAt is timestamp
+            && request.resource.data.keys().hasOnly(
+                 ['patient', 'patientName', 'doctor', 'doctorName', 'department',
+                  'scheduledAt', 'status', 'createdAt', 'note'])
+            && hasActiveCareRelation(request.resource.data.patient)
            )
       );
 

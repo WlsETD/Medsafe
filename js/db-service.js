@@ -602,11 +602,45 @@ window.DbService = {
   // 這個順序很重要：核保端無法列舉「所有摘要」，只能從自己手上的同意書出發。
   // 沒有同意就連對方存不存在都問不到。
 
+  // DdiEngine.analyze() 的嚴重度分級（見 ddi-engine.js 的 SEVERITY：
+  // contraindicated/major/moderate/minor/unknown）與 computeSafetyScore() 沿用的
+  // 舊制中文分級（極高風險／高風險／其他）不是同一套系統。對照兩者在介面上
+  // 呈現的顏色——禁忌併用與重大同為紅色、中度為橙色、輕微與未分級同為
+  // 黃/灰色——做對應，讓「即時算出的警示」與「舊制欄位」用同一把尺計分，
+  // 而不是引入第二套獨立的評分邏輯。
+  //
+  // 公開此函式（而非只在 buildUnderwritingSummary 內部使用），是因為
+  // computeSafetyScore/safetyScoreStatus 兩者都只認得這套舊制分級——
+  // 任何呼叫端只要改用 DdiEngine 的即時分析結果算分，就得先經過這裡的轉換，
+  // 否則會直接把儲存的 ddiAlerts 快照當成分數依據（見下方 buildUnderwritingSummary
+  // 的說明，這正是核保摘要曾經算出過期分數的原因）。
+  legacyAlertsFromFindings(findings) {
+    return (findings || []).map(f => ({ severity: this._mapEngineSeverityToLegacy(f.severity) }));
+  },
+  _mapEngineSeverityToLegacy(sev) {
+    if (sev === 'contraindicated' || sev === 'major') return '極高風險';
+    if (sev === 'moderate') return '高風險';
+    return '輕微'; // minor / unknown
+  },
+
   // 核保所需的最小欄位。刻意不含藥名、劑量、開立醫院、提醒、對話等內容——
   // 核保要的是風險指標，不是病歷。年齡改為級距，避免以生日反推身分。
-  buildUnderwritingSummary(username, patientDoc) {
+  //
+  // liveAnalysis 為選填的 window.DdiEngine.analyze(medications, ...) 結果。
+  // 【為什麼不能省略這個參數，直接讀 patientDoc.ddiAlerts】
+  // ddiAlerts 是「儲存時」的評估結果快照，系統沒有任何流程會在用藥變動時
+  // 自動重算它（見 computeSafetyScore 的說明）。若病患用藥後又新增了藥，
+  // 首頁摘要與警示區塊會以 DdiEngine 即時重算而顯示正確筆數，
+  // 這裡若繼續讀 ddiAlerts，核保端拿到的就會是一個更舊、通常也更低的數字——
+  // 曾實測出病患首頁說「5 組已知交互作用」，核保摘要卻只算了 1 組。
+  // 因此呼叫端（目前是 patient.html）應一律傳入自己已經用來算首頁摘要的
+  // 同一份即時分析結果，而不是任由本函式退回去讀存量欄位。
+  buildUnderwritingSummary(username, patientDoc, liveAnalysis) {
     const meds = (patientDoc && patientDoc.medications) || [];
-    const alerts = (patientDoc && patientDoc.ddiAlerts) || [];
+    const alerts = liveAnalysis && liveAnalysis.findings
+      ? this.legacyAlertsFromFindings(liveAnalysis.findings)
+      : (patientDoc && patientDoc.ddiAlerts) || [];
+    const alertCount = liveAnalysis && liveAnalysis.findings ? liveAnalysis.findings.length : alerts.length;
     const profile = (patientDoc && patientDoc.profile) || {};
     const age = Number(profile.age);
     const band = !age || isNaN(age) ? null
@@ -616,7 +650,7 @@ window.DbService = {
       displayName: profile.name || username,
       ageBand: band,
       medicationCount: meds.length,
-      alertCount: alerts.length,
+      alertCount: alertCount,
       safetyScore: this.computeSafetyScore(meds, alerts),
       scoreStatus: this.safetyScoreStatus(meds, alerts)
     };
@@ -624,8 +658,8 @@ window.DbService = {
 
   // 病患發布自己的核保摘要。attestedBy/attestedAt 由規則強制為本人與伺服器時間，
   // 讓核保端看得出這是「病患自述」而非「系統已驗證」的資料。
-  async publishUnderwritingSummary(username, patientDoc) {
-    const summary = this.buildUnderwritingSummary(username, patientDoc);
+  async publishUnderwritingSummary(username, patientDoc, liveAnalysis) {
+    const summary = this.buildUnderwritingSummary(username, patientDoc, liveAnalysis);
     summary.attestedBy = username;
     summary.attestedAt = window.firebase.firestore.FieldValue.serverTimestamp();
     await window.db.collection('patient_summaries').doc(username).set(summary);

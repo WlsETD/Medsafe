@@ -54,7 +54,7 @@
 
     <style>
         body { font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif; background-color: #F8FAF9; color: #4B5563; }
-        [v-cloak] { display: none; }
+        [v-cloak] { display: none !important; }
         .hero-gradient { background: linear-gradient(135deg, #24A15D 0%, #175C3A 100%); }
         .glass { background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.3); }
         .card-hover { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
@@ -571,11 +571,12 @@
                     <div class="bg-bgMain rounded-[28px] p-6">
                         <p class="text-sm font-black text-title mb-2">保險公司預設看不到您的任何醫療資料</p>
                         <p class="text-xs font-bold text-lightText leading-relaxed">
-                            若您授權，保險公司僅能看到以下<strong>四項摘要</strong>，不會看到藥品名稱、劑量、開立醫院或就診紀錄：
+                            若您授權，保險公司會看到您的<strong>姓名與帳號</strong>，以及以下<strong>四項摘要</strong>，
+                            不會看到藥品名稱、劑量、開立醫院或就診紀錄：
                         </p>
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
                             <div class="bg-white rounded-2xl px-4 py-3"><p class="text-[10px] font-black text-lightText uppercase tracking-widest">用藥筆數</p><p class="text-xl font-black text-title">{{ medications.length }}</p></div>
-                            <div class="bg-white rounded-2xl px-4 py-3"><p class="text-[10px] font-black text-lightText uppercase tracking-widest">警示筆數</p><p class="text-xl font-black text-title">{{ ddiAlerts.length }}</p></div>
+                            <div class="bg-white rounded-2xl px-4 py-3"><p class="text-[10px] font-black text-lightText uppercase tracking-widest">警示筆數</p><p class="text-xl font-black text-title">{{ ddiForMe ? ddiForMe.findings.length : ddiAlerts.length }}</p></div>
                             <div class="bg-white rounded-2xl px-4 py-3"><p class="text-[10px] font-black text-lightText uppercase tracking-widest">安全評分</p><p class="text-xl font-black text-title">{{ safetyScore === null ? '—' : safetyScore }}</p></div>
                             <div class="bg-white rounded-2xl px-4 py-3"><p class="text-[10px] font-black text-lightText uppercase tracking-widest">年齡級距</p><p class="text-sm font-black text-title pt-1">{{ myAgeBand || '—' }}</p></div>
                         </div>
@@ -1309,12 +1310,22 @@
                 completedCount() {
                     return (this.reminders || []).filter(r => this.isReminderDone(r)).length;
                 },
-                // 依目前用藥與交互作用警示即時計算，取代原本寫死於資料中的常數
+                // 依目前用藥與交互作用警示即時計算，取代原本寫死於資料中的常數。
+                //
+                // 讀 ddiForMe（即時分析結果）而非 this.ddiAlerts——後者是儲存時的
+                // 舊快照，用藥變動後不會自動重算。此處原本仍讀 this.ddiAlerts，
+                // 導致本頁同時出現「5 組已知交互作用」（首頁摘要，來自 ddiForMe）
+                // 與「55 用藥安全參考分數」（來自舊快照的單一警示）這兩個各自獨立、
+                // 沒有互相對照過的數字，只是恰好都指向同一位病患而不易被發現。
                 safetyScore() {
-                    return DbService.computeSafetyScore(this.medications, this.ddiAlerts);
+                    if (!this.ddiForMe) return DbService.computeSafetyScore(this.medications, this.ddiAlerts);
+                    const alerts = DbService.legacyAlertsFromFindings(this.ddiForMe.findings);
+                    return DbService.computeSafetyScore(this.medications, alerts);
                 },
                 safetyScoreStatus() {
-                    return DbService.safetyScoreStatus(this.medications, this.ddiAlerts);
+                    if (!this.ddiForMe) return DbService.safetyScoreStatus(this.medications, this.ddiAlerts);
+                    const alerts = DbService.legacyAlertsFromFindings(this.ddiForMe.findings);
+                    return DbService.safetyScoreStatus(this.medications, alerts);
                 }
             },
             watch: {
@@ -1700,9 +1711,13 @@
                         // 順序很重要：先發布摘要，再授予同意。
                         // 相反的話，保險端可能在摘要還沒建立時就取得授權，
                         // 讀到一份不存在或過期的摘要而不自知。
+                        //
+                        // 傳入 ddiForMe（即時分析結果）而非只給 this.ddiAlerts——
+                        // 後者是儲存時的舊快照，用藥變動後不會自動重算，
+                        // 會讓核保端拿到比首頁摘要更舊、通常也更低的警示筆數與安全分數。
                         await DbService.publishUnderwritingSummary(this._username, {
                             profile: this.profile, medications: this.medications, ddiAlerts: this.ddiAlerts
-                        });
+                        }, this.ddiForMe);
                         await DbService.grantConsent(this._username, insurer, this.consentDays);
                         await this.loadConsents();
                         this.consentInsurer = '';
