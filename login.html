@@ -285,13 +285,18 @@
                     <button type="button" @click="showTermsModal = false" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
                 </div>
                 <div class="px-6 py-4 overflow-y-auto space-y-3 text-xs font-medium text-content leading-relaxed">
-                    <p><strong class="text-title">1. 服務說明</strong><br>MedSafe 智慧醫療系統（以下稱「本平台」）提供病歷管理、用藥安全提醒、跨機構資料查詢等功能，供已註冊之病患、醫事人員、保險與管理端使用者使用。</p>
-                    <p><strong class="text-title">2. 帳號註冊與安全</strong><br>使用者應提供真實、正確之個人資料，並妥善保管帳號密碼。因帳號密碼保管不當所生之損害，本平台不負相關責任。</p>
-                    <p><strong class="text-title">3. 個人健康資料之蒐集與使用</strong><br>本平台將依據醫療法、個人資料保護法等相關法規，僅於提供醫療照護、用藥安全比對及必要之系統管理目的範圍內，蒐集、處理及利用使用者之健康資料，不會提供予無關第三方。</p>
-                    <p><strong class="text-title">4. 使用者義務</strong><br>使用者不得利用本平台從事違法行為、上傳虛假醫療資訊，或嘗試未經授權存取他人帳號與資料。</p>
-                    <p><strong class="text-title">5. 服務變更與中止</strong><br>本平台得因系統維護、法規調整或其他必要原因，變更或暫停部分服務，並將以合理方式通知使用者。</p>
-                    <p><strong class="text-title">6. 條款修改</strong><br>本條款如有修改，將於本平台公告後生效；使用者於修改後繼續使用本服務，視為同意修改後之條款內容。</p>
-                    <p class="text-lightText">本條款為本次競賽專案示範文字，僅供功能展示使用，不代表實際法律文件。</p>
+                    <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-2">
+                        <p class="font-black text-amber-700">⚠️ 重要聲明</p>
+                        <p class="text-amber-600 text-[11px] mt-1">本系統為<strong>2026年金源獎(GCA)競賽展示原型</strong>，非上市醫療器材軟體，僅供評審與展示使用。</p>
+                    </div>
+                    <p><strong class="text-title">1. 展示原型性質</strong><br>MedSafe 系統（以下稱「本系統」）乃獨立開發者參賽作品，作為競賽展示及驗證技術之用，不構成任何醫療服務提供或醫療診療行為。使用者不應將本系統作為真實醫療決策之依據。</p>
+                    <p><strong class="text-title">2. 展示帳號與測試資料</strong><br>系統提供之演示帳號（醫師、病患、保險員）及其相關數據，均為示範之虛構資料。使用者應理解所有展示資訊僅供操作流程參考，不涉及任何真實個人或醫療紀錄。</p>
+                    <p><strong class="text-title">3. 資料不具持久性</strong><br>本系統基於展示性質，不保證使用者資料之長期儲存與保護。使用者應自行評估，不宜依賴本系統進行任何具有法律效力之數據保存。系統得因競賽結束、平台維護或其他原因，隨時重置或刪除所有用戶資料。</p>
+                    <p><strong class="text-title">4. 法律免責</strong><br>本系統不對任何醫療診斷、用藥建議或治療方案負責。任何因使用本系統而導致之醫療決策錯誤、用藥不當、身心或財務損害，概由使用者自行承擔全部責任。</p>
+                    <p><strong class="text-title">5. FHIR 整合限制</strong><br>本系統透過公開測試伺服器（hapi.fhir.org）進行 FHIR 整合演示，數據傳輸未經加密隱私保護、不符合真實醫療環境之安全標準。使用者應視為完全不安全之展示環境。</p>
+                    <p><strong class="text-title">6. 著作權聲明</strong><br>本系統之所有內容、功能設計與源代碼，由參賽開發者保有完整著作權；同時依金源獎競賽規則，授權賽事主辦方用於宣傳與推廣。使用者得查閱 GitHub 開源源碼，但不得用於商業目的或未經授權之衍生開發。</p>
+                    <p><strong class="text-title">7. 風險承擔與不實用警告</strong><br>使用者同意自行承擔使用本系統之所有風險，包括但不限於系統故障、數據遺失、隱私外洩等。本系統不提供任何明示或默示之擔保（包括不限於適銷性、特定用途適用性等）。</p>
+                    <p class="text-lightText text-[10px] border-t border-slate-200 pt-2 mt-2">本條款為競賽展示專案之特定使用條款。若對條款有疑問，請參閱 <strong>GitHub 開源源碼</strong> 或 <strong>競賽主辦單位官方規則</strong>。繼續使用即表示同意本條款之所有內容。</p>
                 </div>
                 <div class="px-6 py-4 border-t border-slate-100">
                     <button type="button" @click="showTermsModal = false" class="w-full hero-gradient text-white font-black py-3 rounded-2xl">我已閱讀，關閉視窗</button>
