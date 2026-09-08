@@ -196,9 +196,17 @@
                 </form>
 
                 <form v-else @submit.prevent="register" class="space-y-2.5">
+                    <!-- 公開票選期間任何人皆可自助註冊，本系統對外公開展示，
+                         且團隊無真實醫療系統之個資保護與事故應變能力——
+                         警示放在表單最上方、輸入欄位之前，而非只寫在使用者條款裡，
+                         才擋得住「懶得點開條款」的使用者。 -->
+                    <div class="p-3 bg-amber-50 border border-amber-200 rounded-2xl">
+                        <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 請勿填寫真實個人資料</p>
+                        <p class="text-[10px] text-amber-600 mt-1 leading-relaxed">本系統為競賽展示原型，帳號資料將對外公開供評審與大眾瀏覽。請使用暱稱與虛構的用藥資訊操作，<strong>不要填寫真實姓名、真實身分證字號或真實病歷</strong>。</p>
+                    </div>
                     <div>
                         <label class="block text-sm font-bold text-title mb-1">姓名</label>
-                        <input type="text" v-model="regName" name="name" autocomplete="name" placeholder="請輸入真實姓名" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-2.5 px-5 outline-none transition-all font-medium">
+                        <input type="text" v-model="regName" name="name" autocomplete="off" placeholder="暱稱即可，請勿填寫真實姓名" class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-2.5 px-5 outline-none transition-all font-medium">
                     </div>
                     <div>
                         <label class="block text-sm font-bold text-title mb-1">帳號</label>
@@ -290,10 +298,10 @@
                         <p class="text-amber-600 text-[11px] mt-1">本系統為<strong>2026年金源獎(GCA)競賽展示原型</strong>，非上市醫療器材軟體，僅供評審與展示使用。</p>
                     </div>
                     <p><strong class="text-title">1. 展示原型性質</strong><br>MedSafe 系統（以下稱「本系統」）乃獨立開發者參賽作品，作為競賽展示及驗證技術之用，不構成任何醫療服務提供或醫療診療行為。使用者不應將本系統作為真實醫療決策之依據。</p>
-                    <p><strong class="text-title">2. 展示帳號與測試資料</strong><br>系統提供之演示帳號（醫師、病患、保險員）及其相關數據，均為示範之虛構資料。使用者應理解所有展示資訊僅供操作流程參考，不涉及任何真實個人或醫療紀錄。</p>
+                    <p><strong class="text-title">2. 展示帳號與測試資料</strong><br>系統提供之演示帳號（醫師、病患、保險員）及其相關數據，均為示範之虛構資料。使用者應理解所有展示資訊僅供操作流程參考，不涉及任何真實個人或醫療紀錄。<strong class="text-amber-700">若您選擇自行註冊帳號：本系統於大眾票選期間對外公開，任何造訪者皆可能以展示帳號檢視系統操作流程；系統管理員（含賽事評審）於必要時亦可讀取自助註冊帳號之資料以進行審核。請勿輸入任何真實姓名、真實身分證字號或真實用藥紀錄</strong>，一律以虛構資料操作。</p>
                     <p><strong class="text-title">3. 資料不具持久性</strong><br>本系統基於展示性質，不保證使用者資料之長期儲存與保護。使用者應自行評估，不宜依賴本系統進行任何具有法律效力之數據保存。系統得因競賽結束、平台維護或其他原因，隨時重置或刪除所有用戶資料。</p>
                     <p><strong class="text-title">4. 法律免責</strong><br>本系統不對任何醫療診斷、用藥建議或治療方案負責。任何因使用本系統而導致之醫療決策錯誤、用藥不當、身心或財務損害，概由使用者自行承擔全部責任。</p>
-                    <p><strong class="text-title">5. FHIR 整合限制</strong><br>本系統透過公開測試伺服器（hapi.fhir.org）進行 FHIR 整合演示，數據傳輸未經加密隱私保護、不符合真實醫療環境之安全標準。使用者應視為完全不安全之展示環境。</p>
+                    <p><strong class="text-title">5. FHIR 整合限制</strong><br>本系統透過 HL7 官方公開測試伺服器（hapi.fhir.org）進行 FHIR 整合演示，資料傳輸過程採 HTTPS 加密，但該公開測試伺服器本身<strong class="text-amber-700">不具備任何存取控制</strong>——任何人皆可讀取或寫入其上的所有資料，且系統無法確保資料能被完整刪除。系統送出前會將姓名、身分證字號等直接識別欄位移除並以隨機化名與模糊化出生年代替，惟此僅為<strong>去識別化（pseudonymization）</strong>，非可保證無法還原之匿名化；用藥組合本身仍可能具有間接識別性。使用者應視此為完全不安全之公開展示環境，不宜傳送任何真實資料。</p>
                     <p><strong class="text-title">6. 著作權聲明</strong><br>本系統之所有內容、功能設計與源代碼，由參賽開發者保有完整著作權；同時依金源獎競賽規則，授權賽事主辦方用於宣傳與推廣。使用者得查閱 GitHub 開源源碼，但不得用於商業目的或未經授權之衍生開發。</p>
                     <p><strong class="text-title">7. 風險承擔與不實用警告</strong><br>使用者同意自行承擔使用本系統之所有風險，包括但不限於系統故障、數據遺失、隱私外洩等。本系統不提供任何明示或默示之擔保（包括不限於適銷性、特定用途適用性等）。</p>
                     <p class="text-lightText text-[10px] border-t border-slate-200 pt-2 mt-2">本條款為競賽展示專案之特定使用條款。若對條款有疑問，請參閱 <strong>GitHub 開源源碼</strong> 或 <strong>競賽主辦單位官方規則</strong>。繼續使用即表示同意本條款之所有內容。</p>

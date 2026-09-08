@@ -477,6 +477,10 @@
                     </div>
 
                     <div v-else class="space-y-3">
+                        <div class="p-3 bg-amber-50 border border-amber-200 rounded-2xl">
+                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 請勿填寫真實身分證字號</p>
+                            <p class="text-[10px] text-amber-600 mt-1 leading-relaxed">本系統為公開競賽展示原型，非真實醫療院所系統。此欄位僅供操作流程示範，<strong>請填寫格式正確的虛構號碼</strong>（第 2 碼須為 1／2／8／9 開頭並符合檢查碼規則）。</p>
+                        </div>
                         <p class="text-xs font-bold text-lightText leading-relaxed">
                             掛號需要身分證字號以供院方核對健保資料。<strong>填寫後將無法自行更改</strong>，請確認無誤再送出。
                         </p>
@@ -1777,7 +1781,7 @@
                             : '格式不正確。應為 1 個英文字母 + 1、2、8 或 9 + 8 位數字，例如 A123456789。';
                         return;
                     }
-                    if (!confirm(`確認送出身分證字號 ${v}？\n\n送出後將無法自行更改，若有誤需洽櫃檯處理。`)) return;
+                    if (!confirm(`確認送出身分證字號 ${v}？\n\n本系統為公開競賽展示原型，請確認這不是您的真實身分證字號。\n\n送出後將無法自行更改，若有誤需洽櫃檯處理。`)) return;
                     this.nidBusy = true;
                     try {
                         // profile 是 map，規則以 affectedKeys() 檢查頂層鍵，
