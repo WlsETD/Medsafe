@@ -11,3 +11,8 @@ DDINTER2/
 
 # Firebase 部署快取（本機產物）
 .firebase/
+
+# 內部維運文件：含雲端服務網址、GCP project ID、計費帳戶號碼等資訊，
+# 不應公開於 GitHub（曾經意外公開，見 2026-09-06.md 第十一節）。
+FHIR_SERVER_TODO.md
+2026-09-06.md
