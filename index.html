@@ -43,7 +43,13 @@
                     default: window.location.href = 'login.html';
                 }
             } else {
-                window.location.href = 'login.html';
+                // 從未在此瀏覽器登入過的訪客（含公開票選期的大多數流量）：
+                // 先帶去免登入的用藥交互作用查詢頁，而不是直接進登入牆——
+                // 那裡才是「陌生人點進連結後 30 秒內拿到有用答案」的入口。
+                // demo_user 只要曾經登入過（無論是展示帳號、手動登入或自助
+                // 註冊，見 login.html 的 login()/register()）就會被寫入，
+                // 因此這裡不影響任何回訪的真實使用者。
+                window.location.href = 'check.html';
             }
         }, 1500);
     </script>

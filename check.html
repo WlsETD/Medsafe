@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#24A15D">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="images/LOGO.png">
+    <title>這兩種藥可以一起吃嗎？| MedSafe</title>
+    <meta name="description" content="輸入兩種（或以上）藥物或保健食品，立即查詢是否有已知的交互作用風險。免登入、免安裝，MedSafe 提供的公益用藥安全查詢工具。">
+
+    <!-- 社群分享預覽：這頁是設計來被轉傳的，分享卡片比其他內部頁面更重要 -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="這兩種藥可以一起吃嗎？| MedSafe 免費用藥安全查詢">
+    <meta property="og:description" content="輸入兩種（或以上）藥物或保健食品，立即查詢是否有已知的交互作用風險。免登入、免安裝。">
+    <meta property="og:image" content="https://medsafe-554b7.web.app/icons/icon-512.png">
+    <meta name="twitter:card" content="summary">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3.5.42/dist/vue.global.prod.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+
+    <!-- 純前端藥物身分與交互作用引擎，不需要 Firebase——這頁刻意不載入
+         firebase-config.js / db-service.js，任何人不必登入、不必等待雲端
+         往返，就能拿到答案。查詢邏輯與病患端、醫師端使用的是同一份引擎，
+         不是另外簡化的版本。 -->
+    <script src="js/drug-catalog.js"></script>
+    <script src="js/ddi-engine.js"></script>
+    <script src="js/mockData.js"></script>
+    <script src="js/ddi-rules-ddinter.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#24A15D', deep: '#175C3A', tech: '#3BB77E', mint: '#EAF7F0',
+                        bgMain: '#F8FAF9', title: '#1C2B24', content: '#4B5563',
+                        danger: '#EF4444', warning: '#F39C12', lightText: '#9CA3AF',
+                    },
+                    borderRadius: { '2xl': '20px', '3xl': '30px' },
+                    boxShadow: { 'premium': '0 10px 40px -10px rgba(36, 161, 93, 0.08)' }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif; background-color: #F8FAF9; }
+        [v-cloak] { display: none !important; }
+        .hero-gradient { background: linear-gradient(135deg, #24A15D 0%, #175C3A 100%); }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(6px); }
+    </style>
+</head>
+<body class="min-h-screen">
+<div id="app" v-cloak>
+
+    <!-- ── 頂部：一句話講清楚這是什麼，不需要往下捲才懂 ────────────────── -->
+    <header class="hero-gradient text-white">
+        <div class="max-w-3xl mx-auto px-6 pt-10 pb-14 text-center">
+            <a href="index.html" class="inline-flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity mb-6">
+                <img src="images/LOGO.png" class="h-7 w-7 rounded-lg object-cover" alt="">
+                <span class="text-sm font-black tracking-wide">MedSafe</span>
+            </a>
+            <h1 class="text-2xl sm:text-3xl font-black leading-snug">這兩種藥，<br class="sm:hidden">可以一起吃嗎？</h1>
+            <p class="text-sm sm:text-base font-medium opacity-90 mt-3 max-w-xl mx-auto leading-relaxed">
+                爸媽在好幾家醫院拿藥，抽屜裡的藥越疊越多——
+                輸入藥名，免登入、免安裝，立刻查有沒有已知的交互作用風險。
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto px-4 sm:px-6 -mt-8 pb-16">
+
+        <!-- ── 查詢卡片 ─────────────────────────────────────────────── -->
+        <div class="bg-white rounded-[32px] shadow-premium p-6 sm:p-8 space-y-5">
+
+            <div v-for="(slot, i) in slots" :key="i" class="relative">
+                <label class="block text-[11px] font-black text-lightText uppercase tracking-widest mb-1.5 px-1">
+                    第 {{ i + 1 }} 種藥物／保健食品
+                </label>
+                <div class="flex gap-2">
+                    <div class="relative flex-1">
+                        <input v-model="slot.query" type="text" autocomplete="off"
+                               @focus="openIndex = i" @input="openIndex = i"
+                               @keydown.escape="openIndex = null"
+                               @blur="closeSoon()"
+                               :placeholder="i === 0 ? '例如：華法林、Warfarin' : '例如：阿斯匹靈、Aspirin'"
+                               class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3.5 px-5 outline-none transition-all font-bold text-title">
+                        <transition name="fade">
+                            <div v-if="openIndex === i && optionsFor(i).length"
+                                 class="absolute z-30 left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-64 overflow-y-auto">
+                                <button v-for="d in optionsFor(i)" :key="d.atc" type="button"
+                                        @mousedown.prevent="pickDrug(i, d)"
+                                        class="w-full text-left px-5 py-3 hover:bg-mint border-b border-slate-50 last:border-0 transition-colors">
+                                    <div class="flex items-baseline justify-between gap-3">
+                                        <span class="font-black text-sm text-title">{{ d.name_zh }}</span>
+                                        <span class="font-mono text-[10px] font-bold text-primary shrink-0">{{ d.atc }}</span>
+                                    </div>
+                                    <div class="text-[10px] font-bold text-lightText mt-0.5">{{ d.name_en }} · {{ d.class_zh }}</div>
+                                </button>
+                            </div>
+                        </transition>
+                    </div>
+                    <button v-if="slots.length > 2" @click="removeSlot(i)" type="button"
+                            class="shrink-0 w-12 h-12 mt-0 rounded-2xl bg-bgMain text-lightText hover:bg-red-50 hover:text-danger transition-colors flex items-center justify-center"
+                            aria-label="移除">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+                <p v-if="slot.query.trim() && !resolvedOf(slot.query)" class="text-[11px] font-bold text-amber-600 mt-1.5 px-1">
+                    查無此藥，本知識庫暫未收錄——不代表它安全，僅代表沒有記載，請向藥師確認。
+                </p>
+                <p v-else-if="resolvedOf(slot.query)" class="text-[11px] font-bold text-primary mt-1.5 px-1">
+                    ✓ 已對應 {{ resolvedOf(slot.query).name_zh }}（{{ resolvedOf(slot.query).atc }}）
+                </p>
+            </div>
+
+            <button v-if="slots.length < 6" @click="addSlot" type="button"
+                    class="text-xs font-black text-primary hover:text-deep transition-colors flex items-center gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4" /></svg>
+                再加一種藥（例如保健食品、健康食品）
+            </button>
+
+            <button @click="runCheck" :disabled="!canCheck || checking"
+                    class="w-full hero-gradient text-white font-black py-4 rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.01] transition-all disabled:opacity-40 disabled:hover:scale-100 flex items-center justify-center gap-3">
+                <svg v-if="checking" class="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                {{ checking ? '查詢中...' : (canCheck ? '查詢交互作用' : '請至少輸入 2 種可辨識的藥物') }}
+            </button>
+        </div>
+
+        <!-- ── 結果 ─────────────────────────────────────────────────── -->
+        <transition name="fade">
+        <div v-if="hasChecked && result" id="resultArea" class="mt-8 space-y-5">
+
+            <!-- 高／中／低度分級的交互作用：這是最該被看見的內容 -->
+            <div v-if="result.findings.length" class="space-y-4">
+                <h2 class="text-sm font-black text-title px-1">⚠️ 發現 {{ result.findings.length }} 組已知交互作用</h2>
+                <div v-for="f in result.findings" :key="f.a.atc + f.b.atc"
+                     class="bg-white rounded-[28px] shadow-sm border-2 p-6 space-y-3"
+                     :class="f.severity === 'contraindicated' || f.severity === 'major' ? 'border-red-100' : (f.severity === 'moderate' ? 'border-orange-100' : 'border-amber-100')">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-sm font-black text-title">{{ f.a.name_zh || f.a.name_en }}</span>
+                        <span class="text-lightText">×</span>
+                        <span class="text-sm font-black text-title">{{ f.b.name_zh || f.b.name_en }}</span>
+                        <span class="ml-auto text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border" :class="f.severityClass">{{ f.severityZh }}</span>
+                    </div>
+                    <p v-if="f.effect" class="text-xs font-bold text-content leading-relaxed">{{ f.effect }}</p>
+                    <p v-if="f.recommendation" class="text-xs font-bold text-primary bg-mint rounded-2xl px-4 py-3 leading-relaxed">💡 {{ f.recommendation }}</p>
+                    <p v-if="f.detailLevel === 'severity-only'" class="text-[10px] font-bold text-amber-600 leading-relaxed">此筆記載僅有嚴重度分級，資料庫未收錄作用機轉與處置建議，請另行向藥師或醫師查證。</p>
+                    <p class="text-[10px] font-bold text-lightText">出處：{{ f.source || '未標示' }}{{ f.reviewedOn ? '（' + f.reviewedOn + '）' : '' }}</p>
+                </div>
+            </div>
+
+            <!-- 嚴重度未分級：明確跟上面分開，避免稀釋真正該注意的警示 -->
+            <div v-if="result.ungraded.length" class="bg-white rounded-[28px] shadow-sm border-2 border-slate-100 p-6 space-y-3">
+                <h3 class="text-xs font-black text-title">📋 另有 {{ result.ungraded.length }} 組記載有交互作用，但資料庫未標示嚴重度</h3>
+                <div v-for="f in result.ungraded" :key="f.a.atc + f.b.atc" class="text-xs font-bold text-content">
+                    {{ f.a.name_zh || f.a.name_en }} × {{ f.b.name_zh || f.b.name_en }}
+                </div>
+                <p class="text-[10px] font-bold text-lightText leading-relaxed">「未分級」不代表「輕微」——只是這筆資料的原始出處（DDInter 2.0）沒有標示嚴重度。建議一併向藥師確認。</p>
+            </div>
+
+            <!-- 無法評估：查不到 ≠ 安全，這是整份系統最堅持的一件事 -->
+            <div v-if="result.unevaluable.length" class="bg-amber-50 border border-amber-200 rounded-[28px] p-6 space-y-3">
+                <h3 class="text-xs font-black text-amber-700">❔ 有 {{ result.unevaluable.length }} 項無法評估</h3>
+                <div v-for="u in result.unevaluable" :key="u.entry.raw" class="text-xs font-bold text-amber-700 leading-relaxed">
+                    <strong>{{ u.entry.raw }}</strong>：{{ u.reason }}
+                </div>
+            </div>
+
+            <!-- 完全查無記載 -->
+            <div v-if="result.verdict === 'no-known-interaction'" class="bg-mint border border-primary/20 rounded-[28px] p-6 text-center space-y-2">
+                <p class="text-2xl">✅</p>
+                <p class="text-sm font-black text-deep">目前查無已知交互作用記載</p>
+                <p class="text-[11px] font-bold text-content leading-relaxed max-w-md mx-auto">
+                    已比對 {{ result.pairsChecked }} 組藥物兩兩組合，資料庫中沒有找到相關記載。
+                    <strong>這代表「本知識庫未收錄」，不等於「已確認安全」</strong>——仍請以藥袋標示或藥師意見為準。
+                </p>
+            </div>
+
+            <p class="text-center text-[10px] font-bold text-lightText px-4">
+                本查詢比對 {{ result.ruleCount }} 條交互作用規則（人工彙整＋DDInter 2.0），僅供參考，不能取代醫師或藥師的專業判斷。
+            </p>
+        </div>
+        </transition>
+
+        <!-- ── 說明與延伸 ───────────────────────────────────────────── -->
+        <div class="mt-10 grid sm:grid-cols-2 gap-4">
+            <div class="bg-white rounded-[28px] p-6 shadow-sm">
+                <p class="text-xs font-black text-title mb-1.5">這個查詢怎麼來的？</p>
+                <p class="text-[11px] font-bold text-content leading-relaxed">
+                    以 WHO 官方 ATC 藥物分類碼比對，而非藥名字串比對——「阿斯匹靈」「Aspirin」「acetylsalicylic acid」都會被認成同一種藥。
+                    規則庫收錄人工彙整的重點交互作用，並整合 <a href="https://ddinter2.scbdd.com" target="_blank" rel="noopener" class="text-primary underline">DDInter 2.0</a> 資料庫。
+                </p>
+            </div>
+            <div class="bg-white rounded-[28px] p-6 shadow-sm">
+                <p class="text-xs font-black text-title mb-1.5">想要完整的用藥管理？</p>
+                <p class="text-[11px] font-bold text-content leading-relaxed">
+                    MedSafe 完整版可記錄長期用藥、掛號給醫師追蹤、設定每日服藥提醒，並與家人共同關心用藥狀況。
+                    <a href="login.html" class="text-primary underline">前往登入或免費體驗 →</a>
+                </p>
+            </div>
+        </div>
+
+        <p class="text-center text-[10px] font-bold text-lightText mt-8 px-6 leading-relaxed">
+            本頁為 2026 金源獎（GCA）競賽展示原型之公益查詢功能，非上市醫療器材軟體，查詢結果不構成醫療診斷或用藥建議。
+            如有用藥疑慮，請諮詢藥師或醫師；若有緊急狀況請立即就醫或撥打 119。
+        </p>
+    </main>
+</div>
+
+<script>
+const { createApp } = Vue;
+createApp({
+    data() {
+        return {
+            slots: [{ query: '' }, { query: '' }],
+            openIndex: null,
+            result: null,
+            hasChecked: false,
+            checking: false
+        };
+    },
+    computed: {
+        resolvedList() {
+            // 依序解析每一格輸入，去重（同一種藥選兩次不該被當成兩種藥）。
+            const seen = new Set();
+            const out = [];
+            for (const s of this.slots) {
+                const d = this.resolvedOf(s.query);
+                if (d && !seen.has(d.atc)) { seen.add(d.atc); out.push(d); }
+            }
+            return out;
+        },
+        canCheck() { return this.resolvedList.length >= 2; }
+    },
+    methods: {
+        resolvedOf(query) {
+            const q = (query || '').trim();
+            if (!q || !window.DrugCatalog) return null;
+            return window.DrugCatalog.resolve(q);
+        },
+        optionsFor(i) {
+            if (!window.DrugCatalog) return [];
+            const q = (this.slots[i].query || '').trim().toLowerCase();
+            const all = window.DrugCatalog.all();
+            if (!q) return all.slice(0, 8);
+            const hit = (d) => {
+                if ((d.name_en || '').toLowerCase().indexOf(q) !== -1) return true;
+                if ((d.name_zh || '').indexOf(q) !== -1) return true;
+                if ((d.atc || '').toLowerCase().indexOf(q) !== -1) return true;
+                if ((d.class_zh || '').indexOf(q) !== -1) return true;
+                return (d.aliases || []).some(a => String(a).toLowerCase().indexOf(q) !== -1);
+            };
+            return all.filter(hit).slice(0, 8);
+        },
+        pickDrug(i, d) {
+            this.slots[i].query = d.name_zh;
+            this.openIndex = null;
+        },
+        // blur 事件比 mousedown 選取晚觸發，直接關閉會讓下拉選單來不及吃到點擊——
+        // 與 dashboard.html 的藥品選單同一個坑，因此同樣延後關閉。
+        closeSoon() {
+            setTimeout(() => { this.openIndex = null; }, 150);
+        },
+        addSlot() {
+            if (this.slots.length < 6) this.slots.push({ query: '' });
+        },
+        removeSlot(i) {
+            if (this.slots.length > 2) this.slots.splice(i, 1);
+        },
+        runCheck() {
+            if (!this.canCheck) return;
+            this.checking = true;
+            // 純前端計算幾乎瞬間完成；保留一個短暫延遲只是為了不讓「查詢中」
+            // 一閃即逝到使用者以為沒反應，並避免連續點擊時的畫面跳動。
+            setTimeout(() => {
+                const meds = this.resolvedList.map(d => ({ atc: d.atc }));
+                this.result = window.DdiEngine.analyze(meds, window.DdiEngine.localRuleSet());
+                this.hasChecked = true;
+                this.checking = false;
+                this.$nextTick(() => {
+                    const el = document.getElementById('resultArea');
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+            }, 300);
+        }
+    }
+}).mount('#app');
+</script>
+<script src="js/pwa-register.js" defer></script>
+</body>
+</html>

@@ -162,6 +162,9 @@
         <!-- Right: Login Section -->
         <div class="w-full lg:w-1/2 flex items-center justify-center px-8 sm:px-16 py-2.5 bg-white overflow-y-auto h-full" id="loginPanel">
             <div class="w-full max-w-md">
+                <a href="check.html" class="flex items-center justify-center gap-1.5 text-[11px] font-black text-primary hover:text-deep bg-mint rounded-2xl py-2 mb-2 transition-colors">
+                    💊 不想登入？先查一下手邊的藥物交互作用 →
+                </a>
                 <div class="flex gap-2 mb-3 bg-bgMain rounded-2xl p-1">
                     <button type="button" @click="switchMode('login')"
                             :class="['flex-1 py-2 rounded-xl text-sm font-black transition-all', mode === 'login' ? 'bg-white text-primary shadow-sm' : 'text-lightText']">登入</button>
