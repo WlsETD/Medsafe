@@ -5,7 +5,7 @@
 - 作品名稱：MedSafe 跨醫院多重用藥衝突與副作用網頁預警系統
 - 主題領域：醫療資訊 / 長期照護
 - 線上展示：https://medsafe-554b7.web.app/
-- 原始碼：https://github.com/Yunjia219/Med
+- 原始碼：https://github.com/WlsETD/Medsafe
 
 ---
 
