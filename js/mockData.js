@@ -69,6 +69,40 @@ window.mockData = {
       recommendation: '不需禁止併用，但維生素 K 的攝取量應維持穩定，勿忽然開始或忽然停用。開始或停用時應通知醫師並加密監測 INR。請攜帶實際產品向藥師確認其維生素 K 含量。',
       source: 'Drugs.com 專業版交互作用專論（vitamin K × warfarin）；維生素 K1 綜合維他命對 INR 影響之臨床研究',
       reviewedOn: '2026-09-02'
+    },
+
+    // ── 保健食品／食物層（見 js/drug-catalog.js 的 NOATC- 說明）─────────
+    // 葡萄柚與紅麴不在 DDInter 收錄範圍內（見 tools/import-ddinter.mjs
+    // 的匯入報告），因此改為人工彙整。兩者都是台灣民眾日常會接觸、
+    // 卻很少被提醒「這其實是藥物交互作用」的品項——這正是本組規則
+    // 存在的理由：跨院用藥衝突預警若只看處方藥，會漏掉這一整類風險。
+    {
+      drugA: 'Grapefruit', drugB: 'Atorvastatin', atcA: 'NOATC-GRAPEFRUIT', atcB: 'C10AA05',
+      severity: 'major',
+      effect: '葡萄柚（汁）會抑制腸道與肝臟的 CYP3A4 酵素，使 Atorvastatin 的血中濃度顯著上升（文獻記載可達數倍），大幅提高肌肉毒性（肌痛、橫紋肌溶解）風險。抑制效果可持續 24 小時以上，不是「錯開時間吃」就能避開。',
+      recommendation: '服用 Atorvastatin 期間應避免大量或規律飲用葡萄柚汁；偶爾少量食用葡萄柚果肉風險較低，但仍建議與藥師確認。若出現不明原因肌肉疼痛、無力或深色尿，應立即就醫並告知曾食用葡萄柚。',
+      source: 'FDA 藥物交互作用專論（grapefruit juice × statins）；製造商仿單交互作用章節',
+      reviewedOn: '2026-09-02'
+    },
+    {
+      drugA: 'Grapefruit', drugB: 'Amiodarone', atcA: 'NOATC-GRAPEFRUIT', atcB: 'C01BD01',
+      severity: 'moderate',
+      effect: 'Amiodarone 同樣經 CYP3A4 代謝，葡萄柚（汁）抑制此酵素會提高其血中濃度，增加心律不整（QT 延長）與其他劑量相關副作用的風險。',
+      recommendation: '服用 Amiodarone 期間應避免大量飲用葡萄柚汁。若已規律食用，應告知醫師，必要時安排心電圖追蹤。',
+      source: '製造商仿單交互作用章節；CYP3A4 抑制之藥動學文獻',
+      reviewedOn: '2026-09-02'
+    },
+    {
+      // 這條的教育意義大於臨床罕見度：紅麴在台灣常被當作「天然、溫和」的
+      // 保健食品販售，但它的活性成分 monacolin K 與處方藥 lovastatin
+      // 是同一個分子——併服等同於病患在不知情下疊加了兩份 statin 劑量，
+      // 且紅麴產品的 monacolin K 含量因廠牌、批次而異，無法預期疊加後的實際劑量。
+      drugA: 'Red yeast rice', drugB: 'Atorvastatin', atcA: 'NOATC-REDYEASTRICE', atcB: 'C10AA05',
+      severity: 'major',
+      effect: '紅麴（保健食品）天然含有 monacolin K，其化學結構與處方用 statin 藥物 lovastatin 完全相同。與 Atorvastatin 併用等同於疊加兩種 statin 類藥物，顯著提高肌肉毒性（肌痛、橫紋肌溶解）與肝毒性風險。市售紅麴產品的 monacolin K 含量差異極大，無法預期實際疊加劑量。',
+      recommendation: '正在服用醫師開立之 statin 類藥物（如 Atorvastatin）者，不建議自行併用紅麴保健食品。若已在服用紅麴，應主動告知醫師與藥師，由專業人員評估是否需調整處方或停用其中一項。',
+      source: '美國 FDA 對紅麴／monacolin K 產品之公開警示（消費者用藥安全通報）；製造商仿單交互作用章節',
+      reviewedOn: '2026-09-02'
     }
   ],
 

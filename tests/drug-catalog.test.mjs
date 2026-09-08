@@ -78,15 +78,24 @@ check('目錄非空', all.length > 0);
 // 一種成分會對應數十至數百組健保碼，粒度過細，不適合當交互作用的比對鍵。
 const SUBSTANCE_ATC = /^[A-Z]\d{2}[A-Z]{2}\d{2}$/;   // 第 5 層：完整成分碼
 const GROUP_ATC = /^[A-Z]\d{2}[A-Z]{0,2}\d{0,2}$/;   // 第 3～4 層：類別碼
-const badFormat = all.filter(d => !(d.kind === 'group' ? GROUP_ATC : SUBSTANCE_ATC).test(d.atc));
+// NOATC- 開頭的品項是刻意的例外（保健食品／食物，WHO ATC 系統本就不收錄，
+// 見 js/drug-catalog.js 該區塊的完整說明），格式檢查與碼長檢查都不適用於它們——
+// 但仍必須逐一驗證前綴，不可只憑字面判斷就整批略過。
+const isNoAtc = (atc) => /^NOATC-[A-Z0-9]+$/.test(atc);
+const atcItems = all.filter(d => !isNoAtc(d.atc));
+const noAtcItems = all.filter(d => isNoAtc(d.atc));
+check('保健食品／食物品項的偽代碼格式一致（NOATC-大寫英數）且皆標為 group、成分不明',
+      noAtcItems.every(d => d.kind === 'group' && d.compositionVaries === true));
+const badFormat = atcItems.filter(d => !(d.kind === 'group' ? GROUP_ATC : SUBSTANCE_ATC).test(d.atc));
 check('每種藥的 ATC 碼格式符合其層級，且中英文名與分類齊備',
       badFormat.length === 0 && all.every(d => d.name_en && d.name_zh && d.class_zh),
       '格式不合：' + badFormat.map(d => d.atc + '(' + d.kind + ')').join(','));
 
 // 成分碼一律 7 碼、類別碼一律標為 group。兩者不可混淆——
 // 劑量檢核與重複用藥偵測只適用於成分，套在類別碼上會得到無意義的結果。
+// 此檢查僅適用於真正的 WHO ATC 品項；NOATC- 品項已在上面單獨驗證過 kind。
 check('kind 標示與碼長一致',
-      all.every(d => d.kind === 'group' ? !SUBSTANCE_ATC.test(d.atc) : SUBSTANCE_ATC.test(d.atc)));
+      atcItems.every(d => d.kind === 'group' ? !SUBSTANCE_ATC.test(d.atc) : SUBSTANCE_ATC.test(d.atc)));
 
 // 成分不明的複方不得被判定為安全。這條守的是一個真實存在的致命組合：
 // 示範病患同時服用 Warfarin 與綜合維他命，而綜合維他命常含維生素 K（warfarin 的拮抗劑），
@@ -96,7 +105,14 @@ check('綜合維他命不可被判定為安全（含維生素 K 會拮抗 warfar
 check('單一成分可被正常判定為可評估', C.canBeClearedAsSafe('B01AA03') === true);
 check('不認得的藥同樣不可判定為安全', C.canBeClearedAsSafe('ZZZZZZZ') === false);
 check('ATC 碼互不重複', new Set(all.map(d => d.atc)).size === all.length);
-check('subgroup() 取 ATC 前 5 碼', all.every(d => C.subgroup(d.atc) === d.atc.slice(0, 5)));
+// subgroup() 的真實契約（見 js/drug-catalog.js 的實作與註解）：
+// 成分碼取前 5 碼；類別碼（kind:'group'）碼長本就不固定，直接回傳原碼。
+// 舊版斷言 `=== d.atc.slice(0,5)` 對所有既有的 group 品項都恰好成立，
+// 只是因為它們的碼長本來就 ≤5（V08A、A11A）——加入 NOATC- 這類較長的
+// group 偽代碼後，「恰好成立」不再成立，暴露出斷言本身沒有精確表達契約。
+// 改為依 kind 分別驗證，而不是繼續依賴一個只在特定碼長下成立的巧合。
+check('subgroup()：成分碼取前 5 碼、類別碼回傳原碼',
+      all.every(d => C.subgroup(d.atc) === (d.kind === 'group' ? d.atc : d.atc.slice(0, 5))));
 
 // --- 五、與實際資料的一致性（Phase 2 的驗收標準）---
 // 「任一藥物無論出現在哪個病患的用藥清單、哪個頁面，都能用同一個代碼互相查詢與比對」。

@@ -40,7 +40,12 @@ const EXPECTED = {
   'B01AA03|C01BD01': 'major',      // Warfarin × Amiodarone：CYP2C9 抑制，INR 上升
   'C01BD01|C10AA05': 'moderate',   // Amiodarone × Atorvastatin：CYP3A4 抑制，肌肉毒性
   'A10BA02|V08A':    'moderate',   // Metformin × 含碘顯影劑：腎損傷時乳酸中毒
-  'A11A|B01AA03':    'minor'       // Warfarin × 綜合維他命：維生素 K 拮抗
+  'A11A|B01AA03':    'minor',      // Warfarin × 綜合維他命：維生素 K 拮抗
+  // 2026-09-08：保健食品／食物層新增（見 js/mockData.js 的三條新規則）。
+  // pairKey 依字串排序，'C' 開頭的成分碼排在 'NOATC-' 之前。
+  'C10AA05|NOATC-GRAPEFRUIT':     'major',    // Atorvastatin × 葡萄柚：CYP3A4 抑制，肌肉毒性
+  'C01BD01|NOATC-GRAPEFRUIT':     'moderate', // Amiodarone × 葡萄柚：CYP3A4 抑制
+  'C10AA05|NOATC-REDYEASTRICE':   'major'     // Atorvastatin × 紅麴：monacolin K 即 lovastatin，等同疊加 statin
 };
 
 const ALL = C.all().map(d => d.atc);
@@ -63,11 +68,15 @@ check('窮舉全部 ' + pairCount + ' 組兩兩配對，結果與實證對照表
       wrongPairs.length === 0, wrongPairs.join('\n        '));
 // 2026-09-02：目錄由 9 種擴充為 26 種，C(26,2) = 325。
 // 2026-09-03：再擴充為 60 種（DDInter 涵蓋率由 0.10% 提升至 0.67%），C(60,2) = 1770。
-// 這條斷言的用途就是在目錄變動時失敗，強迫回頭複核 EXPECTED 表——它兩次都做到了。
-// 本次複核結果：新增的 34 種藥沒有任何一組落入人工規則的涵蓋範圍
-//（人工規則只涉及 B01AA03／B01AC06／C01BD01／C10AA05／A10BA02／V08A／A11A），
-// 因此 EXPECTED 表維持原本 5 組不變，已逐一實測確認。
-check('配對總數為 C(60,2) = 1770（目錄擴充後此數需同步更新）', pairCount === 1770,
+// 這條斷言的用途就是在目錄變動時失敗，強迫回頭複核 EXPECTED 表——它已做到三次。
+// 2026-09-08：擴充為 70 種——新增 10 項保健食品／食物（NOATC- 開頭，
+// 見 js/drug-catalog.js），C(70,2) = 2415。複核結果：新增的 10 項中，
+// 葡萄柚×Atorvastatin／葡萄柚×Amiodarone／紅麴×Atorvastatin 三組已於
+// js/mockData.js 新增人工彙整規則並補進 EXPECTED 表；其餘品項（銀杏、
+// 大蒜精、人蔘、甘草、聖約翰草、魚油、鐵劑、蔓越莓）在人工規則庫（本測試
+// 使用的 LOCAL_RULES，不含 DDInter 匯入規則）中沒有任何一組命中，
+// 因此 EXPECTED 表無需為它們新增項目，已逐一實測確認。
+check('配對總數為 C(70,2) = 2415（目錄擴充後此數需同步更新）', pairCount === 2415,
       '實際為 ' + pairCount + '，表示目錄藥物數已變動，EXPECTED 表需複核');
 
 // ---------------------------------------------------------------

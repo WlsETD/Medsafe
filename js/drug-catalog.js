@@ -16,10 +16,14 @@
 // 這才是「跨院用藥衝突預警」能否成立的地基——規則庫無論是 2 條還是 30 萬條，
 // 只要藥物身分沒有統一，跨院比對就無法成立。
 //
-// 【身分基準：WHO ATC 碼】
-// 本檔所有 ATC 碼皆已於 2026-09-02 逐一對照 WHO Collaborating Centre 官方資料庫
+// 【身分基準：WHO ATC 碼——但保健食品／食物是刻意的例外】
+// 藥品項目的 atc 欄位皆已於 2026-09-02（以及後續逐筆標註的 verifiedOn 日期）
+// 逐一對照 WHO Collaborating Centre 官方資料庫
 // （https://atcddd.fhi.no/atc_ddd_index/ ，原 whocc.no 已 301 轉址至此）確認，
 // 非依記憶填寫。DDD 值一併記錄，供日後劑量合理性檢核使用。
+// 陣列尾端另有一批以 `NOATC-` 為字首的保健食品／食物項目——WHO ATC 系統
+// 的收錄範圍是藥品，不含葡萄柚、紅麴等品項，因此這批刻意不使用真正的
+// ATC 碼，詳細理由見該區塊自己的說明。
 //
 // 【已知限制，必須誠實看待】
 // 一、ATC 是「解剖—治療—化學」分類，不是全球唯一的藥品識別碼。同一成分會因適應症
@@ -410,7 +414,106 @@ window.DrugCatalog = (function () {
     // --- 呼吸系統 ---
     { atc: 'R06AD02', name_en: 'Promethazine', name_zh: '異丙嗪',
       class_zh: '抗組織胺（phenothiazine 類）', ddd: '25 mg (O)', verifiedOn: '2026-09-03',
-      atcAliases: [], aliases: ['phenergan', '非那根', '普魯米近', '異丙唪'] }
+      atcAliases: [], aliases: ['phenergan', '非那根', '普魯米近', '異丙唪'] },
+
+    // ══════════════════════════════════════════════════════════════════
+    // ── 保健食品／食物：本檔案第一次收錄「非藥品」項目 ──────────────────
+    //
+    // 【必須先說清楚一件事：以下十筆的 atc 欄位不是 WHO ATC 碼】
+    // 檔頭那句「本檔所有 ATC 碼皆已於 2026-09-02 逐一對照 WHO 官方資料庫確認」
+    // 只涵蓋到上面為止。WHO ATC/DDD 系統的收錄範圍是「藥品」，葡萄柚、紅麴、
+    // 銀杏這類食物與草本膳食補充品原則上不在 ATCDDD 官方索引裡——這不是
+    // 本專案的疏漏，是 ATC 系統本身的涵蓋邊界。
+    //
+    // 硬把它們塞進一個真的 WHO 碼底下（例如借用某個看起來相關的類別碼）
+    // 會比誠實地說「這不是 ATC 碼」更危險：日後任何人查證這個 atc 值，
+    // 都會查到一個語意不符的官方定義。因此改採自訂命名空間 `NOATC-*`——
+    // 前綴本身就是警告，任何比對到這個字首的地方都該知道它不是 ATC 碼。
+    //
+    // 【為什麼還是可以用同一套引擎】
+    // js/ddi-engine.js 的 atcMatches() 只做字串完全相符或字首比對，
+    // 不驗證格式是否為真正的 ATC——因此 NOATC-* 值可以無痛複用整套
+    // 比對／正規化／去重邏輯，不需要另開一條路徑。字首彼此不互為前綴
+    // （如 NOATC-GINKGO 與 NOATC-GINSENG 在第 9 碼即分岔），
+    // 避免 atcMatches() 的字首比對誤觸不相干的項目。
+    //
+    // 【為什麼全部標記 compositionVaries: true】
+    // 這十項無一例外，都存在市售產品成分／濃度不一致的真實問題——
+    // 紅麴的 monacolin K（與 lovastatin 同分子）含量因產品而異已是
+    // 美國 FDA 多次公開示警的對象；銀杏、聖約翰草的標準化萃取物濃度
+    // 也因品牌而異。比照綜合維他命（A11A）的既有原則：查無規則時
+    // 一律回報「無法排除交互作用」，不得回報「安全」。
+    //
+    // 【別名刻意對齊 DDInter 原始藥名】
+    // 下方 aliases 逐字收錄 DDInter 2.0 CSV 中的英文藥名（如
+    // "Ginkgo biloba"、"St. John's Wort"），讓 tools/import-ddinter.mjs
+    // 重新執行時能自動解析出這些品項，匯入 DDInter 已收錄的真實交互作用
+    // 筆數（銀杏 267 筆、大蒜 172 筆、人蔘 97 筆、甘草 129 筆、
+    // Omega-3 69 筆、聖約翰草 524 筆、鐵 79+15+58+42 筆、蔓越莓 2 筆）
+    // ——葡萄柚與紅麴不在 DDInter 收錄範圍內，兩者的規則改為人工彙整
+    // （見 js/mockData.js 的 ddiRules，附完整出處與複核日期）。
+    // ══════════════════════════════════════════════════════════════════
+
+    { atc: 'NOATC-GRAPEFRUIT', kind: 'group', compositionVaries: true,
+      name_en: 'Grapefruit', name_zh: '葡萄柚／葡萄柚汁',
+      class_zh: '食物（非 ATC 分類品項，見上方說明）', ddd: null,
+      atcAliases: [],
+      aliases: ['grapefruit', 'grapefruit juice', '葡萄柚', '葡萄柚汁', '西柚', '西柚汁'] },
+
+    { atc: 'NOATC-REDYEASTRICE', kind: 'group', compositionVaries: true,
+      name_en: 'Red yeast rice', name_zh: '紅麴',
+      class_zh: '保健食品（非 ATC 分類品項，見上方說明）', ddd: null,
+      atcAliases: [],
+      aliases: ['red yeast rice', 'monascus', '紅麴', '紅麴米', '紅麴膠囊', '紅麴保健食品'] },
+
+    { atc: 'NOATC-GINKGO', kind: 'group', compositionVaries: true,
+      name_en: 'Ginkgo biloba', name_zh: '銀杏',
+      class_zh: '保健食品（非 ATC 分類品項，見上方說明）', ddd: null,
+      atcAliases: [],
+      aliases: ['ginkgo', 'ginkgo biloba', 'gingko', '銀杏', '銀杏葉', '銀杏萃取物'] },
+
+    { atc: 'NOATC-GARLIC', kind: 'group', compositionVaries: true,
+      name_en: 'Garlic', name_zh: '大蒜精',
+      class_zh: '保健食品（非 ATC 分類品項，見上方說明）', ddd: null,
+      atcAliases: [],
+      aliases: ['garlic', 'garlic extract', 'allium sativum', '大蒜', '大蒜精', '蒜精膠囊'] },
+
+    { atc: 'NOATC-GINSENG', kind: 'group', compositionVaries: true,
+      name_en: 'Ginseng', name_zh: '人蔘',
+      class_zh: '保健食品（非 ATC 分類品項，見上方說明）', ddd: null,
+      atcAliases: [],
+      aliases: ['ginseng', 'panax ginseng', '人蔘', '人參', '高麗蔘', '高麗參'] },
+
+    { atc: 'NOATC-LICORICE', kind: 'group', compositionVaries: true,
+      name_en: 'Licorice', name_zh: '甘草',
+      class_zh: '保健食品／中藥材（非 ATC 分類品項，見上方說明）', ddd: null,
+      atcAliases: [],
+      aliases: ['licorice', 'liquorice', 'glycyrrhiza', '甘草', '甘草片', '甘草茶'] },
+
+    { atc: 'NOATC-STJOHNSWORT', kind: 'group', compositionVaries: true,
+      name_en: "St. John's Wort", name_zh: '聖約翰草',
+      class_zh: '保健食品（非 ATC 分類品項，見上方說明）', ddd: null,
+      atcAliases: [],
+      aliases: ["st. john's wort", 'st johns wort', 'hypericum', '聖約翰草', '貫葉連翹', '金絲桃'] },
+
+    { atc: 'NOATC-OMEGA3', kind: 'group', compositionVaries: true,
+      name_en: 'Omega-3 fatty acids', name_zh: '魚油／Omega-3',
+      class_zh: '保健食品（非 ATC 分類品項，見上方說明）', ddd: null,
+      atcAliases: [],
+      aliases: ['omega-3', 'omega 3', 'omega-3 fatty acids', 'fish oil', '魚油', '魚油膠囊'] },
+
+    { atc: 'NOATC-IRON', kind: 'group', compositionVaries: true,
+      name_en: 'Iron supplement', name_zh: '鐵劑／鐵補充品',
+      class_zh: '保健食品（非 ATC 分類品項，見上方說明）', ddd: null,
+      atcAliases: [],
+      aliases: ['iron', 'iron supplement', 'ferrous sulfate', 'ferrous fumarate',
+                'ferrous gluconate', '鐵劑', '鐵補充品', '硫酸亞鐵', '鐵質補充'] },
+
+    { atc: 'NOATC-CRANBERRY', kind: 'group', compositionVaries: true,
+      name_en: 'Cranberry', name_zh: '蔓越莓',
+      class_zh: '保健食品（非 ATC 分類品項，見上方說明）', ddd: null,
+      atcAliases: [],
+      aliases: ['cranberry', 'cranberry extract', '蔓越莓', '蔓越莓萃取', '蔓越莓膠囊'] }
   ];
 
   // 鹽類與劑型後綴。跨院傳來的藥名常帶這些字尾，但它們不改變成分身分：
