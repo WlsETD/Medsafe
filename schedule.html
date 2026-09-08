@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#24A15D">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="images/LOGO.png">
+    <title>今日服藥時間表 | MedSafe</title>
+    <meta name="description" content="把每天要吃的藥整理成一張大字時間表，免登入、可直接列印貼在冰箱，或交給看護。">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="今日服藥時間表 | MedSafe 免費列印工具">
+    <meta property="og:description" content="把每天要吃的藥整理成一張大字時間表，免登入、可直接列印貼在冰箱，或交給看護。">
+    <meta property="og:image" content="https://medsafe-554b7.web.app/icons/icon-512.png">
+    <meta name="twitter:card" content="summary">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3.5.42/dist/vue.global.prod.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#24A15D', deep: '#175C3A', tech: '#3BB77E', mint: '#EAF7F0',
+                        bgMain: '#F8FAF9', title: '#1C2B24', content: '#4B5563',
+                        danger: '#EF4444', warning: '#F39C12', lightText: '#9CA3AF',
+                    },
+                    borderRadius: { '2xl': '20px', '3xl': '30px' },
+                    boxShadow: { 'premium': '0 10px 40px -10px rgba(36, 161, 93, 0.08)' }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif; background-color: #F8FAF9; }
+        [v-cloak] { display: none !important; }
+        .hero-gradient { background: linear-gradient(135deg, #24A15D 0%, #175C3A 100%); }
+
+        /* ── 列印樣式：這個頁面存在的理由就是要被印出來貼在冰箱上，
+             因此螢幕版與列印版是兩份獨立設計，不是同一份縮小。────────── */
+        @media print {
+            @page { size: A4 portrait; margin: 14mm; }
+            body { background: #fff !important; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            .print-card { box-shadow: none !important; border: none !important; }
+        }
+        .print-only { display: none; }
+    </style>
+</head>
+<body class="min-h-screen">
+<div id="app" v-cloak>
+
+    <!-- ── 螢幕版：編輯介面（列印時整段隱藏）───────────────────────────── -->
+    <header class="hero-gradient text-white no-print">
+        <div class="max-w-3xl mx-auto px-6 pt-10 pb-14 text-center">
+            <div class="flex items-center justify-between mb-6">
+                <a href="index.html" class="inline-flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
+                    <img src="images/LOGO.png" class="h-7 w-7 rounded-lg object-cover" alt="">
+                    <span class="text-sm font-black tracking-wide">MedSafe</span>
+                </a>
+                <a href="check.html" class="text-[11px] font-black opacity-80 hover:opacity-100 transition-opacity bg-white/10 rounded-full px-3 py-1.5">💊 用藥交互作用查詢 →</a>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-black leading-snug">今日服藥時間表</h1>
+            <p class="text-sm sm:text-base font-medium opacity-90 mt-3 max-w-xl mx-auto leading-relaxed">
+                整理成一張大字時間表，直接列印貼在冰箱，或交給看護、家人——
+                免登入、免安裝，資料只留在這台裝置上。
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto px-4 sm:px-6 -mt-8 pb-16 no-print">
+        <div class="bg-white rounded-[32px] shadow-premium p-6 sm:p-8 space-y-6">
+
+            <div v-if="importedNotice" class="p-3 bg-mint border border-primary/20 rounded-2xl text-[11px] font-bold text-deep">
+                ✓ 已帶入 MedSafe 帳號中目前的用藥提醒，可直接調整後列印。
+            </div>
+
+            <div class="grid sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-[11px] font-black text-lightText uppercase tracking-widest mb-1.5 px-1">姓名（選填）</label>
+                    <input v-model="patientName" type="text" placeholder="例如：媽媽、王奶奶"
+                           class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-5 outline-none transition-all font-bold text-title">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-black text-lightText uppercase tracking-widest mb-1.5 px-1">日期</label>
+                    <input v-model="dateLabel" type="text" placeholder="例如：每日固定服用"
+                           class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-5 outline-none transition-all font-bold text-title">
+                </div>
+            </div>
+
+            <div class="border-t border-slate-100 pt-6 space-y-4">
+                <label class="block text-[11px] font-black text-lightText uppercase tracking-widest px-1">新增一筆用藥</label>
+                <div class="flex flex-wrap gap-2">
+                    <button v-for="p in presetTimes" :key="p.label" type="button" @click="newItem.time = p.time"
+                            class="px-4 py-2 rounded-xl text-xs font-black transition-all"
+                            :class="newItem.time === p.time ? 'bg-primary text-white' : 'bg-bgMain text-content hover:bg-mint'">
+                        {{ p.label }}
+                    </button>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <input v-model="newItem.time" type="time"
+                           class="w-32 bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-4 outline-none transition-all font-bold text-title">
+                    <input v-model="newItem.text" type="text" placeholder="藥品名稱與用法，例如：阿斯匹靈 1 顆（飯後）"
+                           @keydown.enter="addItem"
+                           class="flex-1 min-w-[220px] bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-5 outline-none transition-all font-bold text-title">
+                    <button @click="addItem" :disabled="!newItem.time || !newItem.text.trim()"
+                            class="px-6 py-3 hero-gradient text-white font-black rounded-2xl disabled:opacity-40 transition-all shrink-0">加入</button>
+                </div>
+            </div>
+
+            <div v-if="items.length" class="border-t border-slate-100 pt-6 space-y-2">
+                <label class="block text-[11px] font-black text-lightText uppercase tracking-widest px-1 mb-2">目前清單（依時間排序）</label>
+                <div v-for="(it, i) in sortedItems" :key="it.id" class="flex items-center gap-4 bg-bgMain rounded-2xl px-5 py-3">
+                    <span class="font-mono font-black text-primary text-sm w-14 shrink-0">{{ it.time }}</span>
+                    <span class="flex-1 font-bold text-title text-sm">{{ it.text }}</span>
+                    <button @click="removeItem(it.id)" class="text-lightText hover:text-danger transition-colors shrink-0" aria-label="刪除">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+            </div>
+
+            <button v-if="items.length" @click="doPrint"
+                    class="w-full hero-gradient text-white font-black py-4 rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.01] transition-all flex items-center justify-center gap-3">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                友善列印
+            </button>
+            <p v-if="items.length" class="text-[10px] font-bold text-lightText text-center -mt-2">
+                列印對話框開啟後，選擇「另存為 PDF」即可存成檔案傳給看護或家人。
+            </p>
+        </div>
+
+        <div class="mt-8 grid sm:grid-cols-2 gap-4">
+            <div class="bg-white rounded-[28px] p-6 shadow-sm">
+                <p class="text-xs font-black text-title mb-1.5">資料存在哪裡？</p>
+                <p class="text-[11px] font-bold text-content leading-relaxed">
+                    完全不會送到伺服器。這頁不需要登入，資料只存在你目前這個瀏覽器分頁裡，關閉分頁就會清空。
+                </p>
+            </div>
+            <div class="bg-white rounded-[28px] p-6 shadow-sm">
+                <p class="text-xs font-black text-title mb-1.5">想要每天自動記錄用藥？</p>
+                <p class="text-[11px] font-bold text-content leading-relaxed">
+                    MedSafe 完整版可長期保存用藥提醒、記錄每日服藥狀況，並讓家人一起關心用藥進度。
+                    <a href="login.html" class="text-primary underline">前往登入或免費體驗 →</a>
+                </p>
+            </div>
+        </div>
+
+        <p class="text-center text-[10px] font-bold text-lightText mt-8 px-6 leading-relaxed">
+            本表格由使用者自行填寫，僅供日常服藥提醒整理之用。若照護對象正在服用醫師開立之處方，
+            實際用法用量仍應以醫囑或藥袋標示為準；如需確認藥物交互作用，歡迎使用
+            <a href="check.html" class="text-primary underline">用藥交互作用查詢</a>。
+        </p>
+    </main>
+
+    <!-- ── 列印版：只有列印時才顯示，螢幕上完全看不到 ─────────────────── -->
+    <div class="print-only px-2">
+        <div class="text-center mb-8 pb-6" style="border-bottom: 3px solid #1C2B24;">
+            <div class="text-3xl font-black" style="color:#1C2B24;">服藥時間表</div>
+            <div class="text-lg font-bold mt-2" style="color:#4B5563;" v-if="patientName">{{ patientName }}</div>
+            <div class="text-sm font-bold mt-1" style="color:#9CA3AF;" v-if="dateLabel">{{ dateLabel }}</div>
+        </div>
+
+        <div v-for="it in sortedItems" :key="'p' + it.id"
+             class="flex items-center gap-6 mb-5 pb-5" style="border-bottom: 1.5px dashed #D5D8DC;">
+            <div class="shrink-0 flex items-center justify-center font-black"
+                 style="width:14mm;height:14mm;border:2.5px solid #1C2B24;border-radius:6px;"></div>
+            <div class="font-black shrink-0" style="width:24mm;font-size:20pt;color:#175C3A;">{{ it.time }}</div>
+            <div class="font-bold flex-1" style="font-size:16pt;color:#1C2B24;">{{ it.text }}</div>
+        </div>
+
+        <div class="mt-10 pt-4 text-center" style="font-size:9pt;color:#9CA3AF;border-top:1px solid #D5D8DC;">
+            此表由使用者自行整理，實際用法用量請以醫囑或藥袋標示為準 · MedSafe medsafe-554b7.web.app/schedule.html
+        </div>
+    </div>
+</div>
+
+<script>
+const { createApp } = Vue;
+createApp({
+    data() {
+        const today = new Date();
+        return {
+            patientName: '',
+            dateLabel: '每日固定服用',
+            items: [],
+            newItem: { time: '08:00', text: '' },
+            nextId: 1,
+            importedNotice: false,
+            presetTimes: [
+                { label: '早上', time: '08:00' },
+                { label: '中午', time: '12:00' },
+                { label: '晚上', time: '18:00' },
+                { label: '睡前', time: '21:00' }
+            ]
+        };
+    },
+    computed: {
+        sortedItems() {
+            return this.items.slice().sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+        }
+    },
+    methods: {
+        addItem() {
+            const time = this.newItem.time, text = this.newItem.text.trim();
+            if (!time || !text) return;
+            this.items.push({ id: this.nextId++, time, text });
+            this.newItem.text = '';
+        },
+        removeItem(id) {
+            this.items = this.items.filter(it => it.id !== id);
+        },
+        doPrint() {
+            window.print();
+        }
+    },
+    // 由 patient.html 的「友善列印版」按鈕帶入真實提醒資料——見該頁
+    // openSchedulePrint()。只讀一次即刪除，避免下次造訪殘留舊資料，
+    // 也避免這份與帳號無關的公開頁面變成一個持續累積個資的地方。
+    created() {
+        try {
+            const raw = localStorage.getItem('medsafe_schedule_handoff');
+            if (raw) {
+                const data = JSON.parse(raw);
+                if (data && Array.isArray(data.items)) {
+                    this.items = data.items
+                        .filter(it => it && it.time && it.text)
+                        .map(it => ({ id: this.nextId++, time: it.time, text: it.text }));
+                    if (data.patientName) this.patientName = data.patientName;
+                    this.importedNotice = this.items.length > 0;
+                }
+                localStorage.removeItem('medsafe_schedule_handoff');
+            }
+        } catch (e) {
+            console.error('讀取帶入資料失敗：', e);
+        }
+    }
+}).mount('#app');
+</script>
+<script src="js/pwa-register.js" defer></script>
+</body>
+</html>

@@ -280,7 +280,12 @@
                                 </div>
                                 今日用藥提醒
                             </h3>
-                            <div class="text-right">
+                            <div class="flex items-center gap-3">
+                                <button v-if="reminders.length" @click="openSchedulePrint" type="button"
+                                        class="hidden sm:flex items-center gap-1.5 text-[10px] font-black text-primary hover:text-deep bg-mint px-4 py-2.5 rounded-xl transition-colors uppercase tracking-widest">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                                    友善列印版
+                                </button>
                                 <span class="text-sm font-black text-primary bg-mint px-4 py-2 rounded-xl">進度 {{ completedCount }}/{{ reminders.length }}</span>
                             </div>
                         </div>
@@ -1957,6 +1962,21 @@
                         this.adherenceLog = restored;
                         this.triggerToast('同步失敗', '服藥回報未能儲存，畫面已還原為先前狀態，請確認網路後重試。');
                     }
+                },
+                // 把目前的服藥提醒帶去 schedule.html 產生可列印的大字時間表。
+                // 用 localStorage 而非網址參數：中文內容經 URL 編碼會很長，
+                // 且 schedule.html 讀取後立刻刪除這把鍵（見該頁 created()），
+                // 不會變成一個持續累積病患用藥內容的第二個儲存位置。
+                openSchedulePrint() {
+                    try {
+                        localStorage.setItem('medsafe_schedule_handoff', JSON.stringify({
+                            patientName: this.profile.name || '',
+                            items: (this.reminders || []).map(r => ({ time: r.time, text: r.text }))
+                        }));
+                    } catch (e) {
+                        console.error('準備列印資料失敗：', e);
+                    }
+                    window.open('schedule.html', '_blank');
                 },
                 openPasswordModal() {
                     this.passwordForm = { current: '', next: '', confirm: '' };
