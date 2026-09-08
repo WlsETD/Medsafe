@@ -35,6 +35,19 @@ await env.withSecurityRulesDisabled(async ctx => {
     patient: 'P001', doctor: 'doctor', participants: ['P001', 'doctor'], createdAt: new Date() });
   await setDoc(doc(db, 'conversations/P001/messages/m1'), {
     from: 'patient', text: '我最近有點頭暈', at: new Date() });
+  // 展示帳號重置的白名單測試專用資料。刻意不重用 conversations/P001——
+  // 後面仍有測試依賴那份對話存在（如「病患送出訊息」），若在此處先把它
+  // 刪掉會連帶弄壞那些無關的測試。改用兩份專用 fixture：
+  //   conversations/patient01 —— 在白名單內（demo-reset 的重置對象）
+  //   conversations/P900      —— 不在白名單內（既有病歷測試帳號，當對照組）
+  await setDoc(doc(db, 'conversations/patient01'), {
+    patient: 'patient01', doctor: 'doctor', participants: ['patient01', 'doctor'], createdAt: new Date() });
+  await setDoc(doc(db, 'conversations/patient01/messages/m1'), {
+    from: 'patient', text: '這是展示帳號的訊息', at: new Date() });
+  await setDoc(doc(db, 'conversations/P900'), {
+    patient: 'P900', doctor: 'doctor', participants: ['P900', 'doctor'], createdAt: new Date() });
+  await setDoc(doc(db, 'conversations/P900/messages/m1'), {
+    from: 'patient', text: '這不是展示帳號', at: new Date() });
   // 同意機制測試資料（P1-6）
   const future = Timestamp.fromDate(new Date(Date.now() + 30 * 86400000));
   const past = Timestamp.fromDate(new Date(Date.now() - 86400000));
@@ -213,6 +226,24 @@ await run('刪除已送出的訊息',
 
 await run('刪除整串對話',
   () => deleteDoc(doc(P001(), 'conversations/P001')), 'deny');
+
+// ── 展示帳號重置的白名單例外（isDemoPatientUsername）─────────────────────
+// patient01 在白名單內：admin 可清空這個展示帳號的對話，供公開票選期重置使用。
+// 白名單只放寬 admin，其餘角色即使是白名單內的展示帳號，一樣刪不掉——
+// 這正是設計本身：重置動作限定由 admin 執行。故先測「非 admin 應拒絕」，
+// 確認拒絕路徑不受影響，再測 admin 本身，最後才真的刪除該 fixture。
+await run('醫師刪除展示帳號的對話（非 admin，即使是白名單帳號也應拒絕）',
+  () => deleteDoc(doc(DOC(), 'conversations/patient01')), 'deny');
+// P900 不在白名單內：即使呼叫者是 admin，一樣刪不掉——這是整個例外
+// 是否真的「窄」的關鍵測試，不可只測正面案例。
+await run('admin 刪除非展示帳號的對話訊息（白名單以外，應維持不可刪除）',
+  () => deleteDoc(doc(ADM(), 'conversations/P900/messages/m1')), 'deny');
+await run('admin 刪除非展示帳號的整串對話（白名單以外，應維持不可刪除）',
+  () => deleteDoc(doc(ADM(), 'conversations/P900')), 'deny');
+await run('admin 刪除展示帳號的對話訊息（重置用途）',
+  () => deleteDoc(doc(ADM(), 'conversations/patient01/messages/m1')), 'allow');
+await run('admin 刪除展示帳號的整串對話（重置用途）',
+  () => deleteDoc(doc(ADM(), 'conversations/patient01')), 'allow');
 
 // participants 是這串對話的存取控制清單，建立後不可變更——
 // 否則任何參與者都能把第三人加進來，形同單方面轉發整串病歷對話

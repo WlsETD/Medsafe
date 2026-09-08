@@ -40,6 +40,26 @@ service cloud.firestore {
       return isActive() && profile().username == username && ownsUsername(username);
     }
 
+    // ── 展示帳號白名單（僅供公開票選期的資料重置使用）───────────────────
+    //
+    // 大賽公開展示期間，patient01/P001–P004 的登入頁一鍵登入允許任何訪客
+    // 以這些帳號操作系統，因此會累積測試用的髒資料（含醫病對話）。
+    // 此函式僅用於窄範圍放寬 conversations 的 delete（見下方），
+    // 讓 admin 能清空「這幾個固定帳號」的對話紀錄以重置展示狀態。
+    //
+    // 【為什麼這不違反「對話紀錄屬病歷、不可刪除」的原則】
+    // 該原則保護的是真實病患的醫療記錄證據力。這裡列出的帳號是公開的
+    // 展示/測試身分（帳密公開在登入頁與 README），從未承載真實病歷，
+    // 清單以外的任何 username（包含自助註冊的真實使用者）不受影響——
+    // 即使是 admin，也一樣刪不掉真實病患的對話。
+    //
+    // 誠實的限制：清單為硬編碼，新增/移除展示帳號需同步修改本函式、
+    // js/demo-reset.js 的 DEMO_PATIENTS，以及 tests/firestore-rules.test.mjs
+    // 的對應測試——三處不同步會讓重置功能悄悄失效或範圍跑掉。
+    function isDemoPatientUsername(username) {
+      return username in ['patient01', 'P001', 'P002', 'P003', 'P004'];
+    }
+
     // ── 「這份尚不存在的文件是否指名我」──────────────────────────────────
     //
     // {甲}__{乙} 形式的關係文件（care_relations）在建立前必須先被讀取一次，
@@ -357,8 +377,9 @@ service cloud.firestore {
       allow update: if isActive() && resource != null
         && profile().username in resource.data.participants
         && request.resource.data.participants == resource.data.participants;
-      // 病歷不可刪除
-      allow delete: if false;
+      // 病歷不可刪除——唯一例外是展示帳號的重置（見 isDemoPatientUsername 說明）。
+      // pid 不在白名單時與原本完全相同：一律拒絕，即使呼叫者是 admin。
+      allow delete: if isAdmin() && isDemoPatientUsername(pid);
 
       match /messages/{mid} {
         allow read: if isAdmin() || inConversation();
@@ -371,9 +392,10 @@ service cloud.firestore {
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 4000
           && request.resource.data.at == request.time;
-        // 已送出的訊息不可修改或刪除。對話紀錄屬病歷一部分，
-        // 事後改寫自己說過的話會讓整串紀錄失去證據價值。
-        allow update, delete: if false;
+        // 已送出的訊息不可修改。刪除同樣僅為展示帳號重置開放，
+        // pid 取自外層 conversations/{pid}，與文件本身的 delete 用同一份白名單。
+        allow update: if false;
+        allow delete: if isAdmin() && isDemoPatientUsername(pid);
       }
     }
 

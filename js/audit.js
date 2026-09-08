@@ -45,7 +45,11 @@ window.Audit = (function () {
     PII_VIEW: 'pii_view',
     // 櫃檯報到指派：醫護宣告「病患持證件到場」而建立照護關係。
     // 系統無法驗證證件是否確實被出示，因此記錄的是那句宣告本身。
-    CARE_ASSIGN: 'care_assign'
+    CARE_ASSIGN: 'care_assign',
+    // 展示帳號資料重置（見 js/demo-reset.js）。記錄的意義與 break_glass
+    // 同一類：這是一個刻意放寬給 admin 的特殊動作（含刪除白名單對話），
+    // 事後留痕才知道誰、何時重置過。
+    DEMO_RESET: 'demo_reset'
   };
 
   // 稽核記錄本身不得成為新的個資外洩管道。這裡只記「誰、何時、對誰、做了什麼」，
