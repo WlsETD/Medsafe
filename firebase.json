@@ -20,6 +20,7 @@
       "CLAUDE.md",
       "FHIR_SERVER_TODO.md",
       "2026-09-06.md",
+      "linebot.md",
       "*.bak",
       "firestore.rules.deployed.bak",
       "*.log",
