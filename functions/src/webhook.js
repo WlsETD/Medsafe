@@ -158,7 +158,7 @@ async function handleText(token, event) {
       ''
     ];
     for (const m of meds) {
-      lines.push('・' + (m.zhName || m.name) + '　' + (m.dosage || '') + (m.hospital ? '（' + m.hospital + '）' : ''));
+      lines.push('・' + medName(m) + '　' + (m.dosage || '') + (m.hospital ? '（' + m.hospital + '）' : ''));
     }
     if (worthy.length) {
       lines.push('', '⚠️ 其中有 ' + worthy.length + ' 組需要注意的交互作用：');
@@ -188,6 +188,16 @@ async function handleText(token, event) {
 // 按鈕流程的 fallback 訊息。NLU 失敗時一律退回這裡，
 // 而不是回一句「我不懂」讓使用者無路可走。
 const FALLBACK = '我不太確定您的意思。\n\n您可以按每日提醒卡上的時段按鈕回報，或輸入「藥箱」查看用藥。';
+
+// 病歷裡的用藥記錄有兩種形狀並存：mockData.js 示範資料用 zhName/name，
+// dashboard.html 醫師開立處方寫入的是 name_en/name_zh（見 patient.html
+// medName() 的同一段說明）。這裡只認 zhName/name 會讓所有真實處方在
+// LINE 對話裡都顯示成 undefined——沿用 DrugCatalog.medDisplayName() 的
+// 目錄優先、雙欄位後備邏輯，才能兩種來源都顯示正確。
+function medName(med) {
+  const ddi = require('./ddi');
+  return ddi.catalog().medDisplayName(med).zh;
+}
 
 async function handleFreeText(token, event, user, text) {
   const lineUserId = event.source && event.source.userId;
@@ -224,7 +234,7 @@ async function handleFreeText(token, event, user, text) {
   // ── 寫入高信心度的回報 ──
   for (const item of r.toRecord) {
     const res = await recordTaken(user.username, day, item.slot.time);
-    const name = item.med.zhName || item.med.name;
+    const name = medName(item.med);
     if (!res.persisted) {
       lines.push('・' + name + '　回報未能儲存，請改用提醒卡上的按鈕');
     } else if (res.already) {
@@ -237,7 +247,7 @@ async function handleFreeText(token, event, user, text) {
 
   // ── 說了「沒吃／不確定」的：只回覆，不寫入（理由見 nlu.js）──
   for (const n of r.notRecorded) {
-    const name = n.med.zhName || n.med.name;
+    const name = medName(n.med);
     if (n.reason === 'no-slot') {
       lines.push('', '「' + name + '」目前沒有設定提醒時段，無法回報。');
     } else {
@@ -264,7 +274,7 @@ async function handleFreeText(token, event, user, text) {
     if (c.kind === 'pick-drug') {
       question = '您說的「' + c.said + '」是指哪一個？';
       for (const med of c.options) {
-        const name = med.zhName || med.name;
+        const name = medName(med);
         const slot = (patientData.reminders || []).find(x => String(x.text || '').includes(name));
         if (!slot) continue;
         items.push({
@@ -274,7 +284,7 @@ async function handleFreeText(token, event, user, text) {
         });
       }
     } else if (c.kind === 'pick-slot') {
-      question = '「' + (c.med.zhName || c.med.name) + '」有多個時段，請問是哪一次？';
+      question = '「' + medName(c.med) + '」有多個時段，請問是哪一次？';
       for (const slot of c.slots) {
         items.push({
           label: slot.time,
@@ -285,7 +295,7 @@ async function handleFreeText(token, event, user, text) {
     } else {
       question = '請確認是這一項嗎？';
       items.push({
-        label: c.slot.time + ' ' + (c.med.zhName || c.med.name),
+        label: c.slot.time + ' ' + medName(c.med),
         data: 'action=taken&day=' + day + '&time=' + encodeURIComponent(c.slot.time),
         displayText: c.slot.time + ' 已服用'
       });

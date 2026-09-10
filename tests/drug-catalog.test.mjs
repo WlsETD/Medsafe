@@ -172,6 +172,22 @@ const collided = [...atcById.entries()].filter(([, atcs]) => atcs.size > 1);
 check('同一個 ATC 碼不會指到不同的藥（P1-10）', collided.length === 0,
       collided.map(([id, atcs]) => 'id=' + id + ' 同時代表 ' + [...atcs].join(' 與 ')).join('; '));
 
+// --- 六、medDisplayName() 必須兩種病歷形狀都認得 ---
+// 系統中同時存在 mockData.js 示範資料（zhName/name/category）與
+// dashboard.html 醫師開立處方寫入的真實病歷（name_en/name_zh，無 category）。
+// LINE bot 曾經只認前者，導致真實處方在對話裡顯示成「undefined」——
+// 這裡釘住兩種形狀都必須解析出非空的中文名。
+{
+  const realRxShape = { atc: 'C09AA03', name_en: 'Lisinopril', name_zh: '賴諾普利' };
+  const d = C.medDisplayName(realRxShape);
+  check('medDisplayName() 認得真實處方形狀（name_en/name_zh）', d.zh === '賴諾普利', JSON.stringify(d));
+}
+{
+  const demoShape = { atc: 'C09AA03', name: 'Lisinopril', zhName: '賴諾普利' };
+  const d = C.medDisplayName(demoShape);
+  check('medDisplayName() 認得示範資料形狀（name/zhName）', d.zh === '賴諾普利', JSON.stringify(d));
+}
+
 // --- 輸出 ---
 console.log('');
 for (const r of results) console.log(r[0].padEnd(5), r[1], r[2] ? '\n      ' + r[2] : '');

@@ -1,6 +1,7 @@
 // OpenAI API 薄封裝。支持注入 mock 供測試使用。
 
 const { OPENAI_API_KEY } = require('./config');
+const ddi = require('./ddi');
 
 // 全局 LLM 呼叫函式，可被 mock 覆蓋
 let llmImpl = null;
@@ -48,8 +49,17 @@ function parseStructuredOutput(response) {
 //   [{ name: '血壓藥'|'降血糖藥', action: 'taken'|'skipped'|'uncertain', time: null|HH:MM, confidence: 0.9 }, ...]
 async function extractMedications(text, patientMeds) {
   const impl = llmImpl || openaiCall;
+  // 名稱與類別都要兼顧兩種病歷形狀（見 med-match.js 對應的長註解）：
+  // mockData.js 示範資料用 zhName/name/category；dashboard.html 醫師開立
+  // 處方寫入的是 name_en/name_zh，且從不帶 category，要用 ATC 反查目錄的
+  // class_zh。少了這層，LLM 看到的病患用藥清單對真實病患會是一串空白。
   const medContext = (patientMeds || [])
-    .map(m => `- ${m.zhName || m.name} (${m.category || ''}，${m.hospital || ''})`)
+    .map(m => {
+      const name = ddi.catalog().medDisplayName(m).zh;
+      const catalogEntry = m.atc ? ddi.catalog().byAtc(m.atc) : null;
+      const category = (catalogEntry && catalogEntry.class_zh) || m.category || '';
+      return `- ${name} (${category}，${m.hospital || ''})`;
+    })
     .join('\n');
 
   const response = await impl({

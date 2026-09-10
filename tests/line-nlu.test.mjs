@@ -70,6 +70,18 @@ const run = async () => {
       hits.length === 1 && hits[0].confidence === medMatch.CONF_SUBSTRING);
   }
   {
+    // 【回歸測試】dashboard.html 醫師開立處方寫入的病歷形狀：name_en/name_zh，
+    // 完全沒有 category 欄位（這正是示範資料與真實處方唯一不同、也是曾經
+    // 讓「血壓藥」對真實病患完全比對不到的地方）。類別命中必須改用 ATC
+    // 反查目錄的 class_zh，不能只看 m.category。
+    const realRxShapeMed = [
+      { atc: 'C09AA03', name_en: 'Lisinopril', name_zh: '賴諾普利', hospital: '本院 (醫師開立)' }
+    ];
+    const hits = medMatch.matchOne('血壓藥', realRxShapeMed);
+    check('類別命中對真實處方形狀（name_en/name_zh，無 category）同樣生效',
+      hits.length === 1 && hits[0].confidence === medMatch.CONF_CATEGORY);
+  }
+  {
     // 【最重要的一條】不在病患用藥清單裡的藥，即使藥物目錄認得它，也不可命中。
     // 華法林是目錄裡真實存在的藥，但這位病患沒在吃。
     const hits = medMatch.matchOne('華法林', PATIENT.medications);

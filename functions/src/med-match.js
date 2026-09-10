@@ -62,10 +62,19 @@ function matchOne(description, meds) {
   }
 
   // ── 第二層：藥品類別 ──
-  // 「血壓藥」對上 category「降血壓藥」。雙向 includes：使用者可能說得比
+  // 「血壓藥」對上類別「降血壓藥」。雙向 includes：使用者可能說得比
   // 欄位短（血壓藥 ⊂ 降血壓藥），也可能說得比欄位長（降血壓的藥 ⊃ 降血壓藥）。
+  //
+  // 【類別優先查目錄，m.category 只是後備】
+  // dashboard.html 醫師開立處方寫入的病歷（name_en/name_zh 形狀）從不帶
+  // category 欄位——那是 mockData.js 示範資料才有的欄位。若只讀 m.category，
+  // 這一層對所有真實處方永遠是空的，等於「血壓藥」「降血糖藥」這種長輩
+  // 最常見的說法對真實病患完全失效，只有示範帳號測得出來。
+  // 目錄裡每個藥都有 class_zh（例如「降血壓藥（ACE 抑制劑）」），用 ATC
+  // 反查即可涵蓋真實處方；m.category 留著只為了不影響既有示範資料路徑。
   const byCategory = meds.filter(m => {
-    const c = norm(m.category);
+    const catalogEntry = m.atc ? ddi.catalog().byAtc(m.atc) : null;
+    const c = norm((catalogEntry && catalogEntry.class_zh) || m.category);
     return c && (c.includes(q) || q.includes(c));
   });
   if (byCategory.length) return byCategory.map(med => ({ med, confidence: CONF_CATEGORY }));
