@@ -19,6 +19,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <!-- LINE 綁定要呼叫 Cloud Functions（callable）。只有病患端需要，
+         其餘三個入口不載入，避免多一支用不到的 SDK。 -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     
     <script>
@@ -153,6 +156,12 @@
                         <!-- 目前有幾份有效授權。這個數字要在側欄就看得到——
                              「誰現在讀得到我的資料」不該需要點進去才知道。 -->
                         <span v-if="activeConsents.length" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary text-white shrink-0">{{ activeConsents.length }}</span>
+                    </button>
+                    <button @click="activeView = 'line'; showMobileMenu = false"
+                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all text-left', activeView === 'line' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" /></svg>
+                        <span class="flex-1">LINE 提醒</span>
+                        <span v-if="lineBinding && lineBinding.active" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary text-white shrink-0">已綁定</span>
                     </button>
                 </nav>
 
@@ -571,6 +580,109 @@
             <!-- 資料授權（稽核報告 P1-6）
                  修復前，保險端可讀取每一位病患的完整用藥史，病患既不知情也無從拒絕。
                  現在改為：預設不提供，病患主動授權後才提供，且只提供核保所需的最小欄位。 -->
+            <!-- ── LINE 提醒 ─────────────────────────────────────────────────
+                 為什麼要有這個頁：系統已經算得出「您在兩家醫院的藥會互相影響」，
+                 但那個結論目前只存在於一個長輩不會打開的網頁裡。綁定 LINE 之後，
+                 每日用藥卡與交互作用警示會主動送到他真的會看的地方。
+
+                 綁定碼由 Cloud Function 產生（不是前端自己寫進 Firestore）——
+                 理由見 firestore.rules 的 LINE 一節：讓前端決定授權文件的內容
+                 會開出一條帳號接管的路徑。 -->
+            <section v-show="activeView === 'line'" class="animate-fade-in text-left">
+                <div class="flex items-center gap-3 mb-6">
+                    <span class="w-1.5 h-7 bg-primary rounded-full"></span>
+                    <h2 class="text-2xl font-black text-title tracking-tight">LINE 提醒</h2>
+                </div>
+
+                <div v-if="lineError" class="mb-6 text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-2xl px-4 py-3">{{ lineError }}</div>
+
+                <!-- 已綁定 -->
+                <div v-if="lineBinding && lineBinding.active" class="bg-white rounded-[40px] p-8 sm:p-10 shadow-sm space-y-6">
+                    <div class="flex items-center gap-3">
+                        <span class="w-2.5 h-2.5 rounded-full bg-primary"></span>
+                        <h3 class="text-lg font-black text-title">已連結 LINE</h3>
+                    </div>
+                    <p class="text-xs font-bold text-lightText leading-relaxed">
+                        每天早上 07:30 會傳一張當日用藥卡到您的 LINE，吃完按一下卡片上的時段就完成回報。
+                        若醫師新開的藥與您目前的用藥有重大交互作用，也會立刻通知您。
+                    </p>
+                    <div class="bg-bgMain rounded-2xl px-5 py-4 space-y-1">
+                        <p class="text-[10px] font-black text-lightText uppercase tracking-widest">綁定時間</p>
+                        <p class="text-sm font-black text-title">{{ formatLineLinkedAt }}</p>
+                    </div>
+                    <div class="flex flex-wrap gap-3">
+                        <button @click="sendLineTest" :disabled="lineBusy"
+                                class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">
+                            {{ lineBusy ? '傳送中…' : '傳送測試提醒' }}
+                        </button>
+                        <button @click="unbindLine" :disabled="lineBusy"
+                                class="px-8 py-3.5 rounded-2xl bg-white border-2 border-danger/20 text-danger text-[11px] font-black uppercase tracking-widest disabled:opacity-40">解除綁定</button>
+                    </div>
+                    <p class="text-[11px] font-bold text-lightText leading-relaxed">
+                        解除後將立即停止推播。過去的用藥回報紀錄會保留，不會一併刪除。
+                    </p>
+                </div>
+
+                <!-- 未綁定 -->
+                <div v-else class="bg-white rounded-[40px] p-8 sm:p-10 shadow-sm space-y-6">
+                    <h3 class="text-lg font-black text-title">把用藥提醒送到您的 LINE</h3>
+                    <p class="text-xs font-bold text-lightText leading-relaxed">
+                        綁定後，每天早上會收到一張當日用藥卡，吃完按一下就完成回報；
+                        醫師新開的藥若與您目前的用藥有重大交互作用，也會即時通知。
+                    </p>
+
+                    <!-- 尚未產生綁定碼 -->
+                    <div v-if="!lineCode">
+                        <button @click="createLineCode" :disabled="lineBusy"
+                                class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">
+                            {{ lineBusy ? '產生中…' : '產生綁定碼' }}
+                        </button>
+                    </div>
+
+                    <!-- 已產生綁定碼 -->
+                    <div v-else class="space-y-5">
+                        <div class="bg-bgMain rounded-2xl px-5 py-6 text-center space-y-2">
+                            <p class="text-[10px] font-black text-lightText uppercase tracking-widest">您的綁定碼</p>
+                            <p class="font-mono text-3xl font-black text-title tracking-[0.3em]">{{ lineCode }}</p>
+                            <p class="text-[11px] font-bold" :class="lineCodeSecondsLeft > 60 ? 'text-lightText' : 'text-danger'">
+                                {{ lineCodeSecondsLeft > 0 ? '剩餘 ' + lineCodeCountdown : '已失效，請重新產生' }}
+                            </p>
+                        </div>
+
+                        <ol class="space-y-3 text-xs font-bold text-content leading-relaxed">
+                            <li><span class="text-primary font-black">1.</span> 用 LINE 加入 MedSafe 官方帳號好友</li>
+                            <li><span class="text-primary font-black">2.</span> 把上面這 8 碼傳給它</li>
+                            <li><span class="text-primary font-black">3.</span> 收到「綁定成功」就完成了</li>
+                        </ol>
+
+                        <!-- 一鍵送出：省掉「把 8 碼抄到 LINE」這個最容易出錯的步驟。
+                             官方帳號 ID 未設定時（LINE_BASIC_ID 為空）這兩個按鈕不出現，
+                             改走上面的手動輸入流程，功能不會壞。 -->
+                        <div v-if="lineAddFriendUrl || lineSendUrl" class="flex flex-wrap gap-3">
+                            <a v-if="lineAddFriendUrl" :href="lineAddFriendUrl" target="_blank" rel="noopener"
+                               class="px-8 py-3.5 rounded-2xl bg-white border-2 border-primary/20 text-primary text-[11px] font-black uppercase tracking-widest">加入好友</a>
+                            <a v-if="lineSendUrl" :href="lineSendUrl" target="_blank" rel="noopener"
+                               class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest">用 LINE 傳送這組碼</a>
+                        </div>
+
+                        <div class="flex flex-wrap gap-3">
+                            <button @click="createLineCode" :disabled="lineBusy"
+                                    class="px-8 py-3.5 rounded-2xl bg-white border-2 border-slate-200 text-content text-[11px] font-black uppercase tracking-widest disabled:opacity-40">重新產生</button>
+                            <button @click="refreshLineBinding" :disabled="lineBusy"
+                                    class="px-8 py-3.5 rounded-2xl bg-white border-2 border-slate-200 text-content text-[11px] font-black uppercase tracking-widest disabled:opacity-40">我已傳送，檢查狀態</button>
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                        <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">關於隱私</p>
+                        <p class="text-[10px] text-amber-600 mt-1 leading-relaxed">
+                            提醒訊息中會包含您的<strong>藥品名稱</strong>，並且會留在您的 LINE 聊天室裡。
+                            若您的手機可能被他人使用，請考慮這一點；您隨時可以在此頁解除綁定。
+                        </p>
+                    </div>
+                </div>
+            </section>
+
             <section v-show="activeView === 'consent'" class="animate-fade-in text-left">
                 <div class="flex items-center gap-3 mb-6">
                     <span class="w-1.5 h-7 bg-primary rounded-full"></span>
@@ -968,6 +1080,16 @@
                     newAppt: { department: '一般內科', doctor: '', date: '' },
                     apptBusy: false,
                     apptError: '',
+                    // LINE 提醒綁定。lineBinding 讀自 line_bindings/{username}——
+                    // 那份文件病患只讀得到、寫不了（見 firestore.rules 的 LINE 一節）。
+                    lineBinding: null,
+                    lineCode: '',
+                    lineCodeExpiresAt: 0,
+                    lineCodeSecondsLeft: 0,
+                    lineSendUrl: '',
+                    lineAddFriendUrl: '',
+                    lineBusy: false,
+                    lineError: '',
                     // 身分證字號。nationalIdVerified 由頂層欄位決定，病患寫不了它。
                     nidInput: '',
                     nidBusy: false,
@@ -1051,6 +1173,20 @@
                 }
             },
             computed: {
+                // 綁定碼剩餘時間的顯示字串（mm:ss）
+                lineCodeCountdown() {
+                    const s = Math.max(0, this.lineCodeSecondsLeft);
+                    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+                },
+                formatLineLinkedAt() {
+                    const t = this.lineBinding && this.lineBinding.linkedAt;
+                    if (!t) return '—';
+                    // Firestore Timestamp 有 toDate()；保險起見也接受一般日期值
+                    const d = typeof t.toDate === 'function' ? t.toDate() : new Date(t);
+                    if (isNaN(d.getTime())) return '—';
+                    return d.toLocaleString('zh-TW', { hour12: false });
+                },
+
                 // 本人目前用藥的交互作用分析。medSafety、healthSummaryText 與
                 // computedInsights 三者共用同一份結果，確保畫面上不同位置說的是同一件事——
                 // 修復前，首頁摘要說「血壓藥與抗凝血劑」、下方警示區說「華法林與阿斯匹靈」，
@@ -1372,6 +1508,9 @@
                     // 掛號決定哪位醫師看得到自己的資料，與授權同屬「誰在看我」的資訊，
                     // 一併於進站時載入，讓側欄的兩個數字都是實際狀態
                     await this.loadAppointments();
+                    // LINE 綁定狀態。側欄那顆「已綁定」標籤要在進站時就正確，
+                    // 否則已綁定的人每次進來都會先看到「未綁定」再跳掉
+                    await this.refreshLineBinding();
                     // 對話改由 Firestore 承載，必須先初始化才能收發（P1-4）
                     this.chatReady = await window.chatStore.init('patient', this._username);
                     // FHIR Base URL 改為實際讀取管理端設定（Phase 5）。
@@ -1461,9 +1600,116 @@
                 document.removeEventListener('click', this._notifClickHandler);
                 document.removeEventListener('keydown', this._escHandler);
                 if (this._chatUnsub) this._chatUnsub();
+                if (this._lineTimer) clearInterval(this._lineTimer);
+                if (this._linePoll) clearInterval(this._linePoll);
                 this.destroyCharts();
             },
             methods: {
+                // ── LINE 綁定 ─────────────────────────────────────────────────
+                //
+                // 綁定碼一律由 Cloud Function 產生。前端不自行寫入 line_link_codes——
+                // 那個集合在規則層對所有人關閉，理由見 firestore.rules 的 LINE 一節
+                // （簡言之：讓前端決定授權文件的內容會開出一條帳號接管的路徑）。
+                _fnCall(name, payload) {
+                    if (!window.functions) {
+                        throw new Error('未載入 Cloud Functions SDK');
+                    }
+                    return window.functions.httpsCallable(name)(payload || {});
+                },
+
+                async refreshLineBinding() {
+                    try {
+                        const snap = await window.db.collection('line_bindings').doc(this._username).get();
+                        const prevActive = !!(this.lineBinding && this.lineBinding.active);
+                        this.lineBinding = snap.exists ? snap.data() : null;
+                        // 綁定成功後就不必再顯示那組碼了
+                        if (this.lineBinding && this.lineBinding.active) {
+                            this.lineCode = '';
+                            this.lineCodeExpiresAt = 0;
+                            if (!prevActive) this.triggerToast('LINE 已連結', '之後每天早上會傳當日用藥卡給您');
+                        }
+                    } catch (e) {
+                        // 讀不到綁定狀態不可顯示成「未綁定」——那會讓病患以為要重綁一次，
+                        // 而重綁會把舊的反向索引清掉。兩者對使用者的意義完全不同。
+                        console.error('LINE 綁定狀態讀取失敗：', e);
+                        this.lineError = '綁定狀態讀取失敗，畫面顯示可能不是最新狀態，請重新整理。';
+                    }
+                },
+
+                async createLineCode() {
+                    this.lineBusy = true;
+                    this.lineError = '';
+                    try {
+                        const r = await this._fnCall('lineCreateLinkCode');
+                        this.lineCode = r.data.code;
+                        this.lineCodeExpiresAt = r.data.expiresAt;
+                        this.lineSendUrl = r.data.sendUrl || '';
+                        this.lineAddFriendUrl = r.data.addFriendUrl || '';
+                        this._startLineCountdown();
+                    } catch (e) {
+                        console.error('產生綁定碼失敗：', e);
+                        this.lineError = e.message || '產生綁定碼失敗，請稍後再試。';
+                    } finally {
+                        this.lineBusy = false;
+                    }
+                },
+
+                _startLineCountdown() {
+                    if (this._lineTimer) clearInterval(this._lineTimer);
+                    const tick = () => {
+                        this.lineCodeSecondsLeft = Math.max(0,
+                            Math.floor((this.lineCodeExpiresAt - Date.now()) / 1000));
+                        if (this.lineCodeSecondsLeft <= 0 && this._lineTimer) {
+                            clearInterval(this._lineTimer);
+                            this._lineTimer = null;
+                        }
+                    };
+                    tick();
+                    this._lineTimer = setInterval(tick, 1000);
+                    // 綁定是在 LINE 那一端完成的，網頁不會收到通知。
+                    // 因此在碼有效期間定期回查一次綁定狀態，讓畫面自己翻成「已綁定」，
+                    // 不必要求長輩回來按重新整理。
+                    if (this._linePoll) clearInterval(this._linePoll);
+                    this._linePoll = setInterval(() => {
+                        if (this.lineCodeSecondsLeft <= 0 || (this.lineBinding && this.lineBinding.active)) {
+                            clearInterval(this._linePoll);
+                            this._linePoll = null;
+                            return;
+                        }
+                        this.refreshLineBinding();
+                    }, 5000);
+                },
+
+                async sendLineTest() {
+                    this.lineBusy = true;
+                    this.lineError = '';
+                    try {
+                        const r = await this._fnCall('lineSendTestReminder');
+                        this.triggerToast('已傳送', '已將今日用藥卡（' + r.data.slots + ' 個時段）傳到您的 LINE');
+                    } catch (e) {
+                        console.error('測試推播失敗：', e);
+                        this.lineError = e.message || '傳送失敗，請稍後再試。';
+                    } finally {
+                        this.lineBusy = false;
+                    }
+                },
+
+                async unbindLine() {
+                    if (!confirm('解除 LINE 綁定？\n\n解除後將立即停止所有推播提醒（包含交互作用警示）。過去的用藥回報紀錄會保留。')) return;
+                    this.lineBusy = true;
+                    this.lineError = '';
+                    try {
+                        await this._fnCall('lineUnbind');
+                        await this.refreshLineBinding();
+                        this.triggerToast('已解除綁定', '已停止 LINE 推播');
+                    } catch (e) {
+                        console.error('解除綁定失敗：', e);
+                        this.lineError = e.message || '解除失敗，目前仍為已綁定狀態，請重試。';
+                    } finally {
+                        this.lineBusy = false;
+                    }
+                },
+
                 async syncToCloud() {
                     this.syncing = true;
                     try {

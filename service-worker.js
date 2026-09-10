@@ -37,7 +37,14 @@
 //      （這正是上方註解所說「版本號退化為加速手段」的例外：
 //        跨檔案的 API 變更仍然需要它。）
 // v25：模板加上 drugLabel() 防禦——即使 D3 mutate 仍正確顯示藥名
-const CACHE_VERSION = 'medsafe-static-v25';
+// v26：LINE 整合。此版**必須**升號，理由與 v23 完全相同——
+//      js/firebase-config.js 新增了 window.functions（Cloud Functions 的 asia-east1
+//      連線），而 patient.html 的 LINE 綁定頁在按下按鈕時就會用到它。
+//      js/ 走 stale-while-revalidate：不升號的話，回訪使用者會拿到新的 HTML
+//      配上舊的 firebase-config.js，window.functions 為 null，
+//      畫面上的症狀是「產生綁定碼失敗：未載入 Cloud Functions SDK」——
+//      而網路分頁看起來一切正常，因為那支舊檔是 Service Worker 給的，不是伺服器。
+const CACHE_VERSION = 'medsafe-static-v26';
 
 const PRECACHE_URLS = [
   './index.html',

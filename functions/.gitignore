@@ -1,0 +1,8 @@
+node_modules/
+# vendor/ 是由 sync-vendor.js 從專案根目錄的 js/ 複製過來的衍生檔案。
+# 刻意不進版控：一份被提交的副本遲早會與 js/ 的正本不同步，
+# 而「引擎判斷結果與病患端不一致」是這個專案最不能出現的錯誤。
+# 每次部署由 predeploy hook 重新產生（見 firebase.json）。
+vendor/
+.env
+.env.local

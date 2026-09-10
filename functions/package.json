@@ -1,0 +1,17 @@
+{
+  "name": "medsafe-functions",
+  "description": "MedSafe LINE 整合的伺服器端元件。本專案唯一持有機密（LINE Channel Secret / Access Token）的地方。",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "sync-vendor": "node sync-vendor.js",
+    "lint": "echo \"本專案不設 lint（與根目錄一致）\" && exit 0"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^6.1.0"
+  }
+}

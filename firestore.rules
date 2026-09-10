@@ -965,5 +965,59 @@ service cloud.firestore {
       allow read, create, update: if isAdmin() || isInsurance();
       allow delete: if isAdmin();
     }
+
+    // ── LINE 綁定與推播 ─────────────────────────────────────────────────
+    //
+    // 這四個集合是本專案第一批「規則層對前端全面關閉、只有 Cloud Functions
+    // （Admin SDK）能碰」的集合。看起來像是把權限管理搬離了規則層，
+    // 實際上方向相反——原本的規劃是讓前端自己建立綁定碼、由規則檢查內容，
+    // 而那個設計有一個會導致完整帳號接管的漏洞：
+    //
+    //   綁定碼文件裡除了 username 還有一個 uid 欄位（Custom Token 換發時
+    //   要用），而規則無法驗證 uid 是否真的屬於這位病患——user_roles 以 uid
+    //   為鍵，規則沒有辦法從 username 反查回去（同樣的限制在 appointments
+    //   那一節也記過一次）。於是病患可以建立一份
+    //   { username: 自己, uid: 受害者的 uid } 的碼，綁定後
+    //   line_users 就記成「我的 LINE → 受害者的 uid」，
+    //   LIFF 換發 Custom Token 時拿到的就是受害者的身分。
+    //
+    // 第二個問題是文件 ID 由前端自選：碼一旦可預測，攻擊者把猜到的碼傳給
+    // 官方帳號，就能把自己的 LINE 綁到別人的帳號上。
+    //
+    // 兩個問題的共同根源都是「讓前端決定授權文件的內容」。改由 Function
+    // 產生之後，username 與 uid 都取自 request.auth（前端無法偽造），
+    // 碼有 32^8 的亂度與 10 分鐘效期，而這裡就能寫成最簡單也最安全的形狀：
+    // 除了「病患讀自己的綁定狀態」以外，一律拒絕。
+    //
+    // 【誠實的限制】Admin SDK 不受本檔案管轄，因此這四個集合的實際存取控制
+    // 在 functions/src/bindings.js 裡，不在這裡。這是加入伺服器端之後必然
+    // 出現的第二個信任邊界；index.js 的檔頭記錄了它被刻意限制在哪四件事上。
+
+    // 綁定碼：由 Function 產生與核銷，前端完全碰不到。
+    // 前端讀得到別人的碼，就等於一個可枚舉的授權漏洞
+    // （與 patient_index 只開 get、不開 list 是同一個顧慮的更嚴格版本）。
+    match /line_link_codes/{code} {
+      allow read, write: if false;
+    }
+
+    // 綁定狀態：病患讀自己的（前端顯示「已綁定 / 未綁定」用），但不可自行寫入——
+    // 能自己寫這份文件，就能把任意 lineUserId 宣稱成自己的，
+    // 之後所有推播都會送到那支手機上。
+    match /line_bindings/{username} {
+      allow read: if isActive() && isOwnUsername(username);
+      allow write: if false;
+    }
+
+    // 反向索引（lineUserId → username/uid）：任何人都不可讀。
+    // 它是換發登入憑證的依據，讀得到就能知道某個 LINE 帳號對應哪位病患，
+    // 本身即為身分關聯的洩漏。
+    match /line_users/{lineUserId} {
+      allow read, write: if false;
+    }
+
+    // 推播冪等鎖。純粹是 Function 的內部狀態，沒有任何前端用途。
+    match /line_push_log/{key} {
+      allow read, write: if false;
+    }
   }
 }

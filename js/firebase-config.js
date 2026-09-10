@@ -18,6 +18,19 @@ firebase.initializeApp(firebaseConfig);
 window.db = firebase.firestore();
 window.auth = firebase.auth();
 
+// Cloud Functions（LINE 整合用）。
+//
+// 【區域必須明寫】Functions 部署在 asia-east1——那是 Firestore 資料庫所在地，
+// 而 Firestore 觸發器必須與資料庫同區，其餘 Function 便一併放在同區。
+// 少了這個參數，SDK 會打到預設的 us-central1 並得到 404 not-found，
+// 錯誤訊息不會提到區域，會看起來像「函式沒部署成功」。
+//
+// 只有載入了 firebase-functions-compat.js 的頁面（目前是 patient.html）
+// 才有 firebase.app().functions；其餘頁面此處靜默略過，不影響原有功能。
+window.functions = (typeof firebase.app().functions === 'function')
+  ? firebase.app().functions('asia-east1')
+  : null;
+
 // 給管理員「新增帳號」使用的獨立 Auth instance，
 // 避免 createUserWithEmailAndPassword 把目前登入的管理員自動切換登入成新帳號
 window.secondaryAuth = firebase.initializeApp(firebaseConfig, 'Secondary').auth();

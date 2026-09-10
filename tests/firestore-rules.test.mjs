@@ -1165,6 +1165,78 @@ await run('指派 醫師冒用他人名義建立',
 await run('指派 病患可撤銷醫護建立的關係',
   () => updateDoc(doc(NID2(), 'care_relations/nid2__doctor'), { status: 'revoked' }), 'allow');
 
+// ── LINE 綁定的四個集合 ───────────────────────────────────────────────
+//
+// 這四個集合在規則層對前端幾乎全關，唯一開放的是「病患讀自己的綁定狀態」。
+// 因此本節測的重點不是「誰可以做什麼」，而是「關的地方真的關上了」——
+// 尤其是 line_users：它是 LIFF 換發 Custom Token 的依據，
+// 一旦可讀可寫，等於任何人都能把自己的 LINE 指向別人的帳號。
+await env.withSecurityRulesDisabled(async ctx => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'line_bindings/P001'), {
+    uid: 'uidP001', username: 'P001', lineUserId: 'Uline0001', active: true, linkedAt: new Date() });
+  await setDoc(doc(db, 'line_users/Uline0001'), { username: 'P001', uid: 'uidP001' });
+  await setDoc(doc(db, 'line_link_codes/AAAA2345'), {
+    username: 'P001', uid: 'uidP001', used: false,
+    expiresAt: Timestamp.fromDate(new Date(Date.now() + 600000)) });
+  await setDoc(doc(db, 'line_push_log/P001__2026-09-09__daily'), { at: new Date() });
+});
+
+// 唯一開放的路徑：病患看得到自己綁了沒（前端要據此顯示「已綁定 / 尚未綁定」）
+await run('LINE 病患讀自己的綁定狀態',
+  () => getDoc(doc(P001(), 'line_bindings/P001')), 'allow');
+await run('LINE 他人讀別人的綁定狀態',
+  () => getDoc(doc(ATK(), 'line_bindings/P001')), 'deny');
+// 縱深防禦：uidForged 的 user_roles 自稱 username 是 P001，
+// 但它的 token.email 是 forged@medsafe.local——isOwnUsername 的第二道檢查要擋下它
+await run('LINE 偽造身分索引讀他人綁定狀態',
+  () => getDoc(doc(FORGED(), 'line_bindings/P001')), 'deny');
+
+// 【不可退讓】能自己寫 line_bindings，就能把任意 lineUserId 宣稱成自己的，
+// 之後這位病患的所有用藥提醒都會被推到攻擊者的手機上
+await run('LINE 病患不可自行寫入綁定',
+  () => setDoc(doc(P001(), 'line_bindings/P001'), {
+    uid: 'uidP001', username: 'P001', lineUserId: 'Uattacker', active: true }), 'deny');
+await run('LINE 病患不可竄改自己的綁定',
+  () => updateDoc(doc(P001(), 'line_bindings/P001'), { lineUserId: 'Uattacker' }), 'deny');
+await run('LINE admin 亦不可寫入綁定',
+  () => updateDoc(doc(ADM(), 'line_bindings/P001'), { active: false }), 'deny');
+
+// 【不可退讓】line_users 是 lineUserId → uid 的換發依據。
+// 可讀 = 由 LINE 帳號反查得出病患身分；可寫 = 直接接管帳號。
+await run('LINE 反向索引不可讀（本人也不行）',
+  () => getDoc(doc(P001(), 'line_users/Uline0001')), 'deny');
+await run('LINE 反向索引不可列舉',
+  () => getDocs(collection(P001(), 'line_users')), 'deny');
+await run('LINE 反向索引不可寫',
+  () => setDoc(doc(ATK(), 'line_users/Uattacker'), { username: 'P001', uid: 'uidP001' }), 'deny');
+await run('LINE admin 亦不可讀反向索引',
+  () => getDoc(doc(ADM(), 'line_users/Uline0001')), 'deny');
+
+// 綁定碼：由 Function 產生與核銷。前端讀得到別人的碼就是一個可枚舉的授權漏洞；
+// 前端寫得出碼，就能把 uid 欄位填成別人的（原設計的帳號接管路徑，見規則註解）
+await run('LINE 綁定碼不可讀',
+  () => getDoc(doc(P001(), 'line_link_codes/AAAA2345')), 'deny');
+await run('LINE 綁定碼不可列舉',
+  () => getDocs(collection(P001(), 'line_link_codes')), 'deny');
+await run('LINE 病患不可自行建立綁定碼',
+  () => setDoc(doc(P001(), 'line_link_codes/BBBB2345'), {
+    username: 'P001', uid: 'uidP001', used: false,
+    expiresAt: Timestamp.fromDate(new Date(Date.now() + 600000)) }), 'deny');
+// 這一條是原設計漏洞的直接迴歸測試：碼裡的 uid 指向他人時亦不得寫入
+await run('LINE 病患不可建立指向他人 uid 的綁定碼',
+  () => setDoc(doc(P001(), 'line_link_codes/CCCC2345'), {
+    username: 'P001', uid: 'uidAtk', used: false,
+    expiresAt: Timestamp.fromDate(new Date(Date.now() + 600000)) }), 'deny');
+await run('LINE 病患不可核銷綁定碼',
+  () => updateDoc(doc(P001(), 'line_link_codes/AAAA2345'), { used: true }), 'deny');
+
+// 推播冪等鎖：純內部狀態。可寫 = 可以讓某位病患整天收不到提醒
+await run('LINE 推播記錄不可讀',
+  () => getDoc(doc(P001(), 'line_push_log/P001__2026-09-09__daily')), 'deny');
+await run('LINE 推播記錄不可寫（可用於封鎖他人的提醒）',
+  () => setDoc(doc(ATK(), 'line_push_log/P001__2026-09-10__daily'), { at: new Date() }), 'deny');
+
 console.log('');
 for (const r of results) console.log(r[0].padEnd(5), r[1], r[2] ? '\n      ' + r[2] : '');
 const failed = results.filter(r => r[0] === 'FAIL');
