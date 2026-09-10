@@ -13,15 +13,44 @@
 let engine = null;
 let rules = null;
 
+// vendor/ 由 sync-vendor.js 於 predeploy 產生，且不進版控——因此在雲端它一定
+// 存在，在剛 clone 的工作目錄則一定不存在。測試若直接依賴 vendor/，會變成
+// 「要先跑一次部署前置步驟才能跑測試」。
+//
+// 退回 ../../js/ 讀的是 sync-vendor.js 的來源檔本身，不是另一份副本，
+// 因此不違反「絕不能有第二份 DDI 實作」——兩條路徑指向同一份內容。
+function vendorOrSource(file) {
+  try {
+    return require('../vendor/' + file);
+  } catch (e) {
+    if (e.code !== 'MODULE_NOT_FOUND') throw e;
+    return require('../../js/' + file);
+  }
+}
+
+// 只載入藥物目錄。drug-catalog.js 不依賴引擎與規則庫，而規則庫本身
+// 就佔了那 306 KB 的絕大部分——只需要「藥名解析」的呼叫端（NLU 抽詞後的
+// 比對）不該為了一張別名表付整套引擎的載入代價。
+function loadCatalog() {
+  global.window = global.window || {};
+  vendorOrSource('drug-catalog.js');
+  return global.window.DrugCatalog;
+}
+
 function load() {
   if (engine) return;
-  global.window = global.window || {};
-  require('../vendor/drug-catalog.js');
-  require('../vendor/ddinter-drugs.js');
-  require('../vendor/ddi-engine.js');
-  require('../vendor/ddi-rules-ddinter.js');
+  loadCatalog();
+  vendorOrSource('ddinter-drugs.js');
+  vendorOrSource('ddi-engine.js');
+  vendorOrSource('ddi-rules-ddinter.js');
   engine = global.window.DdiEngine;
   rules = engine.localRuleSet();
+}
+
+// 供只需要藥名解析的呼叫端使用（見 med-match.js）。
+// vendor/ 的載入集中在本檔，不讓第二個地方也做 global.window 的 shim。
+function catalog() {
+  return loadCatalog();
 }
 
 // 分析一份用藥清單。回傳與前端 analyze() 完全相同的結構。
@@ -73,4 +102,4 @@ function decorate(findings, meds) {
   }));
 }
 
-module.exports = { analyze, pushWorthyFindings, decorate, describe, PUSH_WORTHY };
+module.exports = { analyze, pushWorthyFindings, decorate, describe, catalog, PUSH_WORTHY };

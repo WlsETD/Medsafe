@@ -9,21 +9,22 @@ const { onRequest } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 
 const {
-  LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN, REGION
+  LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN, OPENAI_API_KEY, REGION
 } = require('./config');
 const lineApi = require('./line-api');
 const bindings = require('./bindings');
 const { recordTaken } = require('./adherence');
 const { dayKey } = require('./taipei-time');
 const flex = require('./flex');
-const { claimPushSlot } = require('./push-lock');
+const { claimPushSlot, releasePushSlot } = require('./push-lock');
 const { dailyLockKey } = require('./reminder');
 
 const HELP = [
   '您可以這樣使用：',
   '',
+  '・直接用說的回報，例如「早上的藥吃了」',
   '・輸入「藥箱」查看目前的用藥',
-  '・收到每日提醒後，吃完請按卡片上的時段按鈕',
+  '・收到每日提醒後，吃完也可以按卡片上的時段按鈕',
   '',
   '若要綁定帳號，請在 MedSafe 網頁的「LINE 提醒」中取得綁定碼，再傳給我。'
 ].join('\n');
@@ -31,6 +32,15 @@ const HELP = [
 // 綁定碼的形狀（8 碼、限定字母表）。用來判斷「這則訊息是不是在試綁定」，
 // 避免把一句閒聊當成失敗的綁定碼、回一句「綁定碼無效」讓人一頭霧水。
 const CODE_RE = new RegExp('^[' + bindings.ALPHABET + ']{' + bindings.CODE_LEN + '}$');
+
+// 「查藥箱」的意圖。
+//
+// 【為什麼從 /藥箱|藥|用藥|吃什麼/ 收緊成這樣】
+// 原本那個 `|藥|` 會吃掉幾乎每一句跟藥有關的話——「剛吃完血壓藥」含「藥」字，
+// 於是自由文字回報永遠走不到 NLU，全部被當成查詢藥箱。加了 NLU 之後，
+// 這個過寬的比對從「無害」變成「讓新功能完全失效」。
+// 查詢是明確的指令式說法，回報是敘述句，因此改為錨定整句。
+const CABINET_RE = /^(藥箱|我的藥|我的用藥|用藥清單|查藥|查用藥|吃什麼藥?|有哪些藥)[？?。!！]*$/;
 
 async function handleFollow(token, event) {
   const lineUserId = event.source && event.source.userId;
@@ -125,7 +135,7 @@ async function handleText(token, event) {
   // 走 reply 而非 push，所以病患想查幾次都不計費（LINE 明文把 Reply API
   // 列為免費訊息）。把「隨時可查」設計成零成本，才能把付費的推播額度
   // 留給真正需要主動打斷對方的事——每日提醒與交互作用警示。
-  if (/藥箱|藥|用藥|吃什麼/.test(text)) {
+  if (CABINET_RE.test(text)) {
     const snap = await admin.firestore().collection('patient_data').doc(user.username).get();
     if (!snap.exists) {
       return lineApi.reply(token, event.replyToken, lineApi.textMessage('查無您的用藥資料。'));
@@ -166,7 +176,133 @@ async function handleText(token, event) {
     return lineApi.reply(token, event.replyToken, lineApi.textMessage(lines.join('\n')));
   }
 
-  return lineApi.reply(token, event.replyToken, lineApi.textMessage(HELP));
+  // ── 自由文字回報（LLM 語意理解）──
+  //
+  // 【擺在最後一個分支，而不是最前面】
+  // 綁定碼與藥箱查詢都是形狀明確、判斷零成本、且結果確定的路徑。
+  // 讓它們先走完，LLM 只接手真正無法用規則判斷的句子——
+  // 既省下每則訊息的 API 成本，也讓既有功能不因 LLM 故障而一起壞掉。
+  return handleFreeText(token, event, user, text);
+}
+
+// 按鈕流程的 fallback 訊息。NLU 失敗時一律退回這裡，
+// 而不是回一句「我不懂」讓使用者無路可走。
+const FALLBACK = '我不太確定您的意思。\n\n您可以按每日提醒卡上的時段按鈕回報，或輸入「藥箱」查看用藥。';
+
+async function handleFreeText(token, event, user, text) {
+  const lineUserId = event.source && event.source.userId;
+
+  // 先讓聊天室出現「輸入中」，再去等 LLM。不 await——這只是視覺效果，
+  // 讓它跟 LLM 呼叫並行，不要為了一個動畫多花掉回覆預算裡的往返時間。
+  if (lineUserId) lineApi.showLoading(token, lineUserId);
+
+  const snap = await admin.firestore().collection('patient_data').doc(user.username).get();
+  if (!snap.exists) {
+    return lineApi.reply(token, event.replyToken, lineApi.textMessage('查無您的用藥資料。'));
+  }
+  const patientData = snap.data();
+
+  // NLU 只在真的要用時才載——與藥箱查詢載入 DDI 引擎的理由相同。
+  const nlu = require('./nlu');
+  const r = await nlu.processUserInput(text, patientData);
+
+  if (r.status === 'error') {
+    // LLM 掛掉、額度用完、逾時——一律退回按鈕流程。
+    // 【不可以在這裡道歉完就結束】使用者是來回報吃藥的，
+    // 必須告訴他還有另一條路可以完成同一件事。
+    logger.error('NLU 失敗，已退回按鈕流程', { username: user.username, error: r.error });
+    return lineApi.reply(token, event.replyToken, lineApi.textMessage(FALLBACK));
+  }
+
+  if (r.status === 'no-extraction') {
+    return lineApi.reply(token, event.replyToken, lineApi.textMessage(FALLBACK));
+  }
+
+  const day = dayKey();
+  const lines = [];
+
+  // ── 寫入高信心度的回報 ──
+  for (const item of r.toRecord) {
+    const res = await recordTaken(user.username, day, item.slot.time);
+    const name = item.med.zhName || item.med.name;
+    if (!res.persisted) {
+      lines.push('・' + name + '　回報未能儲存，請改用提醒卡上的按鈕');
+    } else if (res.already) {
+      lines.push('・' + item.slot.time + '　' + res.text + '（先前已回報過）');
+    } else {
+      lines.push('✓ ' + item.slot.time + '　' + res.text);
+    }
+  }
+  if (lines.length) lines.unshift('已為您記錄：', '');
+
+  // ── 說了「沒吃／不確定」的：只回覆，不寫入（理由見 nlu.js）──
+  for (const n of r.notRecorded) {
+    const name = n.med.zhName || n.med.name;
+    if (n.reason === 'no-slot') {
+      lines.push('', '「' + name + '」目前沒有設定提醒時段，無法回報。');
+    } else {
+      lines.push('', '「' + name + '」（' + n.slot.time + '）目前仍是未回報的狀態。');
+    }
+  }
+
+  // ── 不認得的藥名：據實說，不猜最接近的那個 ──
+  if (r.unmatched.length) {
+    lines.push('', '您提到的「' + r.unmatched.join('」「') + '」不在您目前的用藥清單裡。');
+  }
+
+  // ── 需要追問的：用 quick reply 讓使用者從候選清單挑 ──
+  //
+  // 【所有按鈕都送出既有的 action=taken postback】
+  // 「挑一個時段」在語意上就是「按下那個時段的已服用」，因此直接複用
+  // handlePostback 那條已經在跑、也已經有去重與 slot 檢查的路徑，
+  // 不為了 quick reply 另開一種 postback 型別。
+  if (r.confirm.length) {
+    const c = r.confirm[0];
+    const items = [];
+    let question = '';
+
+    if (c.kind === 'pick-drug') {
+      question = '您說的「' + c.said + '」是指哪一個？';
+      for (const med of c.options) {
+        const name = med.zhName || med.name;
+        const slot = (patientData.reminders || []).find(x => String(x.text || '').includes(name));
+        if (!slot) continue;
+        items.push({
+          label: name,
+          data: 'action=taken&day=' + day + '&time=' + encodeURIComponent(slot.time),
+          displayText: name + ' 已服用'
+        });
+      }
+    } else if (c.kind === 'pick-slot') {
+      question = '「' + (c.med.zhName || c.med.name) + '」有多個時段，請問是哪一次？';
+      for (const slot of c.slots) {
+        items.push({
+          label: slot.time,
+          data: 'action=taken&day=' + day + '&time=' + encodeURIComponent(slot.time),
+          displayText: slot.time + ' 已服用'
+        });
+      }
+    } else {
+      question = '請確認是這一項嗎？';
+      items.push({
+        label: c.slot.time + ' ' + (c.med.zhName || c.med.name),
+        data: 'action=taken&day=' + day + '&time=' + encodeURIComponent(c.slot.time),
+        displayText: c.slot.time + ' 已服用'
+      });
+    }
+
+    if (items.length) {
+      if (lines.length) lines.push('');
+      lines.push(question);
+      return lineApi.reply(token, event.replyToken,
+        lineApi.textWithQuickReply(lines.join('\n'), items));
+    }
+  }
+
+  if (!lines.length) {
+    return lineApi.reply(token, event.replyToken, lineApi.textMessage(FALLBACK));
+  }
+  return lineApi.reply(token, event.replyToken, lineApi.textMessage(lines.join('\n').trim()));
 }
 
 async function handlePostback(token, event) {
@@ -202,10 +338,33 @@ async function handlePostback(token, event) {
   return lineApi.reply(token, event.replyToken, lineApi.textMessage(msg));
 }
 
+// 事件層級的冪等鎖。
+//
+// 【為什麼一定要有】
+// LINE 在收不到 200（或收得太慢）時會重送整批事件。自由文字回報要等 LLM，
+// 比按按鈕慢，因此真的會撞上重送。而本專案的病歷設計是不可刪除的——
+// 重複寫入一筆服藥紀錄無法用刪除補救，只能不要讓它發生。
+//
+// recordTaken() 自身雖然有 slotKey 去重（同一時段按兩次會回 already），
+// 但那只擋得住「同一個 slot」。重送發生在更外層：整批事件被重放，
+// 期間病患若剛好改了排程，第二次重放就可能落到不同的 slot 而寫成兩筆。
+// 因此去重要做在事件本身，不能只靠下游。
+//
+// 沿用 push-lock 的 create()-as-lock 與 line_push_log 集合：該集合在
+// firestore.rules 中已對所有前端關閉，因此這個新用途不需要動任何規則，
+// 也就不需要為它補一輪 rules 測試。前綴 evt: 與推播鎖的鍵區隔開來。
+async function claimEvent(event) {
+  const id = event.webhookEventId;
+  // 舊版 LINE 事件沒有這個欄位。沒有 id 就無從去重——此時仍要處理，
+  // 因為「因為擋不住重複就乾脆不回報」比重複回報更糟。
+  if (!id) return true;
+  return claimPushSlot('evt:' + id);
+}
+
 exports.lineWebhook = onRequest(
   {
     region: REGION,
-    secrets: [LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN],
+    secrets: [LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN, OPENAI_API_KEY],
     // webhook 不需要高併發，但冷啟動會讓長輩等待。1 個常駐執行個體
     // 在免費額度內，換到的是「傳出去大概一秒內就有回應」。
     minInstances: 0,
@@ -231,6 +390,12 @@ exports.lineWebhook = onRequest(
 
     for (const event of events) {
       try {
+        // unfollow 不寫任何病歷，重放無害；其餘一律先過冪等鎖。
+        if (event.type !== 'unfollow' && !(await claimEvent(event))) {
+          logger.info('重送的事件，已略過', { id: event.webhookEventId, type: event.type });
+          continue;
+        }
+
         if (event.type === 'message' && event.message && event.message.type === 'text') {
           await handleText(token, event);
         } else if (event.type === 'postback') {
@@ -245,6 +410,9 @@ exports.lineWebhook = onRequest(
         // 且無論如何都回 200——回非 2xx 會讓 LINE 重送整批，
         // 已經處理成功的那幾則就會被重做一次。
         logger.error('事件處理失敗', { type: event.type, error: e.message, stack: e.stack });
+        // 失敗時放掉冪等鎖，否則「失敗一次就永久不再受理這個事件」——
+        // 那比重複處理更糟（見 push-lock.js 的同一段推理）。
+        if (event.webhookEventId) await releasePushSlot('evt:' + event.webhookEventId);
       }
     }
 

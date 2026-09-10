@@ -14,6 +14,7 @@ const { defineSecret, defineString } = require('firebase-functions/params');
 // 機密：只存在於 Secret Manager，不進 git、不進前端。
 const LINE_CHANNEL_SECRET = defineSecret('LINE_CHANNEL_SECRET');
 const LINE_CHANNEL_ACCESS_TOKEN = defineSecret('LINE_CHANNEL_ACCESS_TOKEN');
+const OPENAI_API_KEY = defineSecret('OPENAI_API_KEY');
 
 // 非機密：官方帳號的 Basic ID（@ 開頭），用來組「一鍵傳送綁定碼」的深層連結。
 // 這是公開資訊（任何人都查得到官方帳號 ID），因此用 param 而非 secret。
@@ -35,6 +36,7 @@ const TZ = 'Asia/Taipei';
 module.exports = {
   LINE_CHANNEL_SECRET,
   LINE_CHANNEL_ACCESS_TOKEN,
+  OPENAI_API_KEY,
   LINE_BASIC_ID,
   REGION,
   LINK_CODE_TTL_MS,

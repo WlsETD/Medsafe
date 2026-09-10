@@ -10,6 +10,7 @@ const crypto = require('crypto');
 
 const REPLY_URL = 'https://api.line.me/v2/bot/message/reply';
 const PUSH_URL = 'https://api.line.me/v2/bot/message/push';
+const LOADING_URL = 'https://api.line.me/v2/bot/chat/loading/start';
 
 // 驗證 x-line-signature。
 //
@@ -68,8 +69,39 @@ function push(token, to, messages) {
   });
 }
 
+// 聊天室裡的「輸入中」動畫。
+//
+// 【為什麼需要它】
+// 自由文字回報要等 LLM 抽詞，回覆會比按按鈕慢上一兩秒。對長輩來說，
+// 送出後畫面毫無反應的那幾秒，會讓人以為沒送出去而重打一次——
+// 於是同一件事被回報兩次。這個動畫的作用是把「系統在想」變成看得見的事。
+//
+// 不計費，且失敗也無所謂（純視覺），因此呼叫端不必等它、也不必處理錯誤。
+// loadingSeconds 只接受 5 的倍數（5~60），給錯會 400。
+function showLoading(token, userId, loadingSeconds = 10) {
+  return callLine(LOADING_URL, token, { chatId: userId, loadingSeconds })
+    .catch(() => ({ ok: false }));
+}
+
 function textMessage(text) {
   return { type: 'text', text };
 }
 
-module.exports = { verifySignature, reply, push, textMessage };
+// 帶 quick reply 按鈕的文字訊息。
+// LINE 上限 13 顆，label 上限 20 字；超過會整則訊息被拒，因此在這裡就裁掉。
+function textWithQuickReply(text, items) {
+  const buttons = (items || []).slice(0, 13).map(it => ({
+    type: 'action',
+    action: {
+      type: 'postback',
+      label: String(it.label).slice(0, 20),
+      data: it.data,
+      displayText: it.displayText || it.label
+    }
+  }));
+  const msg = { type: 'text', text };
+  if (buttons.length) msg.quickReply = { items: buttons };
+  return msg;
+}
+
+module.exports = { verifySignature, reply, push, showLoading, textMessage, textWithQuickReply };
