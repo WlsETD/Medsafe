@@ -24,25 +24,37 @@ const RICHMENU_DATA_API = 'https://api-data.line.me/v2/bot/richmenu';
 const RICHMENU_DEFAULT_API = 'https://api.line.me/v2/bot/user/all/richmenu';
 const IMAGE_PATH = path.join(__dirname, '../assets/richmenu.png');
 
-// 目前只有「藥箱」「選單」是真的能用的功能，「預約」「回報不適」是
-// Phase 0／Phase 4 完成前的預告格——圖片上有標「即將推出」，文字指令
-// 也回覆誠實的「開發中」訊息，不是按了沒反應的死按鈕。之後功能上線時，
-// 這裡的 text 不用改，只要 webhook.js 那個分支從「即將推出」訊息
-// 換成真正的處理邏輯即可。
+// 正式站台網址。check.html／schedule.html 是免登入的公開工具（見
+// 04_Security_Audit/0908.md），可以直接用 uri action 開，不用等 Phase 0
+// 的 LIFF 橋接——這兩格是「六宮格但只有四格真的能用」之外，額外多出來
+// 立刻能用的兩格。
+const SITE_ORIGIN = 'https://medsafe-554b7.web.app';
+
+// 3x2 六宮格。「線上預約」「回報不適」是 Phase 0／Phase 4 完成前的
+// 預告格——圖片上標「即將推出」，文字指令也回覆誠實的開發中訊息
+// （見 webhook.js 的 COMING_SOON），不是按了沒反應的死按鈕。
+// 「藥箱」「使用說明」是既有文字指令；「用藥查詢」「服藥時間表」
+// 直接連到免登入的公開頁面，不需要任何後端處理。
 const AREAS = [
-  { bounds: { x: 0, y: 0, width: 1250, height: 422 },
+  { bounds: { x: 0, y: 0, width: 834, height: 843 },
     action: { type: 'message', label: '藥箱', text: '藥箱' } },
-  { bounds: { x: 1250, y: 0, width: 1250, height: 422 },
-    action: { type: 'message', label: '預約', text: '預約' } },
-  { bounds: { x: 0, y: 422, width: 1250, height: 421 },
+  { bounds: { x: 834, y: 0, width: 833, height: 843 },
+    action: { type: 'message', label: '線上預約', text: '預約' } },
+  { bounds: { x: 1667, y: 0, width: 833, height: 843 },
     action: { type: 'message', label: '回報不適', text: '回報不適' } },
-  { bounds: { x: 1250, y: 422, width: 1250, height: 421 },
-    action: { type: 'message', label: '選單', text: '選單' } }
+  { bounds: { x: 0, y: 843, width: 834, height: 843 },
+    action: { type: 'message', label: '使用說明', text: '選單' } },
+  { bounds: { x: 834, y: 843, width: 833, height: 843 },
+    action: { type: 'uri', label: '用藥查詢', uri: SITE_ORIGIN + '/check.html' } },
+  { bounds: { x: 1667, y: 843, width: 833, height: 843 },
+    action: { type: 'uri', label: '服藥時間表', uri: SITE_ORIGIN + '/schedule.html' } }
 ];
 
 const DEFINITION = {
-  size: { width: 2500, height: 843 },
-  selected: false,
+  size: { width: 2500, height: 1686 },
+  // 預設展開（不是收合成一條小 tab）——比照使用者參考的 LINE 官方帳號
+  // 選單體驗，加好友／開啟對話當下就看得到整張圖。
+  selected: true,
   name: 'MedSafe 主選單',
   chatBarText: '選單',
   areas: AREAS
@@ -136,6 +148,7 @@ module.exports = {
   lineSetupRichMenu,
   AREAS,
   DEFINITION,
+  SITE_ORIGIN,
   // 【測試用】注入/恢復 HTTP 實作
   setImpl(fn) { httpImpl = fn; },
   resetImpl() { httpImpl = null; }

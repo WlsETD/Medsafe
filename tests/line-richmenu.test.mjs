@@ -1,7 +1,7 @@
 // LINE Rich Menu 建立/上傳/設為預設/清舊選單的測試。
 //
 // 這份測試守的是：
-//   一、四宮格區域完整覆蓋 2500x843 且互不重疊（不然會有按了沒反應的死角）
+//   一、六宮格區域完整覆蓋 2500x843 且互不重疊（不然會有按了沒反應的死角）
 //   二、setup() 依正確順序呼叫 LINE API（建立 → 上傳圖片 → 設為預設 → 清舊選單）
 //   三、清舊選單失敗不影響本次設定的結果（新選單在步驟三已生效）
 //   四、image content-type 一定是二進位，不能被序列化成 JSON 字串送出
@@ -35,7 +35,7 @@ function mockCalls(handler) {
 {
   const total = richmenu.AREAS.reduce((sum, a) => sum + a.bounds.width * a.bounds.height, 0);
   const expected = richmenu.DEFINITION.size.width * richmenu.DEFINITION.size.height;
-  check('四宮格面積總和等於畫布面積（無空隙、無重疊）', total === expected,
+  check('六宮格面積總和等於畫布面積（無空隙、無重疊）', total === expected,
     'total=' + total + ' expected=' + expected);
 }
 {
@@ -49,16 +49,28 @@ function mockCalls(handler) {
       if (overlap) overlaps.push([i, j]);
     }
   }
-  check('四宮格彼此不重疊', overlaps.length === 0, JSON.stringify(overlaps));
+  check('六宮格彼此不重疊', overlaps.length === 0, JSON.stringify(overlaps));
 }
 {
   const bad = richmenu.AREAS.filter(a => !a.action.label || a.action.label.length > 20);
   check('每格 label 存在且不超過 LINE 的 20 字上限', bad.length === 0);
 }
 {
-  const bad = richmenu.AREAS.filter(a => a.action.type !== 'message' || !a.action.text);
-  check('每格都是 message action 且帶 text（借用既有文字指令分支，不用另開 postback）',
-    bad.length === 0);
+  // 兩種合法型別：message（借用既有文字指令分支）與 uri（直接開免登入
+  // 公開頁面，例如 check.html／schedule.html，不需要任何後端處理）。
+  const bad = richmenu.AREAS.filter(a => {
+    if (a.action.type === 'message') return !a.action.text;
+    if (a.action.type === 'uri') return !a.action.uri || !a.action.uri.startsWith('https://');
+    return true; // 其餘型別（例如 postback）目前不該出現在選單裡
+  });
+  check('每格都是 message（帶 text）或 uri（帶 https 連結），沒有其他型別',
+    bad.length === 0, JSON.stringify(bad));
+}
+{
+  const messageCount = richmenu.AREAS.filter(a => a.action.type === 'message').length;
+  const uriCount = richmenu.AREAS.filter(a => a.action.type === 'uri').length;
+  check('六宮格共 6 格：4 格文字指令 + 2 格免登入公開頁面連結',
+    richmenu.AREAS.length === 6 && messageCount === 4 && uriCount === 2);
 }
 {
   const w = richmenu.DEFINITION.size.width, h = richmenu.DEFINITION.size.height;
@@ -91,7 +103,7 @@ function mockCalls(handler) {
   check('上傳圖片那一步標記為二進位、且 body 就是原始圖片 bytes（不是 JSON.stringify 過的字串）',
     calls[1].binary === true && calls[1].body === FAKE_IMAGE);
 
-  check('建立選單那一步送出完整的 DEFINITION（四宮格區域）',
+  check('建立選單那一步送出完整的 DEFINITION（六宮格區域）',
     calls[0].body === richmenu.DEFINITION);
 
   check('回傳新建立的 richMenuId', result.richMenuId === 'rm-new');

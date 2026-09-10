@@ -18,6 +18,7 @@ const { dayKey } = require('./taipei-time');
 const flex = require('./flex');
 const { claimPushSlot, releasePushSlot } = require('./push-lock');
 const { dailyLockKey } = require('./reminder');
+const richmenu = require('./richmenu');
 
 const HELP = [
   '您可以這樣使用：',
@@ -68,7 +69,9 @@ function menuItems() {
   return [
     { label: '查藥箱', text: '藥箱' },
     { label: '線上預約', text: '預約' },
-    { label: '回報不適', text: '回報不適' }
+    { label: '回報不適', text: '回報不適' },
+    { label: '用藥查詢', uri: richmenu.SITE_ORIGIN + '/check.html' },
+    { label: '服藥時間表', uri: richmenu.SITE_ORIGIN + '/schedule.html' }
     // Phase 0（LIFF 預約／照護關係）完成後，另加一個 uri 按鈕開 LIFF 連結
   ];
 }
