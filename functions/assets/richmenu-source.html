@@ -1,0 +1,79 @@
+<!doctype html>
+<!--
+  LINE Rich Menu 圖片的產生原始檔。不是給使用者瀏覽的頁面，是拿來截圖
+  合成 richmenu.png 用的版面。改動選單內容（文字、圖示、開發中狀態）
+  時改這個檔案，然後用瀏覽器在 2500x1686 的畫布下截圖存回
+  functions/assets/richmenu.png，不要直接手動修圖。
+
+  六格圖示來自 functions/assets/richmenu-icons/（AI 生圖，見該資料夾
+  README.md 的 prompt 紀錄），本檔只負責排版。
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:2500px; height:1686px; overflow:hidden; }
+  body {
+    font-family: -apple-system, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    display:grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    background:#1A5276;
+  }
+  .cell {
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:24px;
+    border: 3px solid rgba(255,255,255,0.16);
+  }
+  .icon { width:220px; height:220px; }
+  .label { font-size:62px; font-weight:800; color:#fff; letter-spacing:1px; }
+  .sub { font-size:28px; font-weight:600; color:rgba(255,255,255,0.75); }
+  .live { background:#1A5276; }
+  .soon { background:#123A54; }
+  .badge {
+    position:absolute; top:32px; right:40px;
+    background:#F39C12; color:#7A4E06; font-weight:800; font-size:26px;
+    padding:9px 24px; border-radius:999px;
+  }
+</style>
+</head>
+<body>
+  <div class="cell live">
+    <img class="icon" src="richmenu-icons/med-box.png">
+    <div class="label">藥箱</div>
+    <div class="sub">查看目前用藥</div>
+  </div>
+  <div class="cell soon">
+    <img class="icon" src="richmenu-icons/appointment.png">
+    <div class="label">線上預約</div>
+    <div class="sub">敬請期待</div>
+    <div class="badge">即將推出</div>
+  </div>
+  <div class="cell soon">
+    <img class="icon" src="richmenu-icons/symptom.png">
+    <div class="label">回報不適</div>
+    <div class="sub">敬請期待</div>
+    <div class="badge">即將推出</div>
+  </div>
+  <div class="cell live">
+    <img class="icon" src="richmenu-icons/guide.png">
+    <div class="label">使用說明</div>
+    <div class="sub">查看所有功能</div>
+  </div>
+  <div class="cell live">
+    <img class="icon" src="richmenu-icons/drug-check.png">
+    <div class="label">用藥查詢</div>
+    <div class="sub">免登入查交互作用</div>
+  </div>
+  <div class="cell live">
+    <img class="icon" src="richmenu-icons/schedule.png">
+    <div class="label">服藥時間表</div>
+    <div class="sub">可列印</div>
+  </div>
+</body>
+</html>
