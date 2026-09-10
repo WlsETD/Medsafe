@@ -49,7 +49,10 @@ window.Audit = (function () {
     // 展示帳號資料重置（見 js/demo-reset.js）。記錄的意義與 break_glass
     // 同一類：這是一個刻意放寬給 admin 的特殊動作（含刪除白名單對話），
     // 事後留痕才知道誰、何時重置過。
-    DEMO_RESET: 'demo_reset'
+    DEMO_RESET: 'demo_reset',
+    // LINE Rich Menu 選單圖片更新（functions/src/richmenu.js）。
+    // 低頻、全帳號生效的設定變更，留痕理由與 DEMO_RESET 同一類。
+    LINE_RICHMENU_UPDATE: 'line_richmenu_update'
   };
 
   // 稽核記錄本身不得成為新的個資外洩管道。這裡只記「誰、何時、對誰、做了什麼」，

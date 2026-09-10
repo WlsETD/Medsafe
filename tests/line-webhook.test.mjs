@@ -100,6 +100,24 @@ for (const s of ['說明書上寫早上吃', '這個功能怎麼用', '選單上
   check('選單意圖不誤判夾在句子裡的同字：「' + s + '」', MENU_RE.test(s) === false);
 }
 
+// 「開發中功能」的誠實提示：Rich Menu 上「預約」「回報不適」兩格目前
+// 還沒實作，按下去要有明確的開發中訊息，不能被自由文字 NLU 收走
+// （那會讓 GPT 硬答一個功能還不存在的問題）。
+const COMING_SOON = { 預約: 'x', 回報不適: 'y' };
+const COMING_SOON_RE = new RegExp('^(' + Object.keys(COMING_SOON).join('|') + ')[？?。!！]*$');
+
+for (const q of ['預約', '回報不適', '預約？', '回報不適!']) {
+  check('開發中提示意圖被辨識：「' + q + '」', COMING_SOON_RE.test(q));
+}
+for (const s of ['我想預約看診時間表', '幫我掛號給張醫師', '我不適很久了']) {
+  check('開發中提示不誤判夾在句子裡的同字：「' + s + '」', COMING_SOON_RE.test(s) === false);
+}
+{
+  const m = '預約？'.match(COMING_SOON_RE);
+  check('帶標點時仍能用捕獲群組查到正確的訊息（不因標點查表落空）',
+    m && COMING_SOON[m[1]] === 'x');
+}
+
 // ── 三、事件冪等去重 ─────────────────────────────────────────────────
 //
 // LINE 收不到 200（或收得太慢）時會重送整批事件。自由文字回報要等 LLM，

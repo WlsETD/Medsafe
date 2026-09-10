@@ -19,6 +19,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <!-- LINE 選單設定要呼叫 lineSetupRichMenu callable，見 js/firebase-config.js 的 window.functions -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     
     <script>
@@ -781,6 +783,32 @@
                             <button @click="openDemoResetModal" class="px-8 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-amber-500/30 hover:scale-105 active:scale-95 transition-all">重置展示帳號資料</button>
                         </div>
                     </div>
+
+                    <!-- Card 5: LINE 選單圖片（functions/src/richmenu.js） -->
+                    <div class="bg-white rounded-[40px] shadow-premium border border-white p-10 space-y-6 text-left">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 shadow-sm shrink-0"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg></div>
+                            <h3 class="text-xl font-black text-title italic">LINE 選單圖片 (Rich Menu)</h3>
+                        </div>
+                        <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                            <p class="text-[10px] font-bold text-slate-600 leading-relaxed">
+                                <span class="font-black text-emerald-700 uppercase">用途：</span>
+                                把聊天室底部常駐的選單圖片（<span class="font-mono font-black">functions/assets/richmenu.png</span>）上傳並設為所有 LINE 使用者的預設選單。
+                                <br><span class="font-black text-emerald-700 uppercase">範圍：</span>
+                                對「所有」已加好友的 LINE 使用者立即生效，並會清除帳號底下其餘的舊選單。
+                                <br><span class="font-black text-emerald-700 uppercase">時機：</span>
+                                圖片檔案（<span class="font-mono">functions/assets/richmenu.png</span>）異動、或選單上的功能上線/下線時才需要點一次，非日常操作。
+                            </p>
+                        </div>
+                        <div v-if="richMenuError" class="bg-red-50 text-danger text-xs font-bold p-4 rounded-xl border border-red-100">{{ richMenuError }}</div>
+                        <div class="flex flex-wrap items-center justify-between gap-4 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                            <div class="text-xs font-bold text-slate-500">
+                                <span v-if="richMenuResult">上次更新成功，richMenuId：<span class="font-mono">{{ richMenuResult.richMenuId }}</span>（清除 {{ richMenuResult.deletedOldMenuIds.length }} 個舊選單）</span>
+                                <span v-else>尚未在本次登入中更新過</span>
+                            </div>
+                            <button @click="confirmRichMenuSetup" :disabled="richMenuBusy" class="px-8 py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-emerald-500/30 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100">{{ richMenuBusy ? '更新中...' : '更新 LINE 選單圖片' }}</button>
+                        </div>
+                    </div>
                 </div>
             </transition>
         </main>
@@ -1075,6 +1103,8 @@
                     demoResetLastResult: null, demoResetLastAt: null, demoResetLastBy: '',
                     demoResetCooldownMs: 0,
                     demoPatients: window.DemoReset ? window.DemoReset.DEMO_PATIENTS : [],
+                    // LINE Rich Menu 設定（functions/src/richmenu.js）
+                    richMenuBusy: false, richMenuError: '', richMenuResult: null,
                     toastTitle: '', toastMsg: '', toastTone: 'ok', toastTimer: null,
                     newUser: { name: '', role: 'doctor', email: '', hospital: '' },
                     newUserError: '',
@@ -1729,6 +1759,32 @@
                         this.demoResetError = '重置失敗：' + (e.message || e);
                     } finally {
                         this.demoResetRunning = false;
+                    }
+                },
+                // ── LINE Rich Menu 設定（functions/src/richmenu.js）──────────
+                //
+                // 全帳號立即生效、非破壞性資料操作（沒有既有病歷會被改動），
+                // 用瀏覽器原生 confirm 而不是另開一個 modal——與 cancelAppointment
+                // 同一種取捨：後果單純到一句話能講完，不需要整組確認 UI。
+                async confirmRichMenuSetup() {
+                    if (this.richMenuBusy) return;
+                    if (!confirm('確定要更新 LINE 選單圖片嗎？這會立即套用到所有已加好友的使用者。')) return;
+                    this.richMenuBusy = true;
+                    this.richMenuError = '';
+                    try {
+                        const res = await window.functions.httpsCallable('lineSetupRichMenu')();
+                        this.richMenuResult = res.data;
+                        this.triggerToast('LINE 選單圖片已更新',
+                            `richMenuId：${res.data.richMenuId}，已清除 ${res.data.deletedOldMenuIds.length} 個舊選單。`, 'ok');
+                        try {
+                            await window.Audit.log(window.Audit.ACTIONS.LINE_RICHMENU_UPDATE, 'line_richmenu', res.data);
+                        } catch (e) {
+                            console.error('LINE 選單更新的稽核記錄寫入失敗：', e);
+                        }
+                    } catch (e) {
+                        this.richMenuError = '更新失敗：' + (e.message || e);
+                    } finally {
+                        this.richMenuBusy = false;
                     }
                 },
 

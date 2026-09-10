@@ -45,18 +45,31 @@ const CABINET_RE = /^(藥箱|我的藥|我的用藥|用藥清單|查藥|查用�
 // 呼叫選單的意圖。與 CABINET_RE 同樣錨定整句，理由相同。
 const MENU_RE = /^(選單|menu|說明|help|功能|你會什麼)[？?。!！]*$/i;
 
-// 選單按鈕：只列出「現在真的能用」的功能。之後每個 Phase 做完，
-// 在這裡加一個項目即可——不要為了看起來功能多而先放按了沒反應的按鈕，
-// 對長輩來說「按了沒反應」比「沒有按鈕」更容易讓人以為系統壞了。
+// 「預約」「回報不適」目前只是 Rich Menu 上的預告格（見 richmenu.js），
+// 功能尚未實作。按下去要有誠實的「開發中」回覆，不能悄悄無反應或被
+// NLU 自由文字誤收——對長輩來說「按了沒反應」比「還沒做完」更容易
+// 讓人以為系統壞了。Phase 0（預約）／Phase 4（回報不適）做完後，
+// 把對應分支從這個 COMING_SOON_RE 陣列移除、換成真正的處理邏輯即可。
+const COMING_SOON = {
+  預約: '「線上預約」還在開發中，麻煩您先照原本的方式掛號，敬請期待。',
+  回報不適: '「回報不適」還在開發中，若有不適請直接聯繫醫師或藥師，敬請期待。'
+};
+const COMING_SOON_RE = new RegExp('^(' + Object.keys(COMING_SOON).join('|') + ')[？?。!！]*$');
+
+// 選單按鈕：只列出「按下去會有像樣回應」的功能——「查藥箱」是真的能用，
+// 「預約」「回報不適」是誠實的開發中提示（見上），不是按了沒反應的死按鈕。
+// 之後 Phase 完成時，把對應項目的意義從「開發中提示」換成真正的功能即可，
+// 選單本身不用改。
 //
 // text 而非 data：按下去等同使用者自己打了這句話送出，直接借用既有的
 // 文字指令分支（見 line-api.js quickReplyItems 的說明），新增選單項目
 // 不需要另外處理 postback。
 function menuItems() {
   return [
-    { label: '查藥箱', text: '藥箱' }
-    // Phase 4（副作用回報）完成後加：{ label: '回報不適', text: '不適' }
-    // Phase 0+2/3（LIFF 預約／照護關係）完成後加一個 uri 按鈕開 LIFF 連結
+    { label: '查藥箱', text: '藥箱' },
+    { label: '線上預約', text: '預約' },
+    { label: '回報不適', text: '回報不適' }
+    // Phase 0（LIFF 預約／照護關係）完成後，另加一個 uri 按鈕開 LIFF 連結
   ];
 }
 
@@ -153,6 +166,18 @@ async function handleText(token, event) {
   if (MENU_RE.test(text)) {
     return lineApi.reply(token, event.replyToken,
       lineApi.withQuickReply(lineApi.textMessage(HELP), menuItems()));
+  }
+
+  // ── 開發中功能的誠實提示（見 COMING_SOON 註解）──
+  {
+    // 用捕獲群組取關鍵字本身，而不是拿整段 text 去查表——
+    // 允許「預約？」這種帶標點的說法，同時不會因為標點對不上表裡的
+    // key 而查表落空，讓這句話悄悄滑到下面的自由文字 NLU 去。
+    const m = text.match(COMING_SOON_RE);
+    if (m) {
+      return lineApi.reply(token, event.replyToken,
+        lineApi.withQuickReply(lineApi.textMessage(COMING_SOON[m[1]]), menuItems()));
+    }
   }
 
   // ── 藥箱查詢 ──

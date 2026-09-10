@@ -39,6 +39,9 @@ const callable = require('./src/callable');
 exports.lineCreateLinkCode = callable.lineCreateLinkCode;
 exports.lineUnbind = callable.lineUnbind;
 
+const richmenu = require('./src/richmenu');
+exports.lineSetupRichMenu = richmenu.lineSetupRichMenu;
+
 const webhook = require('./src/webhook');
 exports.lineWebhook = webhook.lineWebhook;
 
