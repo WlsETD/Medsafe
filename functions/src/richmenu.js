@@ -22,7 +22,11 @@ const { REGION, LINE_CHANNEL_ACCESS_TOKEN } = require('./config');
 const RICHMENU_API = 'https://api.line.me/v2/bot/richmenu';
 const RICHMENU_DATA_API = 'https://api-data.line.me/v2/bot/richmenu';
 const RICHMENU_DEFAULT_API = 'https://api.line.me/v2/bot/user/all/richmenu';
-const IMAGE_PATH = path.join(__dirname, '../assets/richmenu.png');
+// JPEG 而非 PNG：六格放大後的 PNG 超過 LINE 的 1MB 上限（png 版約 1.16MB），
+// 這種扁平設計＋少量漸層的內容改存 JPEG（quality 90）可以壓到 300KB 內，
+// 肉眼幾乎看不出差異。上傳時 Content-Type 要記得跟著換成 image/jpeg
+// （見 setup() 呼叫 call() 時的 binary 分支）。
+const IMAGE_PATH = path.join(__dirname, '../assets/richmenu.jpg');
 
 // 正式站台網址。check.html／schedule.html 是免登入的公開工具（見
 // 04_Security_Audit/0908.md），可以直接用 uri action 開，不用等 Phase 0
@@ -68,7 +72,7 @@ async function defaultHttp({ method, url, token, body, binary }) {
     method,
     headers: Object.assign(
       { Authorization: 'Bearer ' + token },
-      binary ? { 'Content-Type': 'image/png' } : { 'Content-Type': 'application/json' }
+      binary ? { 'Content-Type': 'image/jpeg' } : { 'Content-Type': 'application/json' }
     ),
     body: binary ? body : (body != null ? JSON.stringify(body) : undefined)
   });
@@ -91,9 +95,9 @@ function call(req) {
 }
 
 // 【對外】建立選單、上傳圖片、設為預設，並清掉舊選單。
-// image 參數可注入（測試用假圖片 buffer），預設讀 functions/assets/richmenu.png。
+// image 參數可注入（測試用假圖片 buffer），預設讀 functions/assets/richmenu.jpg。
 async function setup(token, image) {
-  const png = image || fs.readFileSync(IMAGE_PATH);
+  const jpg = image || fs.readFileSync(IMAGE_PATH);
 
   // 一、建立新選單結構，拿到 richMenuId。
   const created = await call({ method: 'POST', url: RICHMENU_API, token, body: DEFINITION });
@@ -101,7 +105,7 @@ async function setup(token, image) {
   if (!richMenuId) throw new Error('建立選單失敗：LINE 未回傳 richMenuId');
 
   // 二、上傳圖片（二進位 body，不是 JSON）。
-  await call({ method: 'POST', url: RICHMENU_DATA_API + '/' + richMenuId + '/content', token, body: png, binary: true });
+  await call({ method: 'POST', url: RICHMENU_DATA_API + '/' + richMenuId + '/content', token, body: jpg, binary: true });
 
   // 三、設為所有使用者的預設選單。
   await call({ method: 'POST', url: RICHMENU_DEFAULT_API + '/' + richMenuId, token });

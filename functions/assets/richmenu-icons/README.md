@@ -26,7 +26,9 @@
 2. 如果背景不是全透明，先去背（去除背景白色，保留圖形內部的白色區域，
    flood fill 從四個邊界往內找連通的白色像素即可，不要對整張圖做全域去白，
    否則會把圖形內部的白色細節一起挖空——例如 `guide.png` 書頁的白色）。
-3. 另存成同樣的檔名覆蓋這裡，接著重新產生 `functions/assets/richmenu.png`
+3. 另存成同樣的檔名覆蓋這裡，接著重新產生 `functions/assets/richmenu.jpg`
    （用 `functions/assets/richmenu-source.html` 排版、截圖、裁切成
-   2500×1686，見該檔案開頭註解），再到 admin.html 點「更新 LINE 選單圖片」
-   讓新圖片正式生效。
+   2500×1686，見該檔案開頭註解）。**存成 JPEG（quality ~90），不要存 PNG**——
+   六格圖示這個尺寸的 PNG 會超過 LINE 1MB 的上限（實測約 1.16MB），
+   JPEG 同樣內容可以壓到 300KB 內且肉眼看不出差異。存好後到 admin.html
+   點「更新 LINE 選單圖片」讓新圖片正式生效。
