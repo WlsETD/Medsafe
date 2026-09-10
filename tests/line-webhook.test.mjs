@@ -89,6 +89,17 @@ for (const s of [
   check('回報敘述不被誤判為查詢：「' + s + '」', CABINET_RE.test(s) === false);
 }
 
+// 「選單」意圖：與 CABINET_RE 同樣錨定整句。
+const MENU_RE = /^(選單|menu|說明|help|功能|你會什麼)[？?。!！]*$/i;
+
+for (const q of ['選單', 'menu', 'Menu', '說明', 'help', '功能', '你會什麼']) {
+  check('選單意圖被辨識：「' + q + '」', MENU_RE.test(q));
+}
+for (const s of ['說明書上寫早上吃', '這個功能怎麼用', '選單上沒有這個藥']) {
+  // 錨定整句，含選單/說明字樣的長句不可誤判成呼叫選單。
+  check('選單意圖不誤判夾在句子裡的同字：「' + s + '」', MENU_RE.test(s) === false);
+}
+
 // ── 三、事件冪等去重 ─────────────────────────────────────────────────
 //
 // LINE 收不到 200（或收得太慢）時會重送整批事件。自由文字回報要等 LLM，
@@ -182,6 +193,36 @@ function claimEvent(lock, event) {
 {
   const msg = lineApi.textWithQuickReply('沒有按鈕', []);
   check('沒有候選時不掛空的 quickReply 欄位', msg.quickReply === undefined);
+}
+
+// 選單按鈕用 text（message action）而非 postback：按下去等同使用者自己
+// 打了這句話送出，直接借用既有的文字指令分支（見 webhook.js menuItems 的說明）。
+{
+  const msg = lineApi.textWithQuickReply('選單', [{ label: '查藥箱', text: '藥箱' }]);
+  check('text 選項產生 message 型別的按鈕，且帶原句文字',
+    msg.quickReply.items[0].action.type === 'message'
+    && msg.quickReply.items[0].action.text === '藥箱');
+}
+// uri 選項（Phase 0 之後開 LIFF 連結會用到）。
+{
+  const msg = lineApi.textWithQuickReply('選單', [{ label: '線上掛號', uri: 'https://liff.line.me/xxx' }]);
+  check('uri 選項產生 uri 型別的按鈕',
+    msg.quickReply.items[0].action.type === 'uri'
+    && msg.quickReply.items[0].action.uri === 'https://liff.line.me/xxx');
+}
+// withQuickReply：掛在任意訊息（含非 text 型別，例如 Flex 卡片）上，
+// 而不是只能透過 textWithQuickReply 建立新的文字訊息。
+{
+  const flexLike = { type: 'flex', altText: '每日用藥卡', contents: {} };
+  const withMenu = lineApi.withQuickReply(flexLike, [{ label: '查藥箱', text: '藥箱' }]);
+  check('withQuickReply 可以掛在非文字訊息（如 Flex 卡片）上',
+    withMenu.type === 'flex' && withMenu.quickReply.items.length === 1);
+}
+{
+  const flexLike = { type: 'flex', altText: 'x', contents: {} };
+  const withMenu = lineApi.withQuickReply(flexLike, []);
+  check('withQuickReply 沒有候選時同樣不掛空的 quickReply 欄位',
+    withMenu.quickReply === undefined);
 }
 
 // --- 輸出 ---

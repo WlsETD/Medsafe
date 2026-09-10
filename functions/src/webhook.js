@@ -42,6 +42,24 @@ const CODE_RE = new RegExp('^[' + bindings.ALPHABET + ']{' + bindings.CODE_LEN +
 // 查詢是明確的指令式說法，回報是敘述句，因此改為錨定整句。
 const CABINET_RE = /^(藥箱|我的藥|我的用藥|用藥清單|查藥|查用藥|吃什麼藥?|有哪些藥)[？?。!！]*$/;
 
+// 呼叫選單的意圖。與 CABINET_RE 同樣錨定整句，理由相同。
+const MENU_RE = /^(選單|menu|說明|help|功能|你會什麼)[？?。!！]*$/i;
+
+// 選單按鈕：只列出「現在真的能用」的功能。之後每個 Phase 做完，
+// 在這裡加一個項目即可——不要為了看起來功能多而先放按了沒反應的按鈕，
+// 對長輩來說「按了沒反應」比「沒有按鈕」更容易讓人以為系統壞了。
+//
+// text 而非 data：按下去等同使用者自己打了這句話送出，直接借用既有的
+// 文字指令分支（見 line-api.js quickReplyItems 的說明），新增選單項目
+// 不需要另外處理 postback。
+function menuItems() {
+  return [
+    { label: '查藥箱', text: '藥箱' }
+    // Phase 4（副作用回報）完成後加：{ label: '回報不適', text: '不適' }
+    // Phase 0+2/3（LIFF 預約／照護關係）完成後加一個 uri 按鈕開 LIFF 連結
+  ];
+}
+
 async function handleFollow(token, event) {
   const lineUserId = event.source && event.source.userId;
   if (lineUserId) {
@@ -49,7 +67,7 @@ async function handleFollow(token, event) {
     const r = await bindings.reactivateByLineUserId(lineUserId);
     if (r.ok) {
       return lineApi.reply(token, event.replyToken,
-        lineApi.textMessage('歡迎回來，用藥提醒已恢復。\n\n' + HELP));
+        lineApi.withQuickReply(lineApi.textMessage('歡迎回來，用藥提醒已恢復。\n\n' + HELP), menuItems()));
     }
   }
   return lineApi.reply(token, event.replyToken, lineApi.textMessage(
@@ -80,25 +98,26 @@ async function replyWithTodayCard(token, replyToken, username) {
     const snap = await admin.firestore().collection('patient_data').doc(username).get();
     const reminders = snap.exists && Array.isArray(snap.data().reminders) ? snap.data().reminders : [];
     if (!reminders.length) {
-      return lineApi.reply(token, replyToken, lineApi.textMessage(welcome));
+      return lineApi.reply(token, replyToken, lineApi.withQuickReply(lineApi.textMessage(welcome), menuItems()));
     }
 
     const day = dayKey();
     const claimed = await claimPushSlot(dailyLockKey(username, day));
     if (!claimed) {
       // 今天已經推過了（例如同一天重新綁定）——不重複附卡，只回文字
-      return lineApi.reply(token, replyToken, lineApi.textMessage(welcome));
+      return lineApi.reply(token, replyToken, lineApi.withQuickReply(lineApi.textMessage(welcome), menuItems()));
     }
 
     const name = (snap.data().profile && snap.data().profile.name) || username;
     const sorted = reminders.slice().sort((a, b) => String(a.time).localeCompare(String(b.time)));
-    const card = flex.dailyReminderCard(name, day, sorted);
+    // quickReply 只在一次回覆的「最後一則」訊息上生效，因此掛在卡片上，不是文字訊息上。
+    const card = lineApi.withQuickReply(flex.dailyReminderCard(name, day, sorted), menuItems());
     return lineApi.reply(token, replyToken, [lineApi.textMessage(welcome), card]);
   } catch (e) {
     // 附卡失敗不可讓整個綁定看起來失敗——綁定本身（Firestore 寫入）已經成功了，
     // 只是少了這張錦上添花的卡片，仍要回覆確認訊息。
     logger.error('綁定成功但附卡失敗', { username, error: e.message });
-    return lineApi.reply(token, replyToken, lineApi.textMessage(welcome));
+    return lineApi.reply(token, replyToken, lineApi.withQuickReply(lineApi.textMessage(welcome), menuItems()));
   }
 }
 
@@ -128,6 +147,12 @@ async function handleText(token, event) {
     return lineApi.reply(token, event.replyToken, lineApi.textMessage(
       '您還沒有綁定帳號。\n\n請在 MedSafe 網頁的「LINE 提醒」中取得 8 碼綁定碼，再傳給我。'
     ));
+  }
+
+  // ── 選單 ──
+  if (MENU_RE.test(text)) {
+    return lineApi.reply(token, event.replyToken,
+      lineApi.withQuickReply(lineApi.textMessage(HELP), menuItems()));
   }
 
   // ── 藥箱查詢 ──
@@ -173,7 +198,8 @@ async function handleText(token, event) {
       // 這正是稽核報告 P0-3 抓到過的錯誤形狀（見 ddi-engine.js 註解）。
       lines.push('', '另有 ' + result.unevaluable.length + ' 種藥系統無法判讀，不代表沒有交互作用。');
     }
-    return lineApi.reply(token, event.replyToken, lineApi.textMessage(lines.join('\n')));
+    return lineApi.reply(token, event.replyToken,
+      lineApi.withQuickReply(lineApi.textMessage(lines.join('\n')), menuItems()));
   }
 
   // ── 自由文字回報（LLM 語意理解）──
@@ -221,11 +247,13 @@ async function handleFreeText(token, event, user, text) {
     // 【不可以在這裡道歉完就結束】使用者是來回報吃藥的，
     // 必須告訴他還有另一條路可以完成同一件事。
     logger.error('NLU 失敗，已退回按鈕流程', { username: user.username, error: r.error });
-    return lineApi.reply(token, event.replyToken, lineApi.textMessage(FALLBACK));
+    return lineApi.reply(token, event.replyToken,
+      lineApi.withQuickReply(lineApi.textMessage(FALLBACK), menuItems()));
   }
 
   if (r.status === 'no-extraction') {
-    return lineApi.reply(token, event.replyToken, lineApi.textMessage(FALLBACK));
+    return lineApi.reply(token, event.replyToken,
+      lineApi.withQuickReply(lineApi.textMessage(FALLBACK), menuItems()));
   }
 
   const day = dayKey();
@@ -310,7 +338,8 @@ async function handleFreeText(token, event, user, text) {
   }
 
   if (!lines.length) {
-    return lineApi.reply(token, event.replyToken, lineApi.textMessage(FALLBACK));
+    return lineApi.reply(token, event.replyToken,
+      lineApi.withQuickReply(lineApi.textMessage(FALLBACK), menuItems()));
   }
   return lineApi.reply(token, event.replyToken, lineApi.textMessage(lines.join('\n').trim()));
 }

@@ -87,21 +87,46 @@ function textMessage(text) {
   return { type: 'text', text };
 }
 
-// 帶 quick reply 按鈕的文字訊息。
+// 把選單項目轉成 quick reply 的 action 陣列。
 // LINE 上限 13 顆，label 上限 20 字；超過會整則訊息被拒，因此在這裡就裁掉。
+//
+// 三種 action 依 it 帶的欄位自動判斷：
+//   it.uri  → type:'uri'，開啟外部連結（Phase 0 的 LIFF 入口會用到）
+//   it.text → type:'message'，等同使用者自己打了這句話送出——
+//             這樣按鈕背後不用另開一條 postback 處理邏輯，直接借用
+//             既有的文字指令分支（例如「藥箱」），新增選單項目零成本。
+//   否則    → type:'postback'（既有的候選清單/時段選擇用法，見 webhook.js）
+function quickReplyItems(items) {
+  return (items || []).slice(0, 13).map(it => {
+    const label = String(it.label).slice(0, 20);
+    const action = it.uri
+      ? { type: 'uri', label, uri: it.uri }
+      : it.text
+        ? { type: 'message', label, text: it.text }
+        : { type: 'postback', label, data: it.data, displayText: it.displayText || label };
+    return { type: 'action', action };
+  });
+}
+
+// 帶 quick reply 按鈕的文字訊息。
 function textWithQuickReply(text, items) {
-  const buttons = (items || []).slice(0, 13).map(it => ({
-    type: 'action',
-    action: {
-      type: 'postback',
-      label: String(it.label).slice(0, 20),
-      data: it.data,
-      displayText: it.displayText || it.label
-    }
-  }));
   const msg = { type: 'text', text };
+  const buttons = quickReplyItems(items);
   if (buttons.length) msg.quickReply = { items: buttons };
   return msg;
 }
 
-module.exports = { verifySignature, reply, push, showLoading, textMessage, textWithQuickReply };
+// 幫任意一則訊息（文字或 Flex）掛上 quick reply。
+// LINE 規定 quickReply 掛在一次回覆裡「最後一則」訊息上才會顯示，
+// reply() 一次可能送多則（例如歡迎詞 + 當日用藥卡），因此獨立成一個
+// 可以對任何 message 物件呼叫的函式，而不是只能綁在 textMessage 上。
+function withQuickReply(message, items) {
+  const buttons = quickReplyItems(items);
+  if (buttons.length) message.quickReply = { items: buttons };
+  return message;
+}
+
+module.exports = {
+  verifySignature, reply, push, showLoading,
+  textMessage, textWithQuickReply, withQuickReply, quickReplyItems
+};
