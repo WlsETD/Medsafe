@@ -100,22 +100,69 @@ for (const s of ['說明書上寫早上吃', '這個功能怎麼用', '選單上
   check('選單意圖不誤判夾在句子裡的同字：「' + s + '」', MENU_RE.test(s) === false);
 }
 
-// 「開發中功能」的誠實提示：Rich Menu 上「預約」「回報不適」兩格目前
-// 還沒實作，按下去要有明確的開發中訊息，不能被自由文字 NLU 收走
-// （那會讓 GPT 硬答一個功能還不存在的問題）。
-const COMING_SOON = { 預約: 'x', 回報不適: 'y' };
-const COMING_SOON_RE = new RegExp('^(' + Object.keys(COMING_SOON).join('|') + ')[？?。!！]*$');
+// 「開發中功能」的誠實提示：Rich Menu 上「回報不適」這格目前還沒實作
+// （Phase 4），按下去要有明確的開發中訊息，不能被自由文字 NLU 收走
+// （那會讓 GPT 硬答一個功能還不存在的問題）。「預約」在 Phase 3 做完後
+// 移出這張表，改用下面獨立的 BOOKING_RE（見 webhook.js 的說明），
+// 兩者都直接從 webhook.js 的 _internal 取，不在測試裡重寫一份規則，
+// 避免兩邊定義漂移。
+const COMING_SOON = { 回報不適: 'y' };
+const COMING_SOON_RE_LOCAL = new RegExp('^(' + Object.keys(COMING_SOON).join('|') + ')[？?。!！]*$');
 
-for (const q of ['預約', '回報不適', '預約？', '回報不適!']) {
-  check('開發中提示意圖被辨識：「' + q + '」', COMING_SOON_RE.test(q));
+for (const q of ['回報不適', '回報不適!']) {
+  check('開發中提示意圖被辨識：「' + q + '」', COMING_SOON_RE_LOCAL.test(q));
 }
-for (const s of ['我想預約看診時間表', '幫我掛號給張醫師', '我不適很久了']) {
-  check('開發中提示不誤判夾在句子裡的同字：「' + s + '」', COMING_SOON_RE.test(s) === false);
+for (const s of ['幫我掛號給張醫師', '我不適很久了']) {
+  check('開發中提示不誤判夾在句子裡的同字：「' + s + '」', COMING_SOON_RE_LOCAL.test(s) === false);
 }
+check('「預約」已不在開發中提示表內（Phase 3 完成後移出，見 BOOKING_RE）',
+  COMING_SOON_RE_LOCAL.test('預約') === false);
 {
-  const m = '預約？'.match(COMING_SOON_RE);
+  const m = '回報不適！'.match(COMING_SOON_RE_LOCAL);
   check('帶標點時仍能用捕獲群組查到正確的訊息（不因標點查表落空）',
-    m && COMING_SOON[m[1]] === 'x');
+    m && COMING_SOON[m[1]] === 'y');
+}
+
+// ── 線上預約（Phase 3）：BOOKING_RE 的意圖辨識，直接用 webhook.js 匯出的正則 ──
+{
+  const { BOOKING_RE } = require('../functions/src/webhook.js')._internal;
+
+  for (const q of ['預約', '線上預約', '預約？', '線上預約!']) {
+    check('掛號意圖被辨識：「' + q + '」', BOOKING_RE.test(q));
+  }
+  for (const s of ['我想預約看診時間表', '幫我掛號給張醫師']) {
+    // 錨定整句，理由與 CABINET_RE／MENU_RE 相同——這兩句含「預約」二字，
+    // 但不是「按了預約格」那個精確意圖，不可誤收。
+    check('掛號意圖不誤判夾在句子裡的同字：「' + s + '」', BOOKING_RE.test(s) === false);
+  }
+}
+
+// ── bookingReply()：LIFF_ID 有無設定時的兩種回應 ────────────────────────
+{
+  const originalLiffId = process.env.LIFF_ID;
+
+  delete process.env.LIFF_ID;
+  delete require.cache[require.resolve('../functions/src/webhook.js')];
+  const noLiff = require('../functions/src/webhook.js')._internal.bookingReply();
+  check('LIFF_ID 未設定時，掛號回覆是開發中文字訊息',
+    noLiff.type === 'text' && /開發中/.test(noLiff.text));
+  check('LIFF_ID 未設定時，掛號回覆不附任何按鈕（沒有可用的連結可以給）',
+    noLiff.quickReply === undefined);
+
+  process.env.LIFF_ID = 'test-liff-id-0002';
+  delete require.cache[require.resolve('../functions/src/webhook.js')];
+  const withLiff = require('../functions/src/webhook.js')._internal.bookingReply();
+  const bookingBtn = withLiff.quickReply && withLiff.quickReply.items
+    .map(i => i.action).find(a => a.label === '前往掛號');
+  check('LIFF_ID 已設定時，掛號回覆附「前往掛號」按鈕',
+    !!bookingBtn);
+  check('「前往掛號」連到 LIFF 深連結且帶 view=appointments（對上 patient.html 的還原邏輯）',
+    !!bookingBtn && bookingBtn.uri === 'https://liff.line.me/test-liff-id-0002?view=appointments');
+  check('「前往掛號」是 uri 型別而非 message',
+    !!bookingBtn && bookingBtn.type === 'uri');
+
+  if (originalLiffId === undefined) delete process.env.LIFF_ID;
+  else process.env.LIFF_ID = originalLiffId;
 }
 
 // ── 三、事件冪等去重 ─────────────────────────────────────────────────

@@ -46,21 +46,44 @@ const CABINET_RE = /^(藥箱|我的藥|我的用藥|用藥清單|查藥|查用�
 // 呼叫選單的意圖。與 CABINET_RE 同樣錨定整句，理由相同。
 const MENU_RE = /^(選單|menu|說明|help|功能|你會什麼)[？?。!！]*$/i;
 
-// 「預約」「回報不適」目前只是 Rich Menu 上的預告格（見 richmenu.js），
-// 功能尚未實作。按下去要有誠實的「開發中」回覆，不能悄悄無反應或被
+// 「回報不適」目前只是 Rich Menu 上的預告格（見 richmenu.js），功能尚未
+// 實作（Phase 4）。按下去要有誠實的「開發中」回覆，不能悄悄無反應或被
 // NLU 自由文字誤收——對長輩來說「按了沒反應」比「還沒做完」更容易
-// 讓人以為系統壞了。Phase 0（預約）／Phase 4（回報不適）做完後，
-// 把對應分支從這個 COMING_SOON_RE 陣列移除、換成真正的處理邏輯即可。
+// 讓人以為系統壞了。Phase 4 做完後，把這個分支從 COMING_SOON 移除、
+// 換成真正的處理邏輯即可。
+//
+// 「預約」原本也在這裡，Phase 3（LIFF 掛號）做完後移到下面獨立的
+// BOOKING_RE 分支——理由是它現在視 LIFF_ID 有沒有設定而有兩種可能的
+// 回應，不再是單純的固定文字，不適合再跟一句話對一句話的 COMING_SOON
+// 表放在一起。
 const COMING_SOON = {
-  預約: '「線上預約」還在開發中，麻煩您先照原本的方式掛號，敬請期待。',
   回報不適: '「回報不適」還在開發中，若有不適請直接聯繫醫師或藥師，敬請期待。'
 };
 const COMING_SOON_RE = new RegExp('^(' + Object.keys(COMING_SOON).join('|') + ')[？?。!！]*$');
 
-// 選單按鈕：只列出「按下去會有像樣回應」的功能——「查藥箱」是真的能用，
-// 「預約」「回報不適」是誠實的開發中提示（見上），不是按了沒反應的死按鈕。
-// 之後 Phase 完成時，把對應項目的意義從「開發中提示」換成真正的功能即可，
-// 選單本身不用改。
+// 「線上預約」——與 CABINET_RE／MENU_RE 同樣錨定整句，理由相同。
+// 掛號本身完全重用 patient.html 既有的 activeView === 'appointments'
+// 區塊與 DbService.appointments，沒有另外刻一份對話式掛號邏輯
+// （見 linebot.md §4.2：對話式重刻只會多一份要跟 firestore.rules
+// 保持一致的邏輯，卻不會更安全）。LIFF_ID 未設定時（Phase 0 尚未
+// 走完）退回原本的「開發中」文字，不給一個開不了的死連結。
+const BOOKING_RE = /^(預約|線上預約)[？?。!！]*$/;
+function bookingReply() {
+  const liffId = LIFF_ID.value();
+  if (!liffId) {
+    return lineApi.textMessage('「線上預約」還在開發中，麻煩您先照原本的方式掛號，敬請期待。');
+  }
+  const url = 'https://liff.line.me/' + liffId + '?view=appointments';
+  return lineApi.withQuickReply(
+    lineApi.textMessage('可以直接在下面開啟掛號頁——選科別、輸入醫師帳號、選日期送出即可，取消掛號也在同一頁。'),
+    [{ label: '前往掛號', uri: url }, ...menuItems()]
+  );
+}
+
+// 選單按鈕：只列出「按下去會有像樣回應」的功能——「查藥箱」「線上預約」
+// 是真的能用（後者視 LIFF_ID 有無設定，見 BOOKING_RE／bookingReply），
+// 「回報不適」是誠實的開發中提示（見上），不是按了沒反應的死按鈕。
+// Phase 4 做完後，把「回報不適」也換成真正的功能即可，選單本身不用改。
 //
 // text 而非 data：按下去等同使用者自己打了這句話送出，直接借用既有的
 // 文字指令分支（見 line-api.js quickReplyItems 的說明），新增選單項目
@@ -181,10 +204,15 @@ async function handleText(token, event) {
       lineApi.withQuickReply(lineApi.textMessage(HELP), menuItems()));
   }
 
+  // ── 線上預約（見 BOOKING_RE／bookingReply 註解）──
+  if (BOOKING_RE.test(text)) {
+    return lineApi.reply(token, event.replyToken, bookingReply());
+  }
+
   // ── 開發中功能的誠實提示（見 COMING_SOON 註解）──
   {
     // 用捕獲群組取關鍵字本身，而不是拿整段 text 去查表——
-    // 允許「預約？」這種帶標點的說法，同時不會因為標點對不上表裡的
+    // 允許「回報不適！」這種帶標點的說法，同時不會因為標點對不上表裡的
     // key 而查表落空，讓這句話悄悄滑到下面的自由文字 NLU 去。
     const m = text.match(COMING_SOON_RE);
     if (m) {
@@ -438,8 +466,8 @@ async function claimEvent(event) {
   return claimPushSlot('evt:' + id);
 }
 
-// 供 tests/line-webhook.test.mjs 驗證 LIFF_ID 有無設定時的選單內容差異。
-exports._internal = { menuItems };
+// 供 tests/line-webhook.test.mjs 驗證 LIFF_ID 有無設定時的選單／掛號回覆差異。
+exports._internal = { menuItems, bookingReply, BOOKING_RE, COMING_SOON_RE };
 
 exports.lineWebhook = onRequest(
   {

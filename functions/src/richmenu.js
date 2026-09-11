@@ -34,11 +34,14 @@ const IMAGE_PATH = path.join(__dirname, '../assets/richmenu.jpg');
 // 立刻能用的兩格。
 const SITE_ORIGIN = 'https://medsafe-554b7.web.app';
 
-// 3x2 六宮格。「線上預約」「回報不適」是 Phase 0／Phase 4 完成前的
-// 預告格——圖片上標「即將推出」，文字指令也回覆誠實的開發中訊息
-// （見 webhook.js 的 COMING_SOON），不是按了沒反應的死按鈕。
-// 「藥箱」「使用說明」是既有文字指令；「用藥查詢」「服藥時間表」
-// 直接連到免登入的公開頁面，不需要任何後端處理。
+// 3x2 六宮格。「回報不適」是 Phase 4 完成前的預告格——圖片上標
+// 「即將推出」，文字指令也回覆誠實的開發中訊息（見 webhook.js 的
+// COMING_SOON），不是按了沒反應的死按鈕。「線上預約」在 Phase 3
+// （LIFF 掛號）做完後已經是真功能：按下去送出「預約」文字，webhook.js
+// 的 BOOKING_RE 分支視 LIFF_ID 有無設定回覆掛號連結或開發中提示——
+// 這格維持 message action 不需要改，圖片上的文案沿用即可，是回覆內容
+// 換了，不是這格本身換了。「藥箱」「使用說明」是既有文字指令；
+// 「用藥查詢」「服藥時間表」直接連到免登入的公開頁面，不需要任何後端處理。
 const AREAS = [
   { bounds: { x: 0, y: 0, width: 834, height: 843 },
     action: { type: 'message', label: '藥箱', text: '藥箱' } },

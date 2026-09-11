@@ -2422,7 +2422,18 @@
                 return;
             }
             if (liffResult.reason === 'redirecting') return;
-            mountWhenAuthorized(app, 'patient');
+            const mounted = await mountWhenAuthorized(app, 'patient');
+            // Phase 3：Rich Menu／bot 的「線上預約」深連結帶 ?view=appointments，
+            // 讓 LIFF 直接落在掛號頁，不必再多點一次側欄——完全重用既有頁面
+            // 與既有的 DbService.appointments，沒有另外刻一個對話式掛號流程
+            // （理由見 linebot.md §4.2：規則已經把關，對話式重刻只會多一份
+            // 邏輯要跟 firestore.rules 保持一致，卻不會更安全）。
+            if (mounted) {
+                const view = new URLSearchParams(location.search).get('view');
+                if (['home', 'appointments', 'consent', 'line'].includes(view)) {
+                    mounted.activeView = view;
+                }
+            }
         })();
     </script>
     <script src="js/pwa-register.js" defer></script>
