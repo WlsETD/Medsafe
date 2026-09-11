@@ -14,7 +14,7 @@
 //      · 核銷綁定碼、寫入 line_bindings / line_users（前端不可自行宣稱綁定）
 //      · 推播時讀取 patient_data 的 reminders 與 medications
 //      · 從 LINE 的 postback 寫入 adherenceLog
-//      · 由已驗證的 LINE ID Token 換發 Firebase Custom Token（P2，尚未啟用）
+//      · 由已驗證的 LINE ID Token 換發 Firebase Custom Token（P2）
 //
 //   3. 【最重要】凡是「把病歷讀出來顯示給人看」的路徑，一律不走 Admin SDK，
 //      而是由 LIFF 換發 Custom Token 後用前端 SDK 讀取，讓 firestore.rules
@@ -54,8 +54,8 @@ const prescription = require('./src/prescription');
 exports.onPrescriptionAdded = prescription.onPrescriptionAdded;
 
 // ── P2：LIFF 身分橋接 ─────────────────────────────────────────────────
-// 需要另一個 LINE Login channel（LIFF 用）的 Channel ID，尚未建立。
-// 建立並設定 LINE_LOGIN_CHANNEL_ID 之後再打開這一行，否則部署會因為
-// 參數缺值而失敗。
-// const exchange = require('./src/exchange');
-// exports.lineExchangeToken = exchange.lineExchangeToken;
+// LINE_LOGIN_CHANNEL_ID 用 defineString（非機密，比照 LINE_BASIC_ID），
+// 預設空字串，未設定時 lineExchangeToken 會在呼叫當下自行拒絕
+// （failed-precondition），因此可以隨時安全部署，不需要等設定完成。
+const exchange = require('./src/exchange');
+exports.lineExchangeToken = exchange.lineExchangeToken;

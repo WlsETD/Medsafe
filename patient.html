@@ -1048,6 +1048,8 @@
     <script src="js/auth.js"></script>
     <script src="js/chatStore.js"></script>
     <script src="js/notify.js"></script>
+    <script src="js/line-liff-config.js"></script>
+    <script src="js/liff-bridge.js"></script>
     <script>
         const { createApp, markRaw } = Vue;
 
@@ -2380,7 +2382,48 @@
                 }
             }
         });
-        mountWhenAuthorized(app, 'patient');
+        // ?liff=1 進入時，先透過 LIFF 換發 Custom Token 登入（見 js/liff-bridge.js），
+        // 再走原本的 mountWhenAuthorized——換發成功後這裡與一般帳密登入無異。
+        //
+        // 失敗原因不可一律當成「尚未綁定」：liffResult.reason 只有
+        // 'failed-precondition'（exchange.js 明確查不到綁定時丟的 HttpsError code）
+        // 才是真的沒綁定；其餘（LIFF SDK 載入失敗、ID Token 驗證失敗、
+        // createCustomToken 內部錯誤……）是別的問題，把它們也說成「尚未綁定」
+        // 會讓使用者去重綁一次也解決不了，還蓋掉真正的錯誤原因，實測就踩過這個坑。
+        function renderLiffError(reason, message) {
+            const isNotBound = reason === 'failed-precondition';
+            const title = isNotBound ? '尚未綁定 LINE' : '登入時發生錯誤';
+            const body = isNotBound
+                ? '請先用電腦或手機瀏覽器登入 MedSafe 網頁版，在側欄「LINE 提醒」頁面產生綁定碼並完成綁定，之後才能直接用 LINE 開啟這個頁面。'
+                : '暫時無法透過 LINE 登入，請稍後再試一次；若持續發生，請改用電腦或手機瀏覽器登入網頁版，並將下方代碼提供給管理員排查。';
+            document.title = title + ' | MedSafe';
+            document.body.innerHTML =
+                '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;'
+                + 'font-family:system-ui,-apple-system,Segoe UI,Noto Sans TC,sans-serif;background:#F7F8FA;padding:24px">'
+                + '<div style="max-width:420px;text-align:center;background:#fff;border-radius:24px;padding:40px 32px;'
+                + 'box-shadow:0 8px 32px rgba(15,23,42,.08)">'
+                + '<div style="font-size:40px;line-height:1;margin-bottom:16px">' + (isNotBound ? '🔗' : '⚠️') + '</div>'
+                + '<h1 style="font-size:20px;font-weight:800;color:#0F172A;margin:0 0 8px">' + title + '</h1>'
+                + '<p style="font-size:13px;color:#64748B;line-height:1.7;margin:0 0 24px">' + body + '</p>'
+                + '<a href="login.html" style="display:inline-block;background:#24A15D;color:#fff;'
+                + 'border-radius:16px;padding:14px 32px;font-size:13px;font-weight:800;text-decoration:none">前往網頁版登入</a>'
+                + (isNotBound ? '' : '<p style="font-size:10px;color:#94A3B8;margin-top:16px">代碼：' + reason + '</p>')
+                + '</div></div>';
+        }
+
+        (async () => {
+            let liffResult = { attempted: false };
+            if (window.bootLiff) {
+                liffResult = await window.bootLiff();
+            }
+            if (liffResult.attempted && !liffResult.ok && liffResult.reason !== 'redirecting') {
+                console.error('LIFF 登入未完成：', liffResult.reason, liffResult.message || '');
+                renderLiffError(liffResult.reason, liffResult.message);
+                return;
+            }
+            if (liffResult.reason === 'redirecting') return;
+            mountWhenAuthorized(app, 'patient');
+        })();
     </script>
     <script src="js/pwa-register.js" defer></script>
 </body>

@@ -21,6 +21,12 @@ const OPENAI_API_KEY = defineSecret('OPENAI_API_KEY');
 // 未設定時綁定畫面會退回「請手動輸入綁定碼」，功能不會壞。
 const LINE_BASIC_ID = defineString('LINE_BASIC_ID', { default: '' });
 
+// 非機密：LIFF 用的 LINE Login channel ID。用來檢查 /oauth2/v2.1/verify
+// 回應裡的 aud 是不是我們自己這個 channel 核發的 ID Token——channel ID
+// 本身就像 OAuth client_id，公開在前端 liff.init() 呼叫裡，不是密鑰。
+// 未設定時 lineExchangeToken 會直接拒絕（P2 功能關閉），不影響 P0/P1。
+const LINE_LOGIN_CHANNEL_ID = defineString('LINE_LOGIN_CHANNEL_ID', { default: '' });
+
 const REGION = 'asia-east1';
 
 // 綁定碼有效期。夠長到讓長輩換手機操作，短到讓暴力猜測不可行。
@@ -38,6 +44,7 @@ module.exports = {
   LINE_CHANNEL_ACCESS_TOKEN,
   OPENAI_API_KEY,
   LINE_BASIC_ID,
+  LINE_LOGIN_CHANNEL_ID,
   REGION,
   LINK_CODE_TTL_MS,
   KEEP_DAYS,

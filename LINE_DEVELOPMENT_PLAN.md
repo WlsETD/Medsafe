@@ -199,15 +199,91 @@ https://asia-east1-medsafe-554b7.cloudfunctions.net/lineWebhook
 
 ---
 
-## 之後的可選項目（P2/P3，尚未實作）
+## Phase 0 — LIFF 身分橋接：✅ 已完成（2026-09-11）
 
-| 項目 | 前提 | 估時 |
+`patient.html?liff=1` 已可用，端對端驗證通過（已綁定帳號直接開 LIFF 免登入進入藥箱頁）。
+
+LIFF ID：`2011556856-q7GxQLhS`　LINE Login Channel ID：`2011556856`（都寫在 `functions/.env` 與 `js/line-liff-config.js`）。
+
+**過程中踩到、記下來避免重工的坑：**
+- `admin.auth().createCustomToken()` 在 Cloud Functions 裡需要執行用的服務帳戶
+  （`{專案編號}-compute@developer.gserviceaccount.com`）有 **Service Account Token
+  Creator**（服務帳戶憑證建立者）這個 IAM 角色，否則會丟
+  `auth/insufficient-permission`（signBlob 被拒）。這不是程式碼問題，是專案層級的
+  IAM 設定，**換了 Firebase 專案要記得重加**。已在 `functions/src/exchange.js`
+  補上明確的 try/catch 與 log，不會再被誤判成別的錯誤。
+- 前端曾經把「LIFF 登入失敗的任何原因」全部顯示成「尚未綁定 LINE」，導致上面這個
+  IAM 問題被誤診成綁定問題。已修正為依 `HttpsError` code 分流（見 `patient.html`
+  的 `renderLiffError()`）——`failed-precondition` 才是真的沒綁定，其餘一律顯示
+  通用錯誤畫面並保留代碼，不要再合併回同一句話。
+
+<details>
+<summary>建立步驟記錄（僅供之後換帳號/專案時參考，正常情況不需要再做一次）</summary>
+
+## Phase 0 — LIFF 身分橋接：你要做的事（約 10 分鐘）
+
+**程式碼已完成**（`functions/src/exchange.js`、`js/liff-bridge.js`、`js/line-liff-config.js`，
+`tests/line-exchange.test.mjs` 已通過）。卡住的只剩「在 LINE Developers Console 建立
+LINE Login channel + LIFF app」——這件事跟申請 Messaging API 一樣，只有你本人的
+LINE 帳號能做。
+
+### 步驟 1️⃣ — 建立 LINE Login channel
+
+1. 開 https://developers.line.biz/console/，用同一個 LINE 帳號登入
+2. 點進步驟 2️⃣ 建立過的 Provider（`MedSafe`）
+3. 「**Create a new channel**」→ 選 **LINE Login**
+4. 填寫：
+   - **Channel name**：`MedSafe LIFF`（使用者不太會看到這個名字，隨意）
+   - **App types**：勾 **Web app**
+5. 建立後，切到「**Basic settings**」分頁，找到 **Channel ID**（一串數字）→ **記下來**
+
+### 步驟 2️⃣ — 在這個 channel 底下新增 LIFF app
+
+1. 同一個 channel 內，切到「**LIFF**」分頁 → 「**Add**」
+2. 填寫：
+   - **LIFF app name**：`MedSafe 病患`
+   - **Size**：`Full`
+   - **Endpoint URL**：`https://medsafe-554b7.web.app/patient.html?liff=1`
+     　⚠️ 一定要帶 `?liff=1`，`js/liff-bridge.js` 靠這個參數判斷要不要啟動 LINE 登入
+   - **Scope**：勾 `openid`（一定要）與 `profile`
+   - **Bot link feature**：可選 `On (Aggressive)`，讓開 LIFF 的人自動也加好友
+3. 建立後會拿到一串 **LIFF ID**（格式像 `1234567890-AbCdEfGh`）→ **記下來**
+
+**做完你手上會有兩個值**（都不是機密，是公開 ID）：
+
+```
+LINE Login Channel ID  →  一串數字
+LIFF ID                →  1234567890-AbCdEfGh
+```
+
+### 步驟 3️⃣ — 把兩個值交給我，我會做
+
+- 把 **LIFF ID** 寫進 `js/line-liff-config.js` 的 `window.LIFF_ID`
+- 用 `firebase functions:config:set` 或 `.env` 把 **Channel ID** 設進
+  `LINE_LOGIN_CHANNEL_ID`（非機密，不需要 Secret Manager）
+- 重新部署 `functions,hosting`
+- 跑 `npm run test:exchange` 確認邏輯正確
+
+### 步驟 4️⃣ — 端對端驗證（用你自己的真實 LINE）
+
+- [ ] 先照 P0 既有流程用網頁版完成一次 LINE 綁定（若還沒綁）
+- [ ] 手機 LINE 開啟官方帳號的圖文選單，或直接貼上
+      `https://liff.line.me/{LIFF_ID}` 這個網址
+- [ ] 應該直接看到 `patient.html` 正常渲染（不用輸入帳號密碼）
+- [ ] 用**未綁定**的另一個 LINE 帳號開同一個連結 → 應該看到「尚未綁定 LINE」提示頁，
+      而不是被導去 `login.html`
+
+</details>
+
+---
+
+## Phase 2/3（依賴 Phase 0，尚未實作）
+
+| 項目 | 內容 | 估時 |
 |---|---|---|
-| LIFF 數位藥箱 | 需另建 **LINE Login channel** 並取得 LIFF ID | 1–1.5 天 |
-| LIFF 掛號 | 同上 | 0.5 天 |
-| 圖文選單（六格） | 在 LINE Official Account Manager 設定，可指向現成的 `check.html` / `schedule.html` | 0.5 天 |
+| LIFF 數位藥箱 | 複用 `patient.html` 既有藥箱區塊，Phase 0 做完後零額外身分工程 | 0.5 天 |
+| LIFF 掛號 | 新頁面 `liff-appointment.html`，複用 `DbService.appointments` | 0.5 天 |
+| 圖文選單擴充 | 六宮格已完成（見 `04_Security_Audit/0910.md`），「線上預約」格從 COMING_SOON 換成真正的 LIFF 連結 | 低 |
 
-P2 的身分橋接 Function（`lineExchangeToken`）尚未撰寫，`functions/index.js` 末段留有註解說明啟用方式。
-
-**建議**：先把上面六個步驟做完、確認影片素材錄得到，再決定要不要做 P2。
-`linebot.md` §9 的建議是 **9/17 起功能凍結**，全部投入影片與簡報。
+`linebot.md` §9 的建議是 **9/17 起功能凍結**，全部投入影片與簡報——Phase 0 做完
+已經足夠讓「藥箱」「掛號」用 LIFF 免登入直接開啟，是否再做 Phase 2/3 視進度而定。
