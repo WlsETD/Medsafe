@@ -305,6 +305,66 @@ window.DbService = {
     return { persisted: true };
   },
 
+  // ── 停用用藥 ──────────────────────────────────────────────────────────
+  //
+  // 【為什麼不是改 medications 裡那一筆的欄位】規則語言無法對陣列迭代或
+  // 依 id 尋找元素（見 firestore.rules 的 medication_discontinuations 一節），
+  // 沒辦法泛用地驗證「陣列中某一筆被具名、留痕地改動」。因此停用是另外
+  // 建一筆不可回改的紀錄，「這筆藥現在算不算作用中」由讀取端拿 medId
+  // 去查這個集合有沒有對應紀錄而得出，medications 本身完全不變動。
+  //
+  // 同一筆藥只能被停用一次：doc id 是 {username}__{medId}，第二次呼叫
+  // 會被 firestore.rules 當成 update（因為文件已存在）而非 create 拒絕——
+  // 呼叫端若收到 permission-denied，代表這筆藥已經被停用過，應重新整理
+  // 畫面顯示既有的停用紀錄，而不是提示「權限不足」讓醫師誤以為是系統故障。
+  //
+  // 一併從每日提醒表移除這顆藥的提醒（與 addReminderEntries 合併時用同一套
+  // 「服用+藥名」文字比對）：藥都停了還提醒病患吃，是比沒有提醒更危險的錯誤。
+  // 已知限制：若同一位病患同時有兩筆藥名完全相同的處方（例如同成分藥兩院
+  // 各開一次），停用其中一筆會連帶清掉另一筆共用的提醒文字——這個限制
+  // 源自 reminders 本身以藥名文字合併、不記錄 medId 的既有設計，不在本次
+  // 停用功能的範圍內重新設計。
+  async discontinueMedication(username, med, reason, doctorUsername) {
+    const ref = window.db.collection('patient_data').doc(username);
+    const snap = await ref.get();
+    if (!snap.exists) return { persisted: false, reason: 'no-record' };
+
+    const catalogName = window.DrugCatalog && window.DrugCatalog.medDisplayName(med).zh;
+    const zhName = catalogName || med.name_zh || med.zhName || med.name_en || med.name || '';
+    const target = '服用' + zhName;
+    const reminders = (snap.data().reminders || [])
+      .map(r => {
+        if (!r.text) return Object.assign({}, r);
+        const parts = r.text.split('、').filter(p => p !== target);
+        return Object.assign({}, r, { text: parts.join('、') });
+      })
+      .filter(r => r.text && r.text.trim() !== '');
+
+    const discRef = window.db.collection('medication_discontinuations').doc(username + '__' + med.id);
+    const batch = window.db.batch();
+    batch.set(discRef, {
+      patient: username,
+      medId: med.id,
+      name: zhName,
+      reason,
+      discontinuedBy: doctorUsername,
+      discontinuedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    batch.update(ref, { reminders });
+    await batch.commit();
+    return { persisted: true };
+  },
+
+  // 一次取回某病患所有已停用用藥的紀錄，key 為 medId，供畫面用 medications[].id
+  // 直接查有沒有對應的停用紀錄，不需要逐筆各發一次 get()。
+  async getMedicationDiscontinuations(username) {
+    const snap = await window.db.collection('medication_discontinuations')
+      .where('patient', '==', username).get();
+    const byMedId = {};
+    snap.forEach(d => { byMedId[d.data().medId] = d.data(); });
+    return byMedId;
+  },
+
   // 病患目前指派的醫師（用查詢代替寫死名單），讓 demo 資料跟真實註冊的病患走同一套邏輯
   async getPatientsByDoctor(doctorUsername) {
     const snap = await window.db.collection('patient_data').where('assignedDoctor', '==', doctorUsername).get();

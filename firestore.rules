@@ -613,6 +613,51 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── 停用用藥：醫師主動中斷處方，須具名理由 ────────────────────────────
+    //
+    // 為什麼不是直接改 patient_data.medications 裡對應那一筆的欄位：規則語言
+    // 不支援對陣列迭代或依 id 尋找元素——上面的 addedMed() 只能成立，是因為
+    // 「新增」被限定成「永遠是最後一筆」這個額外假設；「停用」要動的卻可能是
+    // 陣列中任何一筆，沒有辦法用同一招泛用地驗證「哪一筆被改了、改得對不對」。
+    //
+    // 因此獨立成一個 create-only 的集合，用複合 ID {病患}__{medId} 精確指向
+    // 是哪一筆用藥。「這筆藥現在算不算作用中」變成前端／LINE bot 顯示時，
+    // 拿 medications[].id 來查這個集合有沒有對應紀錄而得出的衍生狀態，
+    // 不是 patient_data 本身的欄位——好處是這個狀態永遠只能來自一筆具名、
+    // 留痕的紀錄，沒有任何人能只靠改一個布林欄位就讓藥「憑空停用」。
+    //
+    // 停用後不可回復（allow update, delete: if false）：判斷錯誤時，正確的
+    // 下一步是重新開立，不是把「曾經停用過」這件事抹掉——與 appointments／
+    // consents／line_bindings 的「紀錄不可單方面抹除」是同一個立場。
+    //
+    // 誠實的限制：讀取權限只走 hasActiveCareRelation／hasActiveBreakGlass
+    // （新制），沒有比照 patient_data 的 isAssignedDoctorOf() 額外開放舊制
+    // assignedDoctor 的過渡路徑——這是本專案正在淘汰的欄位，新集合不必再背。
+    // 既有病患要看到停用紀錄，需先有一筆有效的 care_relations。
+    function medDiscontinuePatient() { return request.resource.data.patient; }
+    match /medication_discontinuations/{key} {
+      allow read: if isAdmin() || isOwnUsername(resource.data.patient)
+        || hasActiveCareRelation(resource.data.patient) || hasActiveBreakGlass(resource.data.patient);
+
+      // key 必須精確等於 patient + '__' + medId：與 care_relations 同一個理由
+      // （見 ridStartsWithMe 的說明）——不能反過來切開 key 去推 patient/medId，
+      // username 允許底線，切法不唯一；改為由內容正向組出預期的 key 再比對，
+      // 一旦不符，規則層的 O(1) 查找就會對到錯誤的紀錄。
+      allow create: if key == medDiscontinuePatient() + '__' + request.resource.data.medId
+        && request.resource.data.patient is string && request.resource.data.patient.size() > 0
+        && request.resource.data.medId is string && request.resource.data.medId.size() > 0
+        && request.resource.data.reason is string && request.resource.data.reason.size() >= 4
+        && request.resource.data.discontinuedBy == profile().username
+        && ownsUsername(request.resource.data.discontinuedBy)
+        && request.resource.data.discontinuedAt == request.time
+        && request.resource.data.keys().hasOnly(
+             ['patient', 'medId', 'name', 'reason', 'discontinuedBy', 'discontinuedAt'])
+        && (isAdmin() || hasActiveCareRelation(medDiscontinuePatient())
+            || hasActiveBreakGlass(medDiscontinuePatient()));
+
+      allow update, delete: if false;
+    }
+
     // ── 稽核軌跡（Phase 4 / 稽核報告 P1-5）─────────────────────────────────
     //
     // 《個人資料保護法施行細則》第 12 條第 2 項第 4 款要求建立稽核機制，

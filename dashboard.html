@@ -488,9 +488,10 @@
                                      直接讀單一欄位會讓另一種來源的藥顯示空白。
                                      key 也不可只用 med.id——種子用藥沒有 id，
                                      多筆 undefined 會造成 Vue 的 key 重複。 -->
-                                <div v-for="(med, mi) in currentMeds" :key="med.id || (med.atc + '-' + mi)"
-                                     :class="['p-5 border rounded-3xl transition-all relative overflow-hidden group hover:shadow-xl hover:bg-white', getMedTheme(medName(med).en).card]">
-                                    <div :class="['absolute top-0 left-0 w-1 h-full', getMedTheme(medName(med).en).bar]"></div>
+                                <div v-for="(med, mi) in allMedsForDisplay" :key="med.id || (med.atc + '-' + mi)"
+                                     :class="['p-5 border rounded-3xl transition-all relative overflow-hidden group hover:shadow-xl hover:bg-white',
+                                              med._discontinued ? 'opacity-60 grayscale bg-slate-50' : getMedTheme(medName(med).en).card]">
+                                    <div :class="['absolute top-0 left-0 w-1 h-full', med._discontinued ? 'bg-slate-300' : getMedTheme(medName(med).en).bar]"></div>
                                     <div class="flex justify-between items-start mb-2">
                                         <div class="flex flex-col">
                                             <div :class="['text-[9px] font-black uppercase tracking-widest', getMedTheme(medName(med).en).text]">{{ med.hospital }}</div>
@@ -498,12 +499,26 @@
                                         </div>
                                         <div :class="['w-2.5 h-2.5 rounded-full ring-4 ring-white shadow-sm', getMedTheme(medName(med).en).dot]"></div>
                                     </div>
-                                    <div class="text-base font-black text-slate-800 group-hover:text-primary transition-colors leading-tight mb-0.5">{{ medName(med).zh }}</div>
-                                    <div class="text-[10px] font-bold text-slate-400 mb-4">{{ medName(med).en }}</div>
+                                    <div class="text-base font-black text-slate-800 group-hover:text-primary transition-colors leading-tight mb-0.5">
+                                        {{ medName(med).zh }}
+                                        <span v-if="med._discontinued" class="ml-1 align-middle text-[9px] font-black uppercase tracking-widest text-slate-400 bg-slate-200 rounded-full px-2 py-0.5">已停用</span>
+                                    </div>
+                                    <div class="text-[10px] font-bold text-slate-400 mb-2">{{ medName(med).en }}</div>
+                                    <div v-if="durationText(med)" class="text-[10px] font-bold mb-2" :class="courseExpired(med) && !med._discontinued ? 'text-amber-600' : 'text-slate-400'">
+                                        療程：{{ durationText(med) }}<span v-if="courseExpired(med) && !med._discontinued">（已過，請評估是否停用）</span>
+                                    </div>
                                     <div class="flex justify-between items-center text-[10px] font-bold text-slate-500 border-t border-black/5 pt-3">
                                         <span>{{ med.dosage }}</span>
                                         <span :class="getMedTheme(medName(med).en).text">{{ med.freq }}</span>
                                     </div>
+                                    <!-- 已停用：顯示理由與具名紀錄，不可再操作——那份紀錄本身不可回改 -->
+                                    <div v-if="med._discontinued" class="mt-3 pt-3 border-t border-black/5 text-[10px] font-bold text-slate-500 leading-relaxed">
+                                        <span class="text-slate-400">停用理由：</span>{{ med._discontinued.reason }}
+                                    </div>
+                                    <button v-else-if="med.id" @click="openDiscontinueModal(med)"
+                                            class="mt-3 w-full py-2 rounded-xl bg-white border border-danger/20 text-danger text-[10px] font-black uppercase tracking-widest hover:bg-danger/5 transition-all">
+                                        停用
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -746,6 +761,23 @@
                         <div>
                             <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">用藥指示</label>
                             <textarea v-model="newRx.instruction" rows="3" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-primary/20 focus:bg-white transition-all outline-none" placeholder="輸入詳細服用方法與警語..."></textarea>
+                        </div>
+
+                        <!-- 服藥時間長度：純顯示用途，系統不會到期自動停藥（那是臨床判斷，
+                             不該由排程程式代勞）——到期只在畫面上標示「療程已過」，
+                             真正要中斷用藥時，醫師仍須另外按「停用」並填具名理由，
+                             見病患用藥列表的停用功能（DbService.discontinueMedication）。 -->
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">服藥時間長度</label>
+                            <select v-model="newRx.durationDays" :disabled="aiCheckStatus === 'checking'" class="w-full disabled:opacity-60 bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-primary/20 focus:bg-white transition-all outline-none">
+                                <option :value="3">3 天</option>
+                                <option :value="7">7 天（一週）</option>
+                                <option :value="14">14 天（兩週）</option>
+                                <option :value="30">30 天（一個月）</option>
+                                <option :value="90">90 天（三個月）</option>
+                                <option :value="null">長期（不設期限）</option>
+                            </select>
+                            <p class="text-[10px] font-bold text-slate-400 mt-2 px-1">僅供顯示與回診評估參考；到期不會自動停藥，需醫師主動判斷是否停用。</p>
                         </div>
 
                         <!-- 【服用方式決定要不要建立提醒】院內用藥（如注射、輸液）是醫護人員
@@ -995,6 +1027,33 @@
                     </div>
                 </div>
             </div>
+            <!-- 停用用藥：與覆蓋警示同一種「宣告式紀錄」的 UI 形狀——
+                 寫死一句「本次操作不可回改」的警語，理由是使用者對這種措辭
+                 已經熟悉，不必為停用另外發明一套說法。 -->
+            <div v-if="showDiscontinueModal" role="dialog" aria-modal="true" class="fixed inset-0 z-[260] flex items-center justify-center p-4">
+                <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showDiscontinueModal = false"></div>
+                <div class="relative bg-white w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+                    <div class="bg-danger px-10 py-7 text-white">
+                        <h3 class="text-lg font-black tracking-tight">停用用藥</h3>
+                        <p class="text-[11px] font-bold opacity-90 mt-1" v-if="discontinueTarget">
+                            {{ medName(discontinueTarget).zh }}——本次操作將被記錄於稽核軌跡，包含您的帳號、時間與停用理由。紀錄一經寫入即無法修改或刪除，病患的每日提醒也會一併移除。
+                        </p>
+                    </div>
+                    <div class="p-10 space-y-6">
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">停用理由（必填，至少 4 個字）</label>
+                            <textarea v-model="discontinueReason" rows="3" placeholder="請具體說明中斷這筆用藥的臨床理由" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold text-slate-800 focus:border-danger/30 focus:bg-white transition-all outline-none text-sm"></textarea>
+                        </div>
+                        <div v-if="discontinueError" class="text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-2xl px-4 py-3">{{ discontinueError }}</div>
+                        <div class="flex gap-4 pt-2">
+                            <button @click="showDiscontinueModal = false" :disabled="discontinueBusy" class="flex-1 py-4 font-black text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest text-[10px] disabled:opacity-40">取消</button>
+                            <button @click="submitDiscontinue" :disabled="discontinueBusy || discontinueReason.trim().length < 4" class="flex-[2] py-4 bg-danger text-white font-black rounded-3xl shadow-xl shadow-danger/30 hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-xs disabled:opacity-40 disabled:hover:scale-100">
+                                {{ discontinueBusy ? '處理中…' : '確認停用' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div v-if="showToast" class="fixed bottom-10 right-10 z-[300] bg-slate-900 text-white px-8 py-5 rounded-3xl shadow-2xl border border-white/10 flex items-center gap-4 animate-fade-in text-left">
                 <div class="w-10 h-10 bg-success rounded-full flex items-center justify-center text-white shadow-lg"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg></div>
                 <div><div class="font-black text-sm uppercase tracking-widest text-left">{{ toastTitle }}</div><div class="text-xs text-slate-400 text-left">{{ toastMessage }}</div></div>
@@ -1043,7 +1102,7 @@
                     showFullScreenGraph: false, showToast: false, showMobileMenu: false,
                     toastTitle: '系統通知', toastMessage: '同步成功',
                     showPrescriptionModal: false,
-                    newRx: { drugName: '', dosage: '', instruction: '', takeHome: true, reminderTimes: [] },
+                    newRx: { drugName: '', dosage: '', instruction: '', takeHome: true, reminderTimes: [], durationDays: null },
                     // 提醒時段的固定選項，比照 mockData 既有展示資料使用的時段，
                     // 病患端「今日用藥提醒」是照 time 排序顯示的整點清單，不開放自訂時間，
                     // 避免醫師一次輸錯格式（如 "8am"）而讓提醒永遠不會顯示。
@@ -1120,6 +1179,15 @@
                     checkedDrugName: '',
                     _aiCheckToken: 0,
                     extraPrescriptions: {},
+                    // 目前選定病患的停用紀錄，key 為 medId（見 DbService.getMedicationDiscontinuations）。
+                    // 選病患時載入，用來把「作用中」與「已停用」分開顯示，也讓 currentMeds
+                    // （交互作用比對的輸入）不再把已停用的藥當成目前用藥。
+                    medicationDiscontinuations: {},
+                    showDiscontinueModal: false,
+                    discontinueTarget: null,
+                    discontinueReason: '',
+                    discontinueBusy: false,
+                    discontinueError: '',
                     showNotifDropdown: false,
                     doctorNotifications: [],
                     // 每串對話最後一次提示過的訊息時間，用於避免重複彈出通知（P1-4）
@@ -1187,7 +1255,24 @@
                     if (!this.selectedPatient) return [];
                     const real = this.selectedPatient.medications || [];
                     const extra = this.extraPrescriptions[this.selectedPatient.id] || [];
-                    return [...real, ...extra];
+                    const all = [...real, ...extra];
+                    // 已停用的藥不算「目前用藥」——交互作用比對（AI 檢測、關係圖）
+                    // 只看還在吃的藥；已停用者的歷史仍完整保留在 allMedsForDisplay，
+                    // 只是不再參與新處方的交互作用判斷。demo 種子資料沒有 id，
+                    // medicationDiscontinuations[undefined] 恆為 undefined，不受影響。
+                    const discontinued = this.medicationDiscontinuations || {};
+                    return all.filter(m => !discontinued[m.id]);
+                },
+                // 病患用藥卡片的顯示來源：與 currentMeds 不同，這裡刻意包含已停用的藥
+                // （並附上停用紀錄），讓醫師仍看得到完整用藥史，不是憑空消失。
+                allMedsForDisplay() {
+                    if (!this.selectedPatient) return [];
+                    const real = this.selectedPatient.medications || [];
+                    const extra = this.extraPrescriptions[this.selectedPatient.id] || [];
+                    const discontinued = this.medicationDiscontinuations || {};
+                    return [...real, ...extra].map(m => Object.assign({}, m, {
+                        _discontinued: m.id ? (discontinued[m.id] || null) : null
+                    }));
                 },
 
                 // 【這兩個原本只存在於樣板中】
@@ -1855,6 +1940,77 @@
                         : { zh: (med && (med.name_zh || med.zhName)) || '', en: (med && (med.name_en || med.name)) || '' };
                 },
 
+                // ── 服藥時間長度／停用（本次新增）───────────────────────────────
+                //
+                // durationDays 純顯示：只有走過 submitPrescription 開立的藥才帶
+                // prescribedAt，demo 種子資料沒有這個欄位，一律不顯示療程資訊，
+                // 不臆測起始日期。
+                durationText(med) {
+                    if (!med || !('prescribedAt' in med)) return '';
+                    return med.durationDays == null ? '長期' : (med.durationDays + ' 天');
+                },
+                // 療程是否已過——只是提醒醫師「該評估了」的視覺標示，不觸發任何
+                // 自動停藥（見 linebot.md 同一類決策：系統不代醫師做臨床判斷）。
+                courseExpired(med) {
+                    if (!med || med.durationDays == null || !med.prescribedAt) return false;
+                    const start = new Date(med.prescribedAt + 'T00:00:00');
+                    if (isNaN(start.getTime())) return false;
+                    return (start.getTime() + med.durationDays * 86400000) < Date.now();
+                },
+                async loadMedicationDiscontinuations(pid) {
+                    try {
+                        this.medicationDiscontinuations = await DbService.getMedicationDiscontinuations(pid);
+                    } catch (e) {
+                        console.error('讀取停用紀錄失敗：', e);
+                        this.medicationDiscontinuations = {};
+                    }
+                },
+                openDiscontinueModal(med) {
+                    this.discontinueTarget = med;
+                    this.discontinueReason = '';
+                    this.discontinueError = '';
+                    this.showDiscontinueModal = true;
+                },
+                async submitDiscontinue() {
+                    const reason = (this.discontinueReason || '').trim();
+                    // 4 字下限與處方安全閘門的 overrideReason 是同一個門檻——
+                    // 理由不可虛應，這正是 firestore.rules 會強制的最低要求，
+                    // 這裡先擋一次是為了給出比 permission-denied 更清楚的訊息。
+                    if (reason.length < 4) {
+                        this.discontinueError = '請具體填寫停用理由（至少 4 個字）。';
+                        return;
+                    }
+                    const med = this.discontinueTarget;
+                    if (!med || !med.id) {
+                        this.discontinueError = '這筆用藥缺少可供停用的識別碼，請聯繫系統管理者。';
+                        return;
+                    }
+                    this.discontinueBusy = true;
+                    this.discontinueError = '';
+                    const pid = this.selectedPatient.id;
+                    try {
+                        await DbService.discontinueMedication(pid, med, reason, this.user.username);
+                    } catch (e) {
+                        console.error('停用用藥失敗：', e);
+                        // permission-denied 且非首次嘗試，最可能的原因是這筆藥已經被停用過
+                        // （medication_discontinuations 是 create-only，見 firestore.rules）。
+                        this.discontinueError = (e && e.code === 'permission-denied')
+                            ? '停用失敗，這筆藥可能已經被停用過，請重新整理後確認。'
+                            : ('停用失敗，請稍後再試。' + (e && e.code ? '（' + e.code + '）' : ''));
+                        this.discontinueBusy = false;
+                        return;
+                    }
+                    const audit = await window.Audit.log(window.Audit.ACTIONS.MED_DISCONTINUE, pid,
+                        { medId: med.id, drug: this.medName(med).zh, reason });
+                    await this.loadMedicationDiscontinuations(pid);
+                    this.showDiscontinueModal = false;
+                    this.discontinueBusy = false;
+                    this.triggerToast(
+                        audit.ok ? '已停用' : '已停用，但稽核記錄失敗',
+                        this.medName(med).zh + ' 已標記停用，病患的每日提醒已一併移除。'
+                            + (audit.ok ? '' : '（本次操作未留下稽核記錄，請通報系統管理者）'));
+                },
+
                 // 從選單挑一個藥。填入中文名——目錄的 resolve() 認得中英文與別名，
                 // 而中文名是醫囑上實際會出現的寫法。
                 pickDrug(d) {
@@ -1870,6 +2026,7 @@
                     // 醫師也沒有意識到自己看了。
                     this.nationalIdRevealed = false;
                     this.selectedPatient = p; this.triggerToast('同步成功', `載入 ${p.name} 的雲端資料`);
+                    this.loadMedicationDiscontinuations(p.id);
                     this.$nextTick(() => {
                         const el = document.getElementById('patient-station'); if (el) el.scrollIntoView({ behavior: 'smooth' });
                         this.initD3Container(); this.loadScenario(this.scenarioFor(p));
@@ -2111,6 +2268,11 @@
                         // 是否帶回家自行服用，決定了要不要出現在病患端的每日提醒——
                         // 保留在病歷上，供日後查看這筆藥當初是哪一種給藥方式。
                         takeHome: this.newRx.takeHome,
+                        // 服藥時間長度：純顯示欄位，不受 firestore.rules 的處方閘門驗證
+                        // （與 dosage/freq 同一個定位——描述性事實，不是可歸責斷言）。
+                        // durationDays 為 null 代表長期／不設期限。
+                        durationDays: this.newRx.durationDays,
+                        prescribedAt: DbService.adherence.dayKey(),
                         safetyCheck: safetyCheck
                     };
 
@@ -2276,6 +2438,7 @@
                     const patient = this.recentPatients.find(p => p.id === patientId)
                         || { id: patientId, name: patientName || patientId, status: '警告', lastCheck: '-' };
                     this.selectedPatient = patient;
+                    this.loadMedicationDiscontinuations(patient.id);
                     this.$nextTick(() => {
                         const el = document.getElementById('patient-station'); if (el) el.scrollIntoView({ behavior: 'smooth' });
                         this.initD3Container(); this.loadScenario(this.scenarioFor(patient));

@@ -31,6 +31,10 @@ window.Audit = (function () {
     DDI_OVERRIDE: 'ddi_override',               // 覆蓋交互作用警示
     DDI_BLOCKED: 'ddi_blocked',                 // 因高風險而被系統攔截（未開立）
     PRESCRIBE_FAILED: 'prescribe_failed',       // 開立流程失敗（寫入未成功）
+    // 停用用藥：medication_discontinuations 本身已是不可竄改、具名留痕的紀錄
+    // （見 firestore.rules），這裡多記一筆單純是為了讓它也出現在 admin.html
+    // 的統一稽核時間軸裡，與其他臨床動作放在同一個地方查——不是唯一的證據來源。
+    MED_DISCONTINUE: 'med_discontinue',
     USER_CREATE: 'user_create',
     USER_DISABLE: 'user_disable',
     USER_ROLE_CHANGE: 'user_role_change',

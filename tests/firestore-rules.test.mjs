@@ -925,6 +925,85 @@ await run('緊急調閱 病患可查看誰調閱過自己',
 await run('緊急調閱 他人不可查看該記錄',
   () => getDoc(doc(ATK(), 'break_glass/P001__doctor')), 'deny');
 
+// ── 停用用藥（medication_discontinuations）───────────────────────────────
+//
+// 這批測試釘住的不是「能不能停藥」，是「停藥這件事有沒有留下具名理由」——
+// 理由必須實質填寫、時間由伺服器決定、身分不可冒名、紀錄不可抹除。
+// 與緊急調閱是同一種「宣告式紀錄」的規則形狀，差別在這裡沒有自我授權的
+// 急診情境，一律要求既有的醫病關係（rel1 對 doctor 有效，見 S-1 一節夾具）。
+const discDoc = (extra) => Object.assign({
+  patient: 'rel1', medId: 'rx-1', name: 'Warfarin',
+  reason: '病患出現異常出血徵兆，經評估後停用',
+  discontinuedBy: 'doctor', discontinuedAt: serverTimestamp()
+}, extra || {});
+
+// 合法：有效照護關係、理由實質、ID 與內容一致
+await run('停用用藥 有照護關係的醫師可停用',
+  () => setDoc(doc(DOC(), 'medication_discontinuations/rel1__rx-1'), discDoc()), 'allow');
+
+// 理由不可虛應——這是整條規則存在的意義
+await run('停用用藥 理由過短',
+  () => setDoc(doc(DOC(), 'medication_discontinuations/rel1__rx-2'),
+    discDoc({ medId: 'rx-2', reason: '停' })), 'deny');
+await run('停用用藥 理由留空',
+  () => setDoc(doc(DOC(), 'medication_discontinuations/rel1__rx-2'),
+    discDoc({ medId: 'rx-2', reason: '' })), 'deny');
+
+// 沒有醫病關係不可停藥——與 S-1 同一個道理，比讀取更危險的寫入路徑。
+// 用 otherpt（S-1 夾具：指派給 otherdoc，與 doctor 無任何關係）——
+// 不能用 P001（前面的 care_relations 測試已真的授予過 doctor 一份有效關係）
+// 或 nobody（前面的緊急調閱測試已真的對 doctor 宣告過一份 3 小時有效的
+// break_glass），這兩個到這裡都已經不是「無關係」的病患，拿來測會誤判
+// 規則有洞——本檔測試在同一個 emulator 實例上依序執行，前面測試寫入的
+// 真實資料會留到後面，選 fixture 時必須連同它在檔案中的執行順序一起看。
+await run('停用用藥 無有效照護關係的醫師不可停用',
+  () => setDoc(doc(DOC(), 'medication_discontinuations/otherpt__rx-1'),
+    discDoc({ patient: 'otherpt' })), 'deny');
+
+// 不可冒名：把停用記到別的醫師頭上
+await run('停用用藥 冒用他人身分停用',
+  () => setDoc(doc(DOC(), 'medication_discontinuations/rel1__rx-3'),
+    discDoc({ medId: 'rx-3', discontinuedBy: 'otherdoc' })), 'deny');
+
+// 時間由伺服器決定，不可回填造假時序
+await run('停用用藥 回填停用時間',
+  () => setDoc(doc(DOC(), 'medication_discontinuations/rel1__rx-4'),
+    discDoc({ medId: 'rx-4', discontinuedAt: Timestamp.fromDate(new Date(0)) })), 'deny');
+
+// 文件 ID 與內容不符時，規則的 O(1) 查找會指向錯誤的紀錄
+await run('停用用藥 文件 ID 與內容不符',
+  () => setDoc(doc(DOC(), 'medication_discontinuations/rel1__wrong-id'), discDoc()), 'deny');
+
+// 病患不可自行停用自己的用藥——那是臨床決定，不是病患可宣告的事實
+await run('停用用藥 病患自行停用',
+  () => setDoc(doc(P001(), 'medication_discontinuations/rel1__rx-9'),
+    discDoc({ medId: 'rx-9', discontinuedBy: 'P001' })), 'deny');
+
+// 【最重要】記錄不可湮滅：能被刪除/改寫的停用紀錄等於沒有紀錄
+await run('停用用藥 醫師刪除自己建立的紀錄',
+  () => deleteDoc(doc(DOC(), 'medication_discontinuations/rel1__rx-1')), 'deny');
+await run('停用用藥 管理員刪除紀錄',
+  () => deleteDoc(doc(ADM(), 'medication_discontinuations/rel1__rx-1')), 'deny');
+await run('停用用藥 修改既有紀錄',
+  () => updateDoc(doc(DOC(), 'medication_discontinuations/rel1__rx-1'), { reason: '改過的理由' }), 'deny');
+
+// 病患能看到自己哪些藥被停用過——這是這套機制對病患的意義所在。
+// 需先直接種一筆到 P001 名下：讀不存在的文件時 resource 為 null，
+// 各分支皆不成立而被拒，測到的會是「文件不存在」，不是「有沒有讀取權」。
+await env.withSecurityRulesDisabled(async ctx => {
+  await setDoc(doc(ctx.firestore(), 'medication_discontinuations/P001__rx-own'), {
+    patient: 'P001', medId: 'rx-own', name: 'Aspirin',
+    reason: '病患自述腸胃不適，門診評估後停用',
+    discontinuedBy: 'doctor', discontinuedAt: new Date()
+  });
+});
+await run('停用用藥 病患可查看自己的停用紀錄',
+  () => getDoc(doc(P001(), 'medication_discontinuations/P001__rx-own')), 'allow');
+await run('停用用藥 他人不可查看該紀錄',
+  () => getDoc(doc(ATK(), 'medication_discontinuations/P001__rx-own')), 'deny');
+await run('停用用藥 管理員可查看任何停用紀錄',
+  () => getDoc(doc(ADM(), 'medication_discontinuations/P001__rx-own')), 'allow');
+
 // ── 身分證字號 ──────────────────────────────────────────────────────────
 //
 // 病患可填一次、之後不可更改；核驗狀態只有院方能設。

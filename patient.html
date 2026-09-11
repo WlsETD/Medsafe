@@ -810,7 +810,7 @@
                             </div>
                             <div class="text-left text-left">
                                 <h3 class="text-2xl md:text-4xl font-black text-title italic tracking-tighter text-left">My Med-Cabinet</h3>
-                                <p class="text-primary font-black text-xs md:text-sm uppercase tracking-widest mt-1 text-left">目前共有 {{ medications.length }} 項安全存證處方</p>
+                                <p class="text-primary font-black text-xs md:text-sm uppercase tracking-widest mt-1 text-left">目前共有 {{ allMedications.length }} 項安全存證處方（含已停用）</p>
                             </div>
                         </div>
                         <button @click="showAllMedsModal = false" aria-label="關閉" class="text-slate-400 hover:text-danger transition-colors p-3 bg-white rounded-full shadow-sm shrink-0">
@@ -837,6 +837,9 @@
                                         <td class="py-8 text-left">
                                             <div class="text-sm font-black text-title text-left">{{ med.dosage }}</div>
                                             <div class="text-xs text-content font-bold opacity-60 mt-1 uppercase text-left">{{ med.freq }}</div>
+                                            <div v-if="durationText(med)" class="text-[10px] font-bold mt-1 text-left" :class="courseExpired(med) ? 'text-amber-600' : 'text-lightText'">
+                                                療程：{{ durationText(med) }}<span v-if="courseExpired(med)">（已過）</span>
+                                            </div>
                                         </td>
                                         <td class="py-8 italic font-black text-slate-400 text-sm text-left">
                                             {{ med.hospital }}
@@ -849,6 +852,20 @@
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <!-- 已停用：獨立列出，不參與上方的交互作用分析（DDI 只比對目前用藥）。
+                             理由固定顯示——這是醫師具名留下的紀錄，病患有權知道為什麼停用。 -->
+                        <div v-if="discontinuedMedications.length" class="pt-4 text-left">
+                            <p class="text-[10px] font-black text-lightText uppercase tracking-widest mb-3 px-1">已停用</p>
+                            <div class="space-y-3">
+                                <div v-for="med in discontinuedMedications" :key="med.id" class="bg-slate-50 rounded-2xl px-6 py-4 text-left opacity-80">
+                                    <div class="flex justify-between items-start gap-4">
+                                        <div class="font-black text-title text-left">{{ medName(med).zh }}</div>
+                                        <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 bg-slate-200 rounded-full px-3 py-1 shrink-0">已停用</span>
+                                    </div>
+                                    <div class="text-xs font-bold text-lightText mt-1 text-left">停用理由：{{ med._discontinued.reason }}</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1109,7 +1126,12 @@
                     maintenanceCheckFailed: false,
                     profile: patientData.profile,
                     stats: patientData.stats,
+                    // medications 是「作用中」的用藥（已停用者於下方載入真實資料時濾掉），
+                    // DDI 分析、安全評分、每日提醒等既有邏輯全部沿用這個欄位，不必逐一改寫。
+                    // allMedications 是完整用藥史（含已停用），僅供「查看所有藥品」列表使用。
                     medications: patientData.medications,
+                    allMedications: patientData.medications,
+                    medicationDiscontinuations: {},
                     ddiAlerts: patientData.ddiAlerts,
                     reminders: patientData.reminders,
                     // 逐日服藥回報。「每天重置」是新的一天沒有記錄的自然結果，
@@ -1187,6 +1209,14 @@
                     const d = typeof t.toDate === 'function' ? t.toDate() : new Date(t);
                     if (isNaN(d.getTime())) return '—';
                     return d.toLocaleString('zh-TW', { hour12: false });
+                },
+
+                // 已停用的用藥，供「查看所有藥品」顯示完整用藥史用——這些藥不在
+                // this.medications（DDI 分析輸入）裡，只在這裡單獨列出。
+                discontinuedMedications() {
+                    return (this.allMedications || [])
+                        .filter(m => m.id && this.medicationDiscontinuations[m.id])
+                        .map(m => Object.assign({}, m, { _discontinued: this.medicationDiscontinuations[m.id] }));
                 },
 
                 // 本人目前用藥的交互作用分析。medSafety、healthSummaryText 與
@@ -1525,7 +1555,17 @@
                     if (data) {
                         this.profile = data.profile;
                         this.stats = data.stats;
-                        this.medications = data.medications;
+                        this.allMedications = data.medications || [];
+                        // 已停用的藥不算「目前用藥」：DDI 分析、安全評分、每日提醒
+                        // 都讀 this.medications，藥都停了還把它算進交互作用比對，
+                        // 是比沒有警示更危險的錯誤（見 dashboard.html 的同一個理由）。
+                        try {
+                            this.medicationDiscontinuations = await DbService.getMedicationDiscontinuations(this._username);
+                        } catch (e) {
+                            console.error('讀取停用紀錄失敗：', e);
+                            this.medicationDiscontinuations = {};
+                        }
+                        this.medications = this.allMedications.filter(m => !this.medicationDiscontinuations[m.id]);
                         this.ddiAlerts = data.ddiAlerts;
                         this.reminders = data.reminders;
                         this.adherenceLog = data.adherenceLog || {};
@@ -1938,6 +1978,19 @@
                 // 計算失敗與「查無交互作用」是兩回事，預設值必須落在保守的那一邊。
                 safetyOf(i) {
                     return this.medSafety[i] || { label: '待確認', tone: 'warn' };
+                },
+                // 服藥時間長度的顯示文字，與 dashboard.html 同一套邏輯（醫師端開立時設定）。
+                // 只有走過醫師端 submitPrescription 開立的藥才帶 prescribedAt，
+                // 示範資料沒有這個欄位，一律不顯示療程資訊，不臆測起始日期。
+                durationText(med) {
+                    if (!med || !('prescribedAt' in med)) return '';
+                    return med.durationDays == null ? '長期' : (med.durationDays + ' 天');
+                },
+                courseExpired(med) {
+                    if (!med || med.durationDays == null || !med.prescribedAt) return false;
+                    const start = new Date(med.prescribedAt + 'T00:00:00');
+                    if (isNaN(start.getTime())) return false;
+                    return (start.getTime() + med.durationDays * 86400000) < Date.now();
                 },
                 consentState(c) {
                     if (c.revokedAt) return '已撤回';
