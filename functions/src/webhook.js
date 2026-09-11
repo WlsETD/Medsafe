@@ -9,7 +9,7 @@ const { onRequest } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 
 const {
-  LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN, OPENAI_API_KEY, REGION
+  LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN, OPENAI_API_KEY, REGION, LIFF_ID
 } = require('./config');
 const lineApi = require('./line-api');
 const bindings = require('./bindings');
@@ -65,15 +65,25 @@ const COMING_SOON_RE = new RegExp('^(' + Object.keys(COMING_SOON).join('|') + ')
 // text 而非 data：按下去等同使用者自己打了這句話送出，直接借用既有的
 // 文字指令分支（見 line-api.js quickReplyItems 的說明），新增選單項目
 // 不需要另外處理 postback。
+//
+// 「完整藥箱」是 Phase 0（LIFF 身分橋接）做完後新加的：文字版「查藥箱」
+// 摘要（見下方 CABINET_RE 分支）維持 Reply、免費、隨時可查；這個按鈕另外
+// 開 LIFF 版 patient.html，同一份頁面、同一套 firestore.rules，只是多了
+// 完整的用藥時間軸與所有 DDI 警示細節。兩層設計理由見 linebot.md §5.2。
+// LIFF_ID 未設定時（尚未走完 Phase 0）不顯示這個按鈕，而不是給一個開不了的死連結。
 function menuItems() {
-  return [
+  const items = [
     { label: '查藥箱', text: '藥箱' },
     { label: '線上預約', text: '預約' },
     { label: '回報不適', text: '回報不適' },
     { label: '用藥查詢', uri: richmenu.SITE_ORIGIN + '/check.html' },
     { label: '服藥時間表', uri: richmenu.SITE_ORIGIN + '/schedule.html' }
-    // Phase 0（LIFF 預約／照護關係）完成後，另加一個 uri 按鈕開 LIFF 連結
   ];
+  const liffId = LIFF_ID.value();
+  if (liffId) {
+    items.splice(1, 0, { label: '完整藥箱', uri: 'https://liff.line.me/' + liffId });
+  }
+  return items;
 }
 
 async function handleFollow(token, event) {
@@ -427,6 +437,9 @@ async function claimEvent(event) {
   if (!id) return true;
   return claimPushSlot('evt:' + id);
 }
+
+// 供 tests/line-webhook.test.mjs 驗證 LIFF_ID 有無設定時的選單內容差異。
+exports._internal = { menuItems };
 
 exports.lineWebhook = onRequest(
   {

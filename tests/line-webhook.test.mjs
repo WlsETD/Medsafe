@@ -243,6 +243,46 @@ function claimEvent(lock, event) {
     withMenu.quickReply === undefined);
 }
 
+// ── 四、選單的「完整藥箱」LIFF 按鈕（Phase 0 完成後新增）───────────────
+//
+// LIFF_ID 用 firebase-functions/params 的 defineString 讀取，本地測試時
+// 即時讀 process.env.LIFF_ID，因此可以在同一個程序內切換測試有無設定的
+// 兩種情境，不需要 emulator。webhook.js require 時不呼叫 admin.initializeApp()，
+// 可以安全地直接載入（與 exchange.js／bindings.js 同樣的理由）。
+{
+  const originalLiffId = process.env.LIFF_ID;
+  delete process.env.LIFF_ID;
+  delete require.cache[require.resolve('../functions/src/webhook.js')];
+  const webhookNoLiff = require('../functions/src/webhook.js');
+  const itemsNoLiff = webhookNoLiff._internal.menuItems();
+
+  check('LIFF_ID 未設定時，選單不含「完整藥箱」按鈕',
+    !itemsNoLiff.some(i => i.label === '完整藥箱'));
+
+  process.env.LIFF_ID = 'test-liff-id-0001';
+  delete require.cache[require.resolve('../functions/src/webhook.js')];
+  const webhookWithLiff = require('../functions/src/webhook.js');
+  const itemsWithLiff = webhookWithLiff._internal.menuItems();
+  const liffItem = itemsWithLiff.find(i => i.label === '完整藥箱');
+
+  check('LIFF_ID 已設定時，選單含「完整藥箱」按鈕',
+    !!liffItem);
+  check('「完整藥箱」按鈕連到 https://liff.line.me/{LIFF_ID}',
+    !!liffItem && liffItem.uri === 'https://liff.line.me/test-liff-id-0001');
+  check('「完整藥箱」是 uri 型別而非 message（開 LIFF，不是送文字）',
+    !!liffItem && !liffItem.text);
+  check('既有選單項目（查藥箱／線上預約／回報不適／用藥查詢／服藥時間表）不受影響',
+    itemsWithLiff.length === 6
+    && itemsWithLiff.some(i => i.label === '查藥箱' && i.text === '藥箱')
+    && itemsWithLiff.some(i => i.label === '線上預約')
+    && itemsWithLiff.some(i => i.label === '回報不適')
+    && itemsWithLiff.some(i => i.label === '用藥查詢')
+    && itemsWithLiff.some(i => i.label === '服藥時間表'));
+
+  if (originalLiffId === undefined) delete process.env.LIFF_ID;
+  else process.env.LIFF_ID = originalLiffId;
+}
+
 // --- 輸出 ---
 console.log('');
 for (const r of results) console.log(r[0].padEnd(5), r[1], r[2] ? '\n      ' + r[2] : '');

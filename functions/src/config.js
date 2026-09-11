@@ -27,6 +27,13 @@ const LINE_BASIC_ID = defineString('LINE_BASIC_ID', { default: '' });
 // 未設定時 lineExchangeToken 會直接拒絕（P2 功能關閉），不影響 P0/P1。
 const LINE_LOGIN_CHANNEL_ID = defineString('LINE_LOGIN_CHANNEL_ID', { default: '' });
 
+// 非機密：LIFF App ID，用來組 https://liff.line.me/{id} 這個深層連結，
+// 讓 webhook 的選單按鈕可以直接開啟 LIFF（見 js/line-liff-config.js 的
+// window.LIFF_ID，兩邊記的是同一個值，一份給前端 liff.init()，一份給
+// 伺服器組連結，本身都是公開 ID，不是密鑰）。未設定時選單不顯示
+// 「完整藥箱」按鈕，其餘功能不受影響。
+const LIFF_ID = defineString('LIFF_ID', { default: '' });
+
 const REGION = 'asia-east1';
 
 // 綁定碼有效期。夠長到讓長輩換手機操作，短到讓暴力猜測不可行。
@@ -45,6 +52,7 @@ module.exports = {
   OPENAI_API_KEY,
   LINE_BASIC_ID,
   LINE_LOGIN_CHANNEL_ID,
+  LIFF_ID,
   REGION,
   LINK_CODE_TTL_MS,
   KEEP_DAYS,
