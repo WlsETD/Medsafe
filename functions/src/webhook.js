@@ -227,55 +227,123 @@ async function handleText(token, event) {
   // 列為免費訊息）。把「隨時可查」設計成零成本，才能把付費的推播額度
   // 留給真正需要主動打斷對方的事——每日提醒與交互作用警示。
   if (CABINET_RE.test(text)) {
-    const snap = await admin.firestore().collection('patient_data').doc(user.username).get();
-    if (!snap.exists) {
-      return lineApi.reply(token, event.replyToken, lineApi.textMessage('查無您的用藥資料。'));
-    }
-    const data = snap.data();
-    const meds = Array.isArray(data.medications) ? data.medications : [];
-    if (!meds.length) {
-      return lineApi.reply(token, event.replyToken, lineApi.textMessage('您目前沒有登記中的用藥。'));
-    }
-
-    // 引擎與規則庫加起來約 355 KB，載入要花時間，因此只在真的要用時才載，
-    // 不讓綁定與回報這兩條高頻路徑跟著付冷啟動的代價。
-    const ddi = require('./ddi');
-    const result = ddi.analyze(meds);
-    const worthy = ddi.pushWorthyFindings(result);
-
-    const hospitals = [...new Set(meds.map(m => m.hospital).filter(Boolean))];
-    const lines = [
-      '您目前有 ' + meds.length + ' 種藥' + (hospitals.length ? '，來自 ' + hospitals.length + ' 家醫院' : ''),
-      ''
-    ];
-    for (const m of meds) {
-      lines.push('・' + medName(m) + '　' + (m.dosage || '') + (m.hospital ? '（' + m.hospital + '）' : ''));
-    }
-    if (worthy.length) {
-      lines.push('', '⚠️ 其中有 ' + worthy.length + ' 組需要注意的交互作用：');
-      for (const f of ddi.decorate(worthy, meds).slice(0, 3)) {
-        lines.push('・' + f.display.a.name + ' ＋ ' + f.display.b.name
-          + '（' + (f.severityZh || f.severity) + '）');
-      }
-      lines.push('', '請勿自行停藥，回診時向醫師或藥師確認。');
-    }
-    if (result.unevaluable && result.unevaluable.length) {
-      // 「無法評估」與「沒有交互作用」是兩件事，不可合併成一句「安全」。
-      // 這正是稽核報告 P0-3 抓到過的錯誤形狀（見 ddi-engine.js 註解）。
-      lines.push('', '另有 ' + result.unevaluable.length + ' 種藥系統無法判讀，不代表沒有交互作用。');
-    }
-    return lineApi.reply(token, event.replyToken,
-      lineApi.withQuickReply(lineApi.textMessage(lines.join('\n')), menuItems()));
+    return replyCabinet(token, event, user.username);
   }
 
-  // ── 自由文字回報（LLM 語意理解）──
+  // ── 自由文字（LLM 理解層）──
   //
   // 【擺在最後一個分支，而不是最前面】
-  // 綁定碼與藥箱查詢都是形狀明確、判斷零成本、且結果確定的路徑。
+  // 綁定碼與上面那幾條都是形狀明確、判斷零成本、且結果確定的路徑。
   // 讓它們先走完，LLM 只接手真正無法用規則判斷的句子——
   // 既省下每則訊息的 API 成本，也讓既有功能不因 LLM 故障而一起壞掉。
   return handleFreeText(token, event, user, text);
 }
+
+// 目前的用藥清單。關鍵字「藥箱」與 LLM 判定的 cabinet-query 都走這裡，
+// 兩條路徑共用同一份回覆——分成兩份遲早會只改到其中一份。
+async function replyCabinet(token, event, username, patientData) {
+  let data = patientData;
+  if (!data) {
+    const snap = await admin.firestore().collection('patient_data').doc(username).get();
+    if (!snap.exists) {
+      return lineApi.reply(token, event.replyToken, lineApi.textMessage('查無您的用藥資料。'));
+    }
+    data = snap.data();
+  }
+  const meds = Array.isArray(data.medications) ? data.medications : [];
+  if (!meds.length) {
+    return lineApi.reply(token, event.replyToken, lineApi.textMessage('您目前沒有登記中的用藥。'));
+  }
+
+  // 引擎與規則庫加起來約 355 KB，載入要花時間，因此只在真的要用時才載，
+  // 不讓綁定與回報這兩條高頻路徑跟著付冷啟動的代價。
+  const ddi = require('./ddi');
+  const result = ddi.analyze(meds);
+  const worthy = ddi.pushWorthyFindings(result);
+
+  const hospitals = [...new Set(meds.map(m => m.hospital).filter(Boolean))];
+  const lines = [
+    '您目前有 ' + meds.length + ' 種藥' + (hospitals.length ? '，來自 ' + hospitals.length + ' 家醫院' : ''),
+    ''
+  ];
+  for (const m of meds) {
+    lines.push('・' + medName(m) + '　' + (m.dosage || '') + (m.hospital ? '（' + m.hospital + '）' : ''));
+  }
+  if (worthy.length) {
+    lines.push('', '⚠️ 其中有 ' + worthy.length + ' 組需要注意的交互作用：');
+    for (const f of ddi.decorate(worthy, meds).slice(0, 3)) {
+      lines.push('・' + f.display.a.name + ' ＋ ' + f.display.b.name
+        + '（' + (f.severityZh || f.severity) + '）');
+    }
+    lines.push('', '請勿自行停藥，回診時向醫師或藥師確認。');
+  }
+  if (result.unevaluable && result.unevaluable.length) {
+    // 「無法評估」與「沒有交互作用」是兩件事，不可合併成一句「安全」。
+    // 這正是稽核報告 P0-3 抓到過的錯誤形狀（見 ddi-engine.js 註解）。
+    lines.push('', '另有 ' + result.unevaluable.length + ' 種藥系統無法判讀，不代表沒有交互作用。');
+  }
+  return lineApi.reply(token, event.replyToken,
+    lineApi.withQuickReply(lineApi.textMessage(lines.join('\n')), menuItems()));
+}
+
+// 下次回診。掛號紀錄本身就是病患自己的資料，查詢條件也只有
+// where(patient == 本人)——與藥箱查詢同一條路徑與同一個範圍。
+async function replyNextVisit(token, event, username) {
+  const snap = await admin.firestore().collection('appointments')
+    .where('patient', '==', username).get();
+  const active = snap.docs.map(d => d.data())
+    .filter(a => a.status === 'booked' || a.status === 'arrived');
+  if (!active.length) {
+    return lineApi.reply(token, event.replyToken, lineApi.withQuickReply(
+      lineApi.textMessage('您目前沒有預約中的回診。'), menuItems()));
+  }
+  // 沒有 dateKey 的是舊制掛號（只有日期、沒有診次與號碼），
+  // 用 scheduledAt 補出日期字串，兩種形狀都要排得進來。
+  // 舊制掛號沒有 dateKey，要從 Timestamp 反推日期字串。
+  // 一律走 taipei-time 的 dayKey()——Functions 跑在 UTC，
+  // 用 Node 的本地時區會把台北凌晨的掛號算成前一天（見該檔檔頭）。
+  const keyOf = (a) => a.dateKey
+    || (a.scheduledAt && a.scheduledAt.toDate ? dayKey(a.scheduledAt.toDate()) : '');
+  active.sort((x, y) => String(keyOf(x)).localeCompare(String(keyOf(y))));
+  const next = active[0];
+  const lines = ['您的下次回診', ''];
+  lines.push('・日期　' + (keyOf(next) || '（未指定）') + weekdaySuffix(keyOf(next)));
+  if (next.session) lines.push('・診次　' + SESSION_LABEL[next.session] || next.session);
+  if (next.doctorName || next.doctor) lines.push('・醫師　' + (next.doctorName || next.doctor));
+  if (next.seq) {
+    lines.push('・號碼　第 ' + next.seq + ' 號');
+    lines.push('', '預估時間依前面的預約人數推算，實際請以現場叫號進度為準。');
+  }
+  if (active.length > 1) lines.push('', '（另有 ' + (active.length - 1) + ' 筆預約）');
+  return lineApi.reply(token, event.replyToken,
+    lineApi.withQuickReply(lineApi.textMessage(lines.join('\n')), menuItems()));
+}
+
+const SESSION_LABEL = { am: '早診', pm: '午診', night: '夜診' };
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+// 由 'YYYY-MM-DD' 算星期幾。逐項傳入建構子（而非 new Date(字串)）——
+// new Date('2026-09-15') 會被當成 UTC 午夜解析，在 UTC+8 之外的執行環境
+// 會退回前一天，星期就錯一格。
+function weekdaySuffix(key) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(key))) return '';
+  const p = String(key).split('-').map(Number);
+  return '（' + WEEKDAYS[new Date(p[0], p[1] - 1, p[2]).getDay()] + '）';
+}
+
+// 系統做不到的事。刻意寫成「我不能回答，但這些我可以」——
+// 只說做不到會讓使用者無路可走，而在一個用藥系統裡，
+// 讓模型去回答「這個藥能不能配葡萄柚」是拿臨床風險換一句漂亮的回覆。
+// 這條線與 DDI 用規則引擎而非 LLM 是同一個立場：系統不做醫療判斷。
+const OUT_OF_SCOPE = [
+  '這個問題我無法回答。用藥相關的疑問，請直接詢問您的醫師或藥師，',
+  '也可以在 MedSafe 網頁上留言給您的主治醫師。',
+  '',
+  '我可以幫您：',
+  '・回報服藥，例如「早上的藥吃了」',
+  '・查看目前的用藥（說「我在吃什麼藥」）',
+  '・查詢下次回診',
+  '・預約回診'
+].join('\n');
 
 // 按鈕流程的 fallback 訊息。NLU 失敗時一律退回這裡，
 // 而不是回一句「我不懂」讓使用者無路可走。
@@ -315,6 +383,31 @@ async function handleFreeText(token, event, user, text) {
     logger.error('NLU 失敗，已退回按鈕流程', { username: user.username, error: r.error });
     return lineApi.reply(token, event.replyToken,
       lineApi.withQuickReply(lineApi.textMessage(FALLBACK), menuItems()));
+  }
+
+  // 【意圖路由】不是服藥回報的句子，導到既有功能，而不是回一句「聽不懂」。
+  //
+  // 這些功能原本都只認完整錨定的關鍵字（CABINET_RE 等），
+  // 說成「幫我看看藥箱裡有什麼」就落空——功能明明存在卻到不了。
+  // 意圖分類與抽詞是同一次 LLM 呼叫的兩個欄位，因此這條路徑沒有額外成本。
+  if (r.status === 'intent') {
+    switch (r.intent) {
+      case 'cabinet-query':
+        return replyCabinet(token, event, user.username, patientData);
+      case 'next-visit':
+        return replyNextVisit(token, event, user.username);
+      case 'booking':
+        return lineApi.reply(token, event.replyToken, bookingReply());
+      case 'help':
+        return lineApi.reply(token, event.replyToken,
+          lineApi.withQuickReply(lineApi.textMessage(HELP), menuItems()));
+      case 'discomfort':
+        return lineApi.reply(token, event.replyToken,
+          lineApi.withQuickReply(lineApi.textMessage(COMING_SOON['回報不適']), menuItems()));
+      default:
+        return lineApi.reply(token, event.replyToken,
+          lineApi.withQuickReply(lineApi.textMessage(OUT_OF_SCOPE), menuItems()));
+    }
   }
 
   if (r.status === 'no-extraction') {
@@ -467,7 +560,8 @@ async function claimEvent(event) {
 }
 
 // 供 tests/line-webhook.test.mjs 驗證 LIFF_ID 有無設定時的選單／掛號回覆差異。
-exports._internal = { menuItems, bookingReply, BOOKING_RE, COMING_SOON_RE };
+exports._internal = { menuItems, bookingReply, BOOKING_RE, COMING_SOON_RE,
+  CABINET_RE, MENU_RE, OUT_OF_SCOPE, weekdaySuffix, SESSION_LABEL };
 
 exports.lineWebhook = onRequest(
   {

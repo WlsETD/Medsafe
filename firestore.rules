@@ -878,6 +878,181 @@ service cloud.firestore {
         && get(careRelationPath(patientUsername)).data.expiresAt > request.time;
     }
 
+    // ── 門診班表與叫號預約 ──────────────────────────────────
+    //
+    // 【為什麼診次是固定的三個 key，而不是一個可自由增減的陣列】
+    // 規則沒有迴圈，無法在陣列裡「依 id 找出某個診次」；Map 的 get(key, default)
+    // 才是 O(1) 且可用動態字串當鍵。固定 am／pm／night 同時也符合台灣門診的
+    // 早／午／夜診慣例，以及本專案「不給自由輸入時間，只給預設選項」的立場
+    // （見 dashboard.html 的 reminderSlots 註解）。
+    //
+    // 【星期幾由規則自己算，不接受呼叫端宣告】
+    // 若讓前端傳 dow 進來，病患只要謊報星期就能掛進醫師休診的那一天——
+    // 規則會拿著錯的 dow 去查一個確實有開診的格子，檢查形同虛設。
+    // 因此 dowOf() 由 dateKey 自行推導，dateKey 本身則先過格式檢查再解析。
+    function dateKeyWellFormed(k) {
+      return k is string && k.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+    function dateKeyToTs(k) {
+      return timestamp.date(int(k[0:4]), int(k[5:7]), int(k[8:10]));
+    }
+    // JS 的 getDay() 是 0(週日)~6(週六)，規則的 dayOfWeek() 是 1(週一)~7(週日)。
+    // 取 %7 後兩者對齊，weekly 的鍵才能與前端寫入時用的鍵一致。
+    function dowOf(k) {
+      return string(dateKeyToTs(k).dayOfWeek() % 7);
+    }
+
+    function schedulePath(d) {
+      return /databases/$(database)/documents/doctor_schedules/$(d);
+    }
+    function hasSchedule(d) {
+      return d is string && d.size() > 0 && d.size() <= 64 && exists(schedulePath(d));
+    }
+    function scheduleOf(d) {
+      return get(schedulePath(d)).data;
+    }
+
+    // 該日該診次的規格。例外日優先於每週班表——停診與加診都靠它表達。
+    // 【這段邏輯與 js/db-service.js 的 DbService.schedules.sessionFor() 是同一套，
+    //   改其中一邊必須同步改另一邊】：兩邊不一致時，前端會顯示「可預約」而規則
+    //   卻拒絕寫入，病患看到的是一個按了沒反應的按鈕。
+    function dayException(d, k) {
+      return scheduleOf(d).get('exceptions', {}).get(k, {});
+    }
+    function dayClosed(d, k) {
+      return dayException(d, k).get('closed', false) == true;
+    }
+    function sessionSpec(d, k, sid) {
+      return dayException(d, k).get('sessions', {}).get(sid,
+               scheduleOf(d).get('weekly', {}).get(dowOf(k), {}).get(sid, {}));
+    }
+    function sessionCapacity(d, k, sid) {
+      return sessionSpec(d, k, sid).get('capacity', 0);
+    }
+    // 「有開診」= 這天沒被整日停診、該診次有起始時間、且名額大於 0。
+    // 名額 0 與「沒有這個診次」在此刻意等價：兩者對病患的意義都是掛不進去。
+    function sessionIsOpen(d, k, sid) {
+      return !dayClosed(d, k)
+        && sessionSpec(d, k, sid).get('start', '').size() == 5
+        && sessionCapacity(d, k, sid) > 0;
+    }
+    // 開放預約的期間。timestamp.date() 產生的是 UTC 午夜，而 request.time 也是
+    // UTC，在 UTC+8 會有 8 小時的偏差；此處刻意各留一天的寬容量，只當作粗略護欄
+    // （擋住掛到去年或三年後），精確的「今天這一診已經開始了」由前端判斷。
+    function withinBookingWindow(d, k) {
+      return dateKeyToTs(k) + duration.value(1, 'd') > request.time
+        && dateKeyToTs(k) < request.time
+             + duration.value(scheduleOf(d).get('bookingWindowDays', 30) + 1, 'd');
+    }
+
+    function counterPath(d, k, sid) {
+      return /databases/$(database)/documents/appointment_counters/$(d + '__' + k + '__' + sid);
+    }
+    function apptPath(d, k, sid, seq) {
+      return /databases/$(database)/documents/appointments/$(d + '__' + k + '__' + sid + '__' + string(seq));
+    }
+
+    // 醫師自己的門診班表。
+    //
+    // 【為什麼要另立一個集合，而不是塞進 doctor_data】
+    // doctor_data 實際上只有一份共用的 doctor_data/main，規則是
+    // `read, write: if isAdmin() || isDoctor()`——任一位醫師都能覆寫另一位
+    // 醫師的內容。班表是「屬於某一位醫師」的東西，放進去等於讓甲醫師改得動
+    // 乙醫師的看診時間。
+    //
+    // 【誠實的限制，與 appointments 那一節同一條】
+    // 規則無法驗證某個 username 真的是醫師（user_roles 以 uid 為鍵，無法由
+    // username 反查）。這裡的保證方向因此是「寫入方自證」：只有本人、且本人
+    // 是醫師，才寫得進以自己 username 為 ID 的文件。讀取方於是可以反過來信任
+    // 「這份文件存在 ⇒ 這個 username 是一位醫師」——這比病患自由輸入醫師帳號
+    // 的舊做法更強，而不是更弱。
+    //
+    // 【get 放行、list 拒絕】
+    // 與 patient_index 同一條理由：可精確查號，不可列舉。
+    // 病患的掛號對象是既有的主治醫師（病歷上的指派或最近一筆掛號決定），
+    // 不是自己從名單裡挑，因此前端只需要 get 指定的那一份班表。
+    // 早期版本曾為了做「醫師下拉選單」而放行 list；選單移除後那個理由已不存在，
+    // 留著就只剩下「任何登入者都能撈出全院醫師名冊與作息」這一個後果。
+    match /doctor_schedules/{username} {
+      allow get: if isActive();
+      allow list: if false;
+
+      allow create, update: if isActive()
+        && (isAdmin()
+            || (isDoctor() && isOwnUsername(username)
+                && request.resource.data.username == username
+                && request.resource.data.updatedBy == profile().username
+                && request.resource.data.updatedAt == request.time))
+        && request.resource.data.keys().hasOnly([
+             'username', 'displayName', 'department', 'avgMinutes',
+             'bookingWindowDays', 'weekly', 'exceptions', 'updatedBy', 'updatedAt'
+           ])
+        && request.resource.data.avgMinutes is int
+        && request.resource.data.avgMinutes >= 1
+        && request.resource.data.avgMinutes <= 120
+        && request.resource.data.bookingWindowDays is int
+        && request.resource.data.bookingWindowDays >= 1
+        && request.resource.data.bookingWindowDays <= 180;
+
+      allow delete: if isOwnUsername(username) || isAdmin();
+    }
+
+    // 某位醫師某一天某一診次「已經發出去幾號」。
+    //
+    // 【為什麼非有這份文件不可】
+    // appointments 的讀取權限只讓病患看得到自己那幾筆（這是對的），因此病患
+    // 無從得知自己該拿第幾號。把掛號改成可查詢才是真正的隱私倒退。這份計數器
+    // 只洩漏「已預約人數」，不洩漏是誰——正是候診室螢幕上本來就會顯示的數字。
+    //
+    // 【為什麼 create/update 還要回頭確認掛號文件】
+    // 少了 getAfter() 那一條，任何登入者都能對別人的診次一路 +1 把名額灌爆，
+    // 而且完全不必真的掛號。要求同一批次裡必須存在一筆屬於自己、號碼正好等於
+    // 這個計數的掛號，計數器就只能隨真實掛號前進。掛號那一側也對稱地用
+    // getAfter() 檢查計數器——兩份文件互相指認，任一份單獨寫入都不會成立。
+    //
+    // 取消掛號不會讓計數器倒退：號碼一旦發出就固定，取消只留下一個空號。
+    // 這是刻意的——若後面的人自動遞補，已經出門的病患會突然被提前而錯過。
+    match /appointment_counters/{ckey} {
+      allow read: if isActive();
+
+      allow create: if isActive()
+        && request.resource.data.keys().hasOnly(['doctor', 'dateKey', 'session', 'taken'])
+        && request.resource.data.taken == 1
+        && counterKeyMatches(ckey)
+        && counterIsBackedByOwnAppointment();
+
+      allow update: if isActive() && resource != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['taken'])
+        && request.resource.data.taken == resource.data.taken + 1
+        && counterKeyMatches(ckey)
+        && counterIsBackedByOwnAppointment();
+
+      allow delete: if false;
+    }
+
+    // 文件 ID 一律「正向組合後比對」，絕不切開反查——username 允許含底線，
+    // 拆 key 會在 doctor 名為 a_b 時對出錯誤的結果。與 medication_discontinuations
+    // 及 ridStartsWithMe() 是同一條理由。
+    function counterKeyMatches(ckey) {
+      return request.resource.data.doctor is string
+        && request.resource.data.session in ['am', 'pm', 'night']
+        && dateKeyWellFormed(request.resource.data.dateKey)
+        && ckey == request.resource.data.doctor + '__'
+                   + request.resource.data.dateKey + '__'
+                   + request.resource.data.session;
+    }
+    function counterIsBackedByOwnAppointment() {
+      return request.resource.data.taken is int
+        && request.resource.data.taken >= 1
+        && hasSchedule(request.resource.data.doctor)
+        && request.resource.data.taken <= sessionCapacity(
+             request.resource.data.doctor, request.resource.data.dateKey,
+             request.resource.data.session)
+        && getAfter(apptPath(request.resource.data.doctor, request.resource.data.dateKey,
+             request.resource.data.session, request.resource.data.taken)
+           ).data.patient == profile().username;
+    }
+
     // ── 掛號：醫病關係的來源 ────────────────────────────────────────────
     //
     // 【為什麼要有這個集合】
@@ -899,6 +1074,20 @@ service cloud.firestore {
     // user_roles 以 uid 為鍵，規則無法由 username 反查角色。
     // 病患理論上可掛號給一個不存在的 username——該筆掛號不會出現在任何人的清單中，
     // 屬於無害的髒資料。要真正驗證需另立 username → role 的索引集合。
+    // 這條限制只剩舊制路徑（下方路徑 A）還受它影響：走班表的叫號掛號要求
+    // doctor_schedules/{doctor} 存在，而那份文件只有本人＋本人是醫師寫得進去。
+    //
+    // 【三條互斥的建立路徑】
+    //   A 舊制自由掛號：醫師「尚未」設定班表時沿用原行為，只有日期沒有時間。
+    //     以 !hasSchedule() 與 B 互斥——醫師一旦公告班表，就不能再繞過名額。
+    //   B 叫號掛號：醫師已設定班表。病患選日期＋診次，號碼由 appointment_counters
+    //     發放，文件 ID 為 {doctor}__{dateKey}__{session}__{seq}。
+    //   C 醫護櫃檯持證件報到：維持 auto ID，不帶號碼（那不是預約，是現場報到）。
+    //
+    // 【B 的誠實限制】規則驗得了號碼與名額，驗不了 scheduledAt 的算術——
+    // 規則無法解析 '09:00' 做時間加法。因此權威事實是受規則約束的
+    // dateKey / session / seq 三個欄位，scheduledAt 只是由它們推導出來的顯示值。
+    // 顯示端應以 dateKey + seq 重算，不要盲信寫進來的 scheduledAt。
     match /appointments/{aid} {
       // 病患讀自己的掛號；醫師只讀得到指向自己的那些。
       // 醫師端的 list 查詢必須自帶 where(doctor == 自己) 才會通過。
@@ -921,16 +1110,23 @@ service cloud.firestore {
       // 「進行中」清單裡（清單只認 appointments），F5 之後這位病患就像消失了一樣。
       allow create: if isActive() && (
         isAdmin()
+        // 路徑 A：醫師尚未公告班表時的舊制掛號。欄位白名單刻意不含
+        // dateKey／session／seq——否則病患可帶著一個沒有計數器背書的號碼進來。
         || (isOwnUsername(request.resource.data.patient)
             && request.resource.data.doctor is string
             && request.resource.data.doctor.size() > 0
             && request.resource.data.doctor.size() <= 64
+            && !hasSchedule(request.resource.data.doctor)
             && request.resource.data.status == 'booked'
             && request.resource.data.createdAt == request.time
             && request.resource.data.scheduledAt is timestamp
             && request.resource.data.keys().hasOnly(
                  ['patient', 'patientName', 'doctor', 'doctorName', 'department',
                   'scheduledAt', 'status', 'createdAt', 'note'])
+           )
+        // 路徑 B：叫號掛號。
+        || (isOwnUsername(request.resource.data.patient)
+            && queuedBookingWellFormed(aid)
            )
         || (isDoctor()
             && request.resource.data.doctor == profile().username
@@ -960,6 +1156,44 @@ service cloud.firestore {
       // 就診紀錄不可刪除——與 audit_logs、conversations 同樣的理由：
       // 能被單方面抹除的紀錄，在爭議發生時沒有證據價值。
       allow delete: if false;
+    }
+
+    // 叫號掛號的完整檢查。拆成獨立函式純粹是因為 allow create 那串條件
+    // 已經長到讀不出「哪一條屬於哪一條路徑」。
+    //
+    // 最後一條 getAfter() 是整套設計的樞紐：它要求同一個交易裡，
+    // appointment_counters 那份文件寫完之後的 taken 必須正好等於這筆掛號的號碼。
+    // 計數器那一側則對稱地要求存在一筆屬於自己、號碼等於 taken 的掛號。
+    // 兩份文件互相指認，因此：單獨新增掛號不會成立（計數器沒動）、
+    // 單獨推進計數器也不會成立（沒有對應掛號）、兩人搶同一號時
+    // 後到者的寫入會落在既有文件上而變成 update，被 update 規則擋下。
+    function queuedBookingWellFormed(aid) {
+      return request.resource.data.doctor is string
+        && request.resource.data.doctor.size() > 0
+        && request.resource.data.doctor.size() <= 64
+        && hasSchedule(request.resource.data.doctor)
+        && dateKeyWellFormed(request.resource.data.dateKey)
+        && request.resource.data.session in ['am', 'pm', 'night']
+        && request.resource.data.seq is int
+        && request.resource.data.seq >= 1
+        && aid == request.resource.data.doctor + '__'
+                  + request.resource.data.dateKey + '__'
+                  + request.resource.data.session + '__'
+                  + string(request.resource.data.seq)
+        && request.resource.data.status == 'booked'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.scheduledAt is timestamp
+        && request.resource.data.keys().hasOnly(
+             ['patient', 'patientName', 'doctor', 'doctorName', 'department',
+              'scheduledAt', 'status', 'createdAt', 'note',
+              'dateKey', 'session', 'seq'])
+        && sessionIsOpen(request.resource.data.doctor, request.resource.data.dateKey,
+             request.resource.data.session)
+        && request.resource.data.seq <= sessionCapacity(request.resource.data.doctor,
+             request.resource.data.dateKey, request.resource.data.session)
+        && withinBookingWindow(request.resource.data.doctor, request.resource.data.dateKey)
+        && getAfter(counterPath(request.resource.data.doctor, request.resource.data.dateKey,
+             request.resource.data.session)).data.taken == request.resource.data.seq;
     }
 
     match /insurance_data/{doc} {

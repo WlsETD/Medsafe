@@ -263,13 +263,35 @@
                                     <div class="text-xl sm:text-2xl font-black mb-1 leading-tight">尚無足夠資料</div>
                                     <div class="text-[10px] sm:text-xs font-bold opacity-70 leading-snug">尚未建立用藥紀錄<br>回診後由醫師建檔</div>
                                 </template>
+                                <template v-else-if="safetyScoreStatus === 'all-unevaluable'">
+                                    <div class="text-xl sm:text-2xl font-black mb-1 leading-tight">無法評估</div>
+                                    <div class="text-[10px] sm:text-xs font-bold opacity-70 leading-snug">{{ medications.length }} 筆用藥皆無法<br>比對交互作用</div>
+                                </template>
                                 <template v-else>
                                     <div class="text-xl sm:text-2xl font-black mb-1 leading-tight">尚未評估</div>
                                     <div class="text-[10px] sm:text-xs font-bold opacity-70 leading-snug">已有 {{ medications.length }} 筆用藥<br>尚未完成交互作用評估</div>
                                 </template>
                             </div>
                         </div>
-                        <p v-if="safetyScore !== null" class="text-[10px] sm:text-[11px] font-bold opacity-70 max-w-[220px] text-center leading-snug">本分數依現有用藥數量與已知交互作用警示計算，僅供參考，不構成醫療建議。</p>
+                        <p v-if="safetyScore !== null" class="text-[10px] sm:text-[11px] font-bold opacity-70 max-w-[220px] text-center leading-snug">本分數依現有用藥數量與已知交互作用計算，僅供參考，不構成醫療建議。</p>
+                        <!-- 計分明細。分數若不攤開給使用者看，它就只是一個無從檢查的數字；
+                             一個看不懂又動不了的數字，比沒有分數更容易被過度解讀。 -->
+                        <button v-if="scoreBreakdown.lines.length" @click="showScoreDetail = !showScoreDetail"
+                                class="text-[10px] font-black uppercase tracking-widest opacity-70 hover:opacity-100 transition-opacity">
+                            {{ showScoreDetail ? '▾' : '▸' }} 這個分數怎麼來的
+                        </button>
+                        <div v-if="showScoreDetail && scoreBreakdown.lines.length"
+                             class="w-full max-w-[260px] bg-white/10 rounded-2xl px-4 py-3 space-y-1.5">
+                            <div v-for="(l, i) in scoreBreakdown.lines" :key="i" class="flex items-start justify-between gap-3 text-[11px] font-bold">
+                                <span class="opacity-80 leading-snug">{{ l.label }}</span>
+                                <span v-if="l.delta !== null" class="shrink-0 tabular-nums">{{ l.delta > 0 ? l.delta : l.delta }}</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-3 text-xs font-black pt-1.5 border-t border-white/20">
+                                <span>合計</span><span class="tabular-nums">{{ safetyScore }}</span>
+                            </div>
+                        </div>
+                        <p v-for="(c, i) in scoreBreakdown.caveats" :key="'cv' + i"
+                           class="text-[10px] font-bold opacity-70 max-w-[260px] text-center leading-snug">{{ c }}</p>
                     </div>
                 </div>
             </section>
@@ -522,35 +544,106 @@
 
                     <div v-if="apptError" class="text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-2xl px-4 py-3">{{ apptError }}</div>
 
-                    <!-- 新增掛號 -->
+                    <!-- 新增掛號 ──────────────────────────────────────
+                         時間不是由病患挑的，是算出來的：選好日期與診次後，
+                         系統依「前面已經有幾位」發號，預估時間 =
+                         診次開始 + (號碼 - 1) x 該醫師的平均看診分鐘。 -->
                     <div class="border-t border-slate-100 pt-6 space-y-4">
                         <p class="text-[10px] font-black text-lightText uppercase tracking-widest">新增掛號</p>
+
+                        <p v-if="scheduleError" class="text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-2xl px-4 py-3">{{ scheduleError }}</p>
+
                         <div class="flex flex-wrap items-end gap-4">
-                            <div class="flex-1 min-w-[160px] space-y-2">
-                                <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">科別</label>
-                                <select v-model="newAppt.department" class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-4 font-black text-title text-sm outline-none">
-                                    <option>一般內科</option><option>心臟內科</option><option>新陳代謝科</option>
-                                    <option>神經內科</option><option>家庭醫學科</option>
-                                </select>
-                            </div>
-                            <div class="flex-1 min-w-[160px] space-y-2">
-                                <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">醫師帳號</label>
-                                <input v-model="newAppt.doctor" type="text" placeholder="如 doctor"
-                                       class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-5 font-bold text-title text-sm focus:border-primary/20 focus:bg-white outline-none transition-all">
+                            <!-- 醫師不由病患挑選：主治醫師是既有的醫病關係決定的
+                                 （病歷上的指派，或最近一筆進行中的掛號），
+                                 讓病患自由指定等於讓他自己決定誰讀得到自己的病歷。 -->
+                            <div class="flex-1 min-w-[220px] space-y-2">
+                                <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">主治醫師</label>
+                                <div class="w-full bg-bgMain rounded-2xl py-3.5 px-4 font-black text-title text-sm">
+                                    <template v-if="hasDoctor">{{ bookingDoctorName }}<span v-if="selectedSchedule" class="font-bold text-content">　{{ selectedSchedule.department }}</span></template>
+                                    <span v-else class="text-lightText">尚無主治醫師</span>
+                                </div>
                             </div>
                             <div class="flex-1 min-w-[160px] space-y-2">
                                 <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">就診日期</label>
-                                <input v-model="newAppt.date" type="date"
-                                       class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-4 font-bold text-title text-sm outline-none">
+                                <input v-model="newAppt.date" type="date" :min="todayKey" :max="maxBookingDate"
+                                       :disabled="!selectedSchedule" @change="refreshDay"
+                                       class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-4 font-bold text-title text-sm outline-none disabled:opacity-40">
                             </div>
-                            <button @click="bookAppointment" :disabled="apptBusy || !newAppt.doctor.trim() || !newAppt.date"
-                                    class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">掛號</button>
                         </div>
-                        <!-- 規則無法由 username 反查角色（user_roles 以 uid 為鍵），
-                             因此系統驗不了輸入的帳號是否真的是醫師。據實說明，不假裝驗證過。 -->
-                        <p class="text-[10px] font-bold text-lightText leading-relaxed px-1">
-                            系統目前無法驗證所填帳號是否為執業醫師；填錯時該筆掛號不會出現在任何醫師的清單中。
+
+                        <!-- 三種「還不能選時段」的狀態，各自的下一步完全不同，
+                             因此分開講，不共用一句籠統的錯誤訊息。 -->
+                        <p v-if="!hasDoctor" class="text-[11px] font-bold text-lightText bg-bgMain rounded-2xl px-5 py-6 leading-relaxed">
+                            您目前尚無主治醫師。第一次掛號請用下方的「以醫師帳號掛號」——
+                            在本系統中，掛號這個動作本身就是建立醫病關係、讓該名醫師看得到您用藥資料的授權。
                         </p>
+                        <p v-else-if="!selectedSchedule && !scheduleError" class="text-[11px] font-bold text-lightText bg-bgMain rounded-2xl px-5 py-6 leading-relaxed">
+                            {{ bookingDoctorName }}尚未公告看診時間，因此無法選擇診次與看診號碼。
+                            請用下方的「以醫師帳號掛號」指定就診日期（帳號已為您填好）。
+                        </p>
+
+                        <!-- 該日的三個診次 -->
+                        <div v-if="selectedSchedule && newAppt.date" class="space-y-3">
+                            <p v-if="dayLoading" class="text-xs font-bold text-lightText bg-bgMain rounded-2xl px-5 py-6 text-center">查詢可預約時段中…</p>
+                            <template v-else>
+                                <div v-for="s in daySessions" :key="s.id"
+                                     class="flex flex-wrap items-center justify-between gap-4 rounded-2xl px-5 py-4"
+                                     :class="s.bookable ? 'bg-mint border-2 border-primary/20' : 'bg-bgMain'">
+                                    <div>
+                                        <p class="text-sm font-black text-title">
+                                            {{ s.label }}
+                                            <span v-if="s.spec" class="text-content font-bold">　{{ s.spec.start }}–{{ s.spec.end }}</span>
+                                            <span v-if="s.added" class="ml-2 text-[9px] font-black text-primary uppercase tracking-widest">加診</span>
+                                        </p>
+                                        <p class="text-[11px] font-bold mt-0.5" :class="s.bookable ? 'text-primary' : 'text-lightText'">{{ s.statusText }}</p>
+                                    </div>
+                                    <button v-if="s.bookable" @click="bookQueued(s)" :disabled="apptBusy"
+                                            class="px-7 py-3 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">掛號</button>
+                                </div>
+                            </template>
+                            <p class="text-[10px] font-bold text-lightText leading-relaxed px-1">
+                                預估時間依前面的預約人數推算，實際仍以現場叫號進度為準。號碼一經發出即固定，前面的人取消不會讓您提前。
+                            </p>
+                        </div>
+
+                        <!-- 舊制：醫師尚未公告看診時間時的掛號方式。
+                             規則無法由 username 反查角色（user_roles 以 uid 為鍵），
+                             因此這條路徑驗不了輸入的帳號是否真的是醫師。據實說明，不假裝驗證過。
+                             （上方下拉選單那條路徑沒有這個問題：能寫入班表的就只有醫師本人。） -->
+                        <div class="border-t border-slate-100 pt-4">
+                            <button @click="showLegacyBooking = !showLegacyBooking"
+                                    class="text-[10px] font-black text-lightText uppercase tracking-widest hover:text-primary transition-colors">
+                                {{ showLegacyBooking ? '－' : '＋' }} 找不到您的醫師？以醫師帳號掛號
+                            </button>
+                            <div v-show="showLegacyBooking" class="mt-4 space-y-3">
+                                <div class="flex flex-wrap items-end gap-4">
+                                    <div class="flex-1 min-w-[160px] space-y-2">
+                                        <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">科別</label>
+                                        <select v-model="legacyAppt.department" class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-4 font-black text-title text-sm outline-none">
+                                            <option>一般內科</option><option>心臟內科</option><option>新陳代謝科</option>
+                                            <option>神經內科</option><option>家庭醫學科</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex-1 min-w-[160px] space-y-2">
+                                        <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">醫師帳號</label>
+                                        <input v-model="legacyAppt.doctor" type="text" placeholder="如 doctor"
+                                               class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-5 font-bold text-title text-sm focus:border-primary/20 focus:bg-white outline-none transition-all">
+                                    </div>
+                                    <div class="flex-1 min-w-[160px] space-y-2">
+                                        <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">就診日期</label>
+                                        <input v-model="legacyAppt.date" type="date" :min="todayKey"
+                                               class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-4 font-bold text-title text-sm outline-none">
+                                    </div>
+                                    <button @click="bookAppointment" :disabled="apptBusy || !legacyAppt.doctor.trim() || !legacyAppt.date"
+                                            class="px-8 py-3.5 rounded-2xl bg-deep text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">掛號</button>
+                                </div>
+                                <p class="text-[10px] font-bold text-lightText leading-relaxed px-1">
+                                    這種掛號方式只有日期、沒有看診號碼與預估時間。系統也無法驗證所填帳號是否為執業醫師；
+                                    填錯時該筆掛號不會出現在任何醫師的清單中。若該醫師已公告看診時間，請改用上方的選單掛號。
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- 掛號清單 -->
@@ -563,7 +656,7 @@
                             <div>
                                 <p class="text-sm font-black text-title">{{ a.department }}　{{ a.doctorName || a.doctor }}</p>
                                 <p class="text-[11px] font-bold" :class="apptIsActive(a) ? 'text-primary' : 'text-lightText'">
-                                    {{ apptStatusText(a.status) }}<span v-if="apptDateText(a)"> · {{ apptDateText(a) }}</span>
+                                    {{ apptStatusText(a.status) }}<span v-if="apptDateText(a)"> · {{ apptDateText(a) }}</span><span v-if="apptQueueText(a)"> · {{ apptQueueText(a) }}</span>
                                 </p>
                             </div>
                             <button v-if="apptIsActive(a)" @click="cancelAppointment(a)" :disabled="apptBusy"
@@ -1094,9 +1187,19 @@
                     myConsents: [],
                     // 側欄的檢視切換。資料授權與掛號各自獨立成一個檢視。
                     activeView: 'home',
+                    showScoreDetail: false,
                     // 掛號（醫病關係的來源）
                     myAppointments: [],
-                    newAppt: { department: '一般內科', doctor: '', date: '' },
+                    // 醫師班表（doctor_schedules），以醫師 username 為鍵。
+                    // 只讀取與自己有關的那幾位——主治醫師，加上掛號紀錄裡出現過的
+                    // （歷史掛號要重算預估時間）。不列舉全院醫師。
+                    schedulesByDoctor: {},
+                    scheduleError: '',
+                    newAppt: { date: '' },
+                    dayCounters: {},
+                    dayLoading: false,
+                    showLegacyBooking: false,
+                    legacyAppt: { department: '一般內科', doctor: '', date: '' },
                     apptBusy: false,
                     apptError: '',
                     // LINE 提醒綁定。lineBinding 讀自 line_bindings/{username}——
@@ -1467,6 +1570,63 @@
                 doctorLabel() {
                     return this.doctorName || '主治醫師';
                 },
+                todayKey() {
+                    return DbService.adherence.dayKey();
+                },
+                // 掛號對象永遠是自己的主治醫師，沒有第二個選項
+                selectedSchedule() {
+                    if (!this.doctorUsername) return null;
+                    return this.schedulesByDoctor[this.doctorUsername] || null;
+                },
+                bookingDoctorName() {
+                    const s = this.selectedSchedule;
+                    return (s && s.displayName) || this.doctorName || this.doctorUsername || '主治醫師';
+                },
+                maxBookingDate() {
+                    const s = this.selectedSchedule;
+                    if (!s) return '';
+                    const d = new Date();
+                    d.setDate(d.getDate() + (Number(s.bookingWindowDays) || DbService.schedules.DEFAULTS.bookingWindowDays));
+                    return DbService.adherence.dayKey(d);
+                },
+                // 所選日期的三個診次。狀態刻意分成四種而不是「可／不可」兩種：
+                // 休診、已開診、已額滿、可預約——對病患的下一步完全不同
+                // （休診要改天、已開診要現場掛、額滿要改診次）。
+                daySessions() {
+                    const S = DbService.schedules;
+                    const sch = this.selectedSchedule;
+                    const dateKey = this.newAppt.date;
+                    if (!sch || !dateKey) return [];
+                    const avg = Number(sch.avgMinutes) || S.DEFAULTS.avgMinutes;
+                    return S.sessionsFor(sch, dateKey).map(s => {
+                        const taken = Number(this.dayCounters[s.id] || 0);
+                        if (!s.open) {
+                            return Object.assign({}, s, {
+                                bookable: false, taken,
+                                statusText: s.closed ? '本日停診' : '休診'
+                            });
+                        }
+                        if (S.hasStarted(dateKey, s.spec)) {
+                            return Object.assign({}, s, {
+                                bookable: false, taken,
+                                statusText: '本診已開始，請至現場掛號'
+                            });
+                        }
+                        const capacity = Number(s.spec.capacity) || 0;
+                        if (taken >= capacity) {
+                            return Object.assign({}, s, {
+                                bookable: false, taken,
+                                statusText: '已額滿（' + taken + ' / ' + capacity + ' 人）'
+                            });
+                        }
+                        const nextSeq = taken + 1;
+                        return Object.assign({}, s, {
+                            bookable: true, taken, nextSeq,
+                            statusText: '已 ' + taken + ' / ' + capacity + ' 人 · 您將是第 ' + nextSeq
+                                + ' 號 · 預估 ' + S.timeText(S.estimateAt(dateKey, s.spec, nextSeq, avg))
+                        });
+                    });
+                },
                 // 進行中的掛號（已預約或已報到）。側欄數字用它——
                 // 「現在有哪位醫師看得到我的資料」不該需要點進去才知道。
                 upcomingAppointments() {
@@ -1494,16 +1654,16 @@
                 // 導致本頁同時出現「5 組已知交互作用」（首頁摘要，來自 ddiForMe）
                 // 與「55 用藥安全參考分數」（來自舊快照的單一警示）這兩個各自獨立、
                 // 沒有互相對照過的數字，只是恰好都指向同一位病患而不易被發現。
-                safetyScore() {
-                    if (!this.ddiForMe) return DbService.computeSafetyScore(this.medications, this.ddiAlerts);
-                    const alerts = DbService.legacyAlertsFromFindings(this.ddiForMe.findings);
-                    return DbService.computeSafetyScore(this.medications, alerts);
+                // 分數、明細、但書都出自同一次計算。先前分數與狀態各算一次，
+                // 兩者若因輸入形狀不同而分歧，畫面就會出現「有分數卻說尚未評估」。
+                scoreBreakdown() {
+                    const input = this.ddiForMe
+                        ? DbService.scoreInputFromAnalysis(this.ddiForMe)
+                        : this.ddiAlerts;
+                    return DbService.safetyScoreBreakdown(this.medications, input);
                 },
-                safetyScoreStatus() {
-                    if (!this.ddiForMe) return DbService.safetyScoreStatus(this.medications, this.ddiAlerts);
-                    const alerts = DbService.legacyAlertsFromFindings(this.ddiForMe.findings);
-                    return DbService.safetyScoreStatus(this.medications, alerts);
-                }
+                safetyScore() { return this.scoreBreakdown.score; },
+                safetyScoreStatus() { return this.scoreBreakdown.status; }
             },
             watch: {
                 // initCharts() 在 mounted 後 50ms 就執行，早於 Firestore 回應，
@@ -1593,6 +1753,10 @@
                         // 事後補寫等於讓對話有一段時間讀不到或人人可讀。
                         this.chatReady = await window.chatStore.init('patient', this._username);
                     }
+                    // 班表必須等主治醫師確定之後再載入——doctorUsername 有兩個來源
+                    //（病歷上的 assignedDoctor、最近一筆進行中的掛號），
+                    // 上面那份 patient_data 才剛套用完第二個來源。
+                    await this.loadSchedules();
                 } catch (e) {
                     console.error('Firestore load error:', e);
                 }
@@ -2116,6 +2280,103 @@
                 },
 
                 // ── 掛號 ──────────────────────────────────────────────────────
+                // 只抓與自己有關的醫師班表：主治醫師（決定能不能掛號），
+                // 加上掛號紀錄裡出現過的醫師（apptQueueText 要用它重算預估時間）。
+                // 刻意不列舉整個 doctor_schedules 集合——病患沒有理由拿到全院醫師名冊，
+                // firestore.rules 也已據此把 list 關掉、只留 get。
+                async loadSchedules() {
+                    const names = [];
+                    if (this.doctorUsername) names.push(this.doctorUsername);
+                    (this.myAppointments || []).forEach(a => {
+                        if (a.doctor && names.indexOf(a.doctor) === -1) names.push(a.doctor);
+                    });
+                    if (!names.length) return;
+                    const map = {};
+                    let failedMine = false;
+                    await Promise.all(names.map(async (n) => {
+                        try {
+                            const s = await DbService.schedules.get(n);
+                            if (s) map[n] = Object.assign({ id: n }, s);
+                        } catch (e) {
+                            console.error('看診時間讀取失敗（' + n + '）：', e);
+                            if (n === this.doctorUsername) failedMine = true;
+                        }
+                    }));
+                    this.schedulesByDoctor = map;
+                    // 「讀取失敗」與「這位醫師沒有公告看診時間」對病患的下一步不同：
+                    // 前者該重試，後者該走舊制掛號。不可把前者顯示成後者。
+                    this.scheduleError = failedMine
+                        ? '看診時間讀取失敗，暫時無法選擇診次。請重新整理後再試；'
+                          + '若仍不行，可用下方的「以醫師帳號掛號」先指定日期。'
+                        : '';
+                    // 主治醫師沒有班表時，舊制表單的帳號直接填好，不必病患自己記
+                    if (this.doctorUsername && !map[this.doctorUsername] && !this.legacyAppt.doctor) {
+                        this.legacyAppt.doctor = this.doctorUsername;
+                    }
+                },
+
+                // 該日三個診次各自「已經有幾位」。這是病患唯一能取得的排隊資訊——
+                // 掛號本身只讀得到自己那幾筆（見 firestore.rules），
+                // 因此人數由 appointment_counters 這份公開計數器提供。
+                async refreshDay() {
+                    if (!this.selectedSchedule || !this.newAppt.date) return;
+                    this.dayLoading = true;
+                    try {
+                        this.dayCounters = await DbService.schedules.getCounters(
+                            this.doctorUsername, this.newAppt.date);
+                    } finally {
+                        this.dayLoading = false;
+                    }
+                },
+
+                async bookQueued(sessionInfo) {
+                    if (this.apptBusy || !sessionInfo.bookable) return;
+                    const sch = this.selectedSchedule;
+                    this.apptBusy = true;
+                    this.apptError = '';
+                    try {
+                        const r = await DbService.appointments.bookQueued({
+                            patient: this._username,
+                            patientName: (this.profile && this.profile.name) || this._username,
+                            doctor: this.doctorUsername,
+                            doctorName: sch.displayName || this.doctorUsername,
+                            department: sch.department,
+                            dateKey: this.newAppt.date,
+                            session: sessionInfo.id,
+                            schedule: sch
+                        });
+                        const at = DbService.schedules.timeText(r.estimatedAt);
+                        await this.refreshDay();
+                        await this.loadAppointments();
+                        this.triggerToast('掛號完成',
+                            `${sessionInfo.label} 第 ${r.seq} 號，預估 ${at} 看診`);
+                    } catch (e) {
+                        console.error('叫號掛號失敗：', e);
+                        if (e && e.stage === 'relation') {
+                            // 與 bookAppointment() 同樣的分流：掛號那一筆已經寫進資料庫，
+                            // 只有授權沒成功。說成「未建立任何紀錄」會讓病患再掛一次，
+                            // 多拿一個號碼，而重掛並不能解決問題。
+                            await this.refreshDay();
+                            await this.loadAppointments();
+                            this.apptError = `掛號已完成（第 ${e.seq} 號，見下方清單），但未能授予該醫師存取權，`
+                                + '他目前看不到您的用藥資料。請重新整理後再試一次，'
+                                + '或於報到時洽櫃檯以證件建立。不需重複掛號。';
+                        } else if (e && e.stage === 'full') {
+                            // 兩個人同時掛最後一號時，慢的那位會走到這裡
+                            await this.refreshDay();
+                            this.apptError = '這一診剛剛被掛滿了，請改選其他診次或日期。';
+                        } else if (e && e.stage === 'closed') {
+                            await this.refreshDay();
+                            this.apptError = '該診次目前不開放預約，請重新選擇。';
+                        } else {
+                            await this.refreshDay();
+                            this.apptError = '掛號失敗，未取得號碼。請確認網路後再試。';
+                        }
+                    } finally {
+                        this.apptBusy = false;
+                    }
+                },
+
                 apptIsActive(a) {
                     return DbService.appointments.ACTIVE.indexOf(a && a.status) !== -1;
                 },
@@ -2125,10 +2386,34 @@
                 // scheduledAt 是 Firestore Timestamp；剛寫入時本地物件可能還是字串或 Date，
                 // 三種形狀都要處理，否則新掛的那一筆會顯示成空白
                 apptDateText(a) {
+                    // 叫號掛號直接帶著 dateKey，不必再從 Timestamp 反推
+                    if (a && a.dateKey) return a.dateKey;
                     const v = a && a.scheduledAt;
                     if (!v) return '';
                     const d = v.toDate ? v.toDate() : new Date(v);
-                    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+                    // 不可用 toISOString().slice(0,10)——那是 UTC。scheduledAt 存的是
+                    // 當地時間，在 UTC+8 會被切成前一天，病患看到的日期就比自己選的早一天。
+                    // 與 db-service.js 的 adherence.dayKey() 註解是同一個坑。
+                    return isNaN(d.getTime()) ? '' : DbService.adherence.dayKey(d);
+                },
+                // 看診號碼與預估時間。權威事實是 seq——預估時間由「診次開始 +
+                // (號碼-1) x 平均看診分鐘」推導，規則驗不了這段算術（見 firestore.rules），
+                // 因此這裡以醫師目前公告的班表重算，而不是顯示寫死在 scheduledAt 的值。
+                apptQueueText(a) {
+                    if (!a || !a.seq) return '';
+                    const S = DbService.schedules;
+                    const label = S.sessionLabel(a.session);
+                    const sch = this.schedulesByDoctor[a.doctor];
+                    if (sch && a.dateKey) {
+                        const info = S.sessionsFor(sch, a.dateKey).find(s => s.id === a.session);
+                        if (info && info.spec) {
+                            const at = S.estimateAt(a.dateKey, info.spec, a.seq,
+                                Number(sch.avgMinutes) || S.DEFAULTS.avgMinutes);
+                            return `${label} 第 ${a.seq} 號 · 預估 ${S.timeText(at)}`;
+                        }
+                    }
+                    // 班表讀不到（或醫師事後改了班）時只報號碼，不報一個可能已經過時的時間
+                    return `${label} 第 ${a.seq} 號`;
                 },
                 async loadAppointments() {
                     try {
@@ -2154,10 +2439,13 @@
                         this.apptError = '掛號紀錄讀取失敗，以下清單可能不完整，請重新整理後再確認。';
                     }
                 },
+                // 舊制掛號：只有日期、沒有號碼。僅適用於尚未公告看診時間的醫師——
+                // 規則會以 !hasSchedule() 擋掉對已公告醫師的這條路徑，
+                // 否則病患可以繞過名額限制。
                 async bookAppointment() {
                     if (this.apptBusy) return;
-                    const doctor = (this.newAppt.doctor || '').trim();
-                    if (!doctor || !this.newAppt.date) return;
+                    const doctor = (this.legacyAppt.doctor || '').trim();
+                    if (!doctor || !this.legacyAppt.date) return;
                     this.apptBusy = true;
                     this.apptError = '';
                     try {
@@ -2166,11 +2454,14 @@
                             patientName: (this.profile && this.profile.name) || this._username,
                             doctor,
                             doctorName: doctor,
-                            department: this.newAppt.department,
-                            scheduledAt: this.newAppt.date
+                            department: this.legacyAppt.department,
+                            scheduledAt: this.legacyAppt.date
                         });
-                        this.newAppt = { department: '一般內科', doctor: '', date: '' };
+                        this.legacyAppt = { department: '一般內科', doctor: '', date: '' };
                         await this.loadAppointments();
+                        // 這可能是這位病患的第一位主治醫師：重讀班表，
+                        // 下一次掛號就能直接走上方的診次選擇。
+                        await this.loadSchedules();
                         this.triggerToast('掛號完成', `${doctor} 醫師現在可以看到您的用藥資料`);
                     } catch (e) {
                         console.error('掛號失敗：', e);
@@ -2180,11 +2471,17 @@
                             // 而重掛並不能解決問題——失敗的是授權，不是掛號。
                             // 因此清空表單、重新載入清單（讓那筆確實顯示出來），
                             // 並把「醫師目前看不到」與「不需重掛」講明白。
-                            this.newAppt = { department: '一般內科', doctor: '', date: '' };
+                            this.legacyAppt = { department: '一般內科', doctor: '', date: '' };
                             await this.loadAppointments();
                             this.apptError = '掛號已建立（見下方清單），但未能授予該醫師存取權，'
                                 + '他目前看不到您的用藥資料。請重新整理後再試一次，'
                                 + '或於報到時洽櫃檯以證件建立。不需重複掛號。';
+                        } else if (e && e.code === 'permission-denied') {
+                            // 最可能的原因：這位醫師已經公告了看診時間，
+                            // 規則因此關閉了舊制路徑。要引導回正確的掛號方式，
+                            // 而不是丟一句「請確認網路」讓病患一直重試。
+                            await this.loadSchedules();
+                            this.apptError = '這位醫師已公告看診時間，請改用上方的日期與診次掛號。';
                         } else {
                             this.apptError = '掛號失敗，未建立任何紀錄。請確認網路後再試。';
                         }

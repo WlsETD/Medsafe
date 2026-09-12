@@ -1236,6 +1236,10 @@
                     // 對核保而言風險方向相反，混為一談會產生與事實不符的敘述
                     if (scoreStatus === 'no-medications') recommendation = '尚無用藥紀錄，資料不足以評估風險，不建議據此調整費率。';
                     else if (scoreStatus === 'not-assessed') recommendation = `已收錄 ${medCount} 筆用藥，但尚未進行交互作用評估，不足以作為核保依據。`;
+                    // 「評估過但一項都比對不了」與「沒評估過」不同，且都不是低風險。
+                    // 少了這一支，score 為 null 會掉到最後的 else，被敘述成
+                    // 「建議加強用藥遵從度追蹤」——把無資料講成一個具體的風險判斷。
+                    else if (scoreStatus === 'all-unevaluable') recommendation = `已收錄 ${medCount} 筆用藥，但均無法比對交互作用（藥名未收錄或為複方），不足以作為核保依據。`;
                     else if (alerts > 0) recommendation = `偵測到 ${alerts} 筆用藥交互作用警示，建議先安排個案關懷再評估續保費率。`;
                     else if (score >= 95) recommendation = '用藥安全紀錄優異，建議提供續保費率優惠。';
                     else if (score >= 85) recommendation = '整體風險適中，維持現行保費即可。';

@@ -1748,7 +1748,8 @@
                             hasWarnings
                                 ? `部分區塊寫入失敗：${result.warnings.join('；')}。其餘區塊已正常完成，可再次點擊重置重試失敗的部分。`
                                 : `patient01/P001–P004 病歷、保單／理賠／關懷個案、醫病對話已清回展示用初始狀態；`
-                                  + `${result.appointmentsCancelled} 筆舊掛號已標記取消並補上 1 筆新掛號。`,
+                                  + `${result.appointmentsCancelled} 筆舊掛號已標記取消並補上 1 筆新掛號；`
+                                  + `示範醫師的門診班表${result.scheduleSeeded ? '已重設（週一至週五早診／午診）' : '未重設'}。`,
                             hasWarnings ? 'warn' : 'ok');
                         try {
                             await window.Audit.log(window.Audit.ACTIONS.DEMO_RESET, 'admin_data/demoReset', result);

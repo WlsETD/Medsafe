@@ -216,6 +216,67 @@ const run = async () => {
       JSON.stringify(r));
   }
 
+  // ── 九、意圖分類 ───────────────────────────────────────────────────
+  //
+  // 加入意圖層之前，模型唯一被交付的任務是抽詞：使用者問「藥箱裡有什麼」
+  // 抽不到藥名，就被回一句「我不太確定您的意思」——功能明明存在卻到不了。
+  // 這一組守的是：非服藥回報的句子必須帶著 intent 交還給 webhook 路由，
+  // 而不是掉進 no-extraction 的死路。
+  function mockUnderstand(intent, items) {
+    llm.setImpl(async () => ({
+      choices: [{ message: { content: JSON.stringify({ intent, items: items || [] }) } }]
+    }));
+  }
+
+  {
+    mockUnderstand('cabinet-query', []);
+    const r = await nlu.processUserInput('幫我看看藥箱裡有什麼', PATIENT);
+    check('意圖 藥箱查詢交還給 webhook 路由，不落入 no-extraction',
+      r.status === 'intent' && r.intent === 'cabinet-query', JSON.stringify(r));
+  }
+  {
+    mockUnderstand('next-visit', []);
+    const r = await nlu.processUserInput('我下次什麼時候回診', PATIENT);
+    check('意圖 查詢回診', r.status === 'intent' && r.intent === 'next-visit');
+  }
+  {
+    mockUnderstand('booking', []);
+    const r = await nlu.processUserInput('下週三可以約嗎', PATIENT);
+    check('意圖 預約', r.status === 'intent' && r.intent === 'booking');
+  }
+  {
+    // 這一條是產品邊界：用藥知識問題一律歸 other，由 webhook 回覆
+    // 「請詢問醫師或藥師」。系統不做醫療判斷（與 DDI 用規則引擎同一立場）。
+    mockUnderstand('other', []);
+    const r = await nlu.processUserInput('這個藥可以配葡萄柚嗎', PATIENT);
+    check('意圖 用藥知識問題歸為 other，不由模型作答',
+      r.status === 'intent' && r.intent === 'other');
+  }
+  {
+    // 意圖是服藥回報時，行為必須與加入這一層之前完全相同
+    mockUnderstand('adherence-report', [{ name: '血壓藥', action: 'taken', time: null, confidence: 0.95 }]);
+    const r = await nlu.processUserInput('血壓藥吃了', PATIENT);
+    check('意圖 服藥回報仍照原本流程寫入',
+      r.status === 'ok' && r.toRecord.length === 1, JSON.stringify(r));
+  }
+  {
+    // 迴歸：模型沒吐出 intent（或吐了不認得的值）時退回舊行為，
+    // 而不是把一句正常的服藥回報誤判成 other 直接拒答。
+    llm.setImpl(async () => ({
+      choices: [{ message: { content: JSON.stringify({ items: [{ name: '血壓藥', action: 'taken', time: null, confidence: 0.95 }] }) } }]
+    }));
+    const r = await nlu.processUserInput('血壓藥吃了', PATIENT);
+    check('迴歸 缺少 intent 時退回服藥回報流程',
+      r.status === 'ok' && r.toRecord.length === 1, JSON.stringify(r));
+  }
+  {
+    llm.setImpl(async () => ({
+      choices: [{ message: { content: JSON.stringify({ intent: '亂七八糟的值', items: [] }) } }]
+    }));
+    const r = await nlu.processUserInput('血壓藥吃了', PATIENT);
+    check('迴歸 intent 不在白名單時退回服藥回報流程', r.status === 'no-extraction');
+  }
+
   llm.resetImpl();
 
   // --- 輸出 ---

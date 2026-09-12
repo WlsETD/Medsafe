@@ -133,6 +133,7 @@
                 <div class="space-y-1">
                     <a @click.prevent="scrollTo('#doctor-dashboard'); showMobileMenu = false" href="#" class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 font-bold text-sm transition-all"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg> 儀表板總覽</a>
                     <a @click.prevent="scrollTo('#patient-station'); showMobileMenu = false" href="#" class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 font-bold text-sm transition-all"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> 病患診斷站</a>
+                    <a @click.prevent="scrollTo('#clinic-hours'); showMobileMenu = false" href="#" class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 font-bold text-sm transition-all"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> 看診時間設定</a>
                 </div>
             </div>
 
@@ -157,6 +158,12 @@
                     <button @click="openBreakGlass" class="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-danger/40 text-danger hover:bg-danger hover:text-white transition-all text-[10px] font-black uppercase tracking-widest">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
                         緊急調閱
+                    </button>
+                    <!-- 看診時間：病患端的可預約時段完全由這份班表決定。
+                         沒有設定時，病患走的是舊制自由掛號（只有日期、沒有名額）。 -->
+                    <button @click="scrollTo('#clinic-hours')" class="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white/10 text-white/90 hover:bg-white/20 transition-all text-[10px] font-black uppercase tracking-widest">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        看診時間設定
                     </button>
                 </div>
                 <div v-for="p in recentPatients" :key="p.id" 
@@ -583,6 +590,174 @@
                         </div>
                     </div>
                 </div>
+            </section>
+
+            <!-- ── 看診時間設定 ────────────────────────────────────────
+                 這份班表是病患端唯一的可預約時段來源：哪天有診、哪個診次
+                 還有名額、病患會拿到第幾號、預估幾點看診，全部由此推導。
+                 尚未設定前，病患走的是舊制自由掛號（只有日期、沒有名額限制）。 -->
+            <section id="clinic-hours" class="p-8 space-y-8 min-h-screen border-t-4 border-slate-200">
+                <div class="flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                        <h2 class="text-3xl font-black text-slate-900 tracking-tight">看診時間設定</h2>
+                        <p class="text-xs font-bold text-slate-400 mt-1">病患只能預約您在此開放的診次，並依前面已預約人數自動取得看診號碼</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span v-if="scheduleDirty" class="text-[10px] font-black text-warning uppercase tracking-widest">尚未儲存</span>
+                        <button @click="saveSchedule" :disabled="scheduleBusy || !schedule"
+                                class="px-8 py-3 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">
+                            {{ scheduleBusy ? '儲存中…' : '儲存班表' }}
+                        </button>
+                    </div>
+                </div>
+
+                <p v-if="scheduleError" class="text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-2xl px-5 py-4">{{ scheduleError }}</p>
+
+                <div v-if="scheduleWarnings.length" class="text-[11px] font-bold text-warning bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 leading-relaxed">
+                    <p class="mb-1">以下診次的名額乘上平均看診分鐘會超過該診次的長度，最後幾號的預估時間會落在下班之後：</p>
+                    <p v-for="w in scheduleWarnings" :key="w">· {{ w }}</p>
+                    <p class="mt-1 text-slate-500">這不會阻擋儲存——延診本來就會發生。若不希望病患看到超時的預估時間，請調低名額或縮短平均看診分鐘。</p>
+                </div>
+
+                <div v-if="!schedule" class="bg-white rounded-3xl p-8 shadow-sm text-sm font-bold text-slate-400">班表載入中…</div>
+
+                <template v-else>
+                    <!-- 基本設定 -->
+                    <div class="bg-white rounded-3xl p-8 shadow-sm space-y-6">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">基本設定</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">顯示名稱</label>
+                                <input v-model="schedule.displayName" @input="scheduleDirty = true" type="text"
+                                       class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-4 font-bold text-slate-800 text-sm focus:border-primary/20 focus:bg-white outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">科別</label>
+                                <select v-model="schedule.department" @change="scheduleDirty = true" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-4 font-black text-slate-800 text-sm outline-none">
+                                    <option>一般內科</option><option>心臟內科</option><option>新陳代謝科</option>
+                                    <option>神經內科</option><option>家庭醫學科</option>
+                                </select>
+                            </div>
+                            <div>
+                                <!-- 這個數字直接決定病患看到的預估時間：
+                                     診次開始 + (號碼 - 1) x 平均看診分鐘 -->
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">平均看診分鐘</label>
+                                <select v-model.number="schedule.avgMinutes" @change="scheduleDirty = true" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-4 font-black text-slate-800 text-sm outline-none">
+                                    <option v-for="m in scheduleOptions.avgMinutes" :key="m" :value="m">{{ m }} 分鐘</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">開放預約天數</label>
+                                <select v-model.number="schedule.bookingWindowDays" @change="scheduleDirty = true" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-4 font-black text-slate-800 text-sm outline-none">
+                                    <option v-for="d in scheduleOptions.windowDays" :key="d" :value="d">{{ d }} 天內</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 每週固定班表 -->
+                    <div class="bg-white rounded-3xl p-8 shadow-sm space-y-5">
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">每週固定班表</p>
+                            <!-- 不給自由輸入時間，只給預設選項——與用藥提醒時段同一個理由：
+                                 一次輸錯格式就會讓整份班表算不出預估時間。 -->
+                            <p class="text-[11px] font-bold text-slate-400 mt-1">點診次名稱開啟或關閉。關閉的診次病患看到的是「休診」。</p>
+                        </div>
+                        <div class="space-y-3">
+                            <div v-for="dow in [1,2,3,4,5,6,0]" :key="dow"
+                                 class="flex flex-wrap items-start gap-4 bg-slate-50 rounded-2xl px-5 py-4">
+                                <div class="w-12 shrink-0 pt-2 text-sm font-black text-slate-800">{{ scheduleOptions.dowLabels[dow] }}</div>
+                                <div class="flex-1 flex flex-wrap gap-3">
+                                    <div v-for="s in scheduleOptions.sessions" :key="s.id"
+                                         class="rounded-2xl border-2 transition-all"
+                                         :class="cell(dow, s.id) ? 'border-primary bg-white' : 'border-transparent bg-white/60'">
+                                        <button type="button" @click="toggleSession(dow, s.id)"
+                                                :class="['px-4 py-2 rounded-t-xl text-xs font-black w-full text-left transition-all',
+                                                         cell(dow, s.id) ? 'text-primary' : 'text-slate-400']">
+                                            {{ cell(dow, s.id) ? '● ' : '○ ' }}{{ s.label }}
+                                        </button>
+                                        <div v-if="cell(dow, s.id)" class="px-4 pb-3 flex items-center gap-2">
+                                            <select v-model="cell(dow, s.id).start" @change="scheduleDirty = true" class="bg-slate-50 rounded-lg py-1.5 px-2 text-xs font-bold text-slate-700 outline-none">
+                                                <option v-for="t in scheduleOptions.times" :key="t" :value="t">{{ t }}</option>
+                                            </select>
+                                            <span class="text-xs font-black text-slate-300">–</span>
+                                            <select v-model="cell(dow, s.id).end" @change="scheduleDirty = true" class="bg-slate-50 rounded-lg py-1.5 px-2 text-xs font-bold text-slate-700 outline-none">
+                                                <option v-for="t in scheduleOptions.times" :key="t" :value="t">{{ t }}</option>
+                                            </select>
+                                            <select v-model.number="cell(dow, s.id).capacity" @change="scheduleDirty = true" class="bg-slate-50 rounded-lg py-1.5 px-2 text-xs font-bold text-slate-700 outline-none">
+                                                <option v-for="c in scheduleOptions.capacities" :key="c" :value="c">{{ c }} 人</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 特殊日期 -->
+                    <div class="bg-white rounded-3xl p-8 shadow-sm space-y-5">
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">特殊日期（停診／加診）</p>
+                            <p class="text-[11px] font-bold text-slate-400 mt-1">例外日優先於每週班表。已經掛號的病患不會自動被取消——停診後請一併通知他們。</p>
+                        </div>
+
+                        <div v-if="!exceptionList.length" class="text-xs font-bold text-slate-400 bg-slate-50 rounded-2xl px-5 py-6 text-center">尚無特殊日期</div>
+                        <div v-for="e in exceptionList" :key="e.date" class="flex flex-wrap items-center justify-between gap-4 bg-slate-50 rounded-2xl px-5 py-4">
+                            <div>
+                                <p class="text-sm font-black text-slate-800">{{ e.date }}（{{ scheduleOptions.dowLabels[e.dow] }}）</p>
+                                <p class="text-[11px] font-bold" :class="e.closed ? 'text-danger' : 'text-primary'">{{ e.text }}</p>
+                            </div>
+                            <button @click="removeException(e.date)" class="px-5 py-2 rounded-xl bg-white text-slate-500 border border-slate-200 text-[10px] font-black uppercase tracking-widest hover:bg-slate-100">移除</button>
+                        </div>
+
+                        <div class="border-t border-slate-100 pt-5 flex flex-wrap items-end gap-3">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">日期</label>
+                                <input v-model="newException.date" type="date" :min="todayKey"
+                                       class="bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-4 font-bold text-slate-800 text-sm outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">類型</label>
+                                <div class="flex gap-2">
+                                    <button type="button" @click="newException.mode = 'closed'"
+                                            :class="['px-4 py-3 rounded-2xl text-xs font-black transition-all', newException.mode === 'closed' ? 'bg-danger text-white' : 'bg-slate-50 text-slate-400']">全日停診</button>
+                                    <button type="button" @click="newException.mode = 'extra'"
+                                            :class="['px-4 py-3 rounded-2xl text-xs font-black transition-all', newException.mode === 'extra' ? 'bg-primary text-white' : 'bg-slate-50 text-slate-400']">加診</button>
+                                </div>
+                            </div>
+                            <template v-if="newException.mode === 'extra'">
+                                <div>
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">診次</label>
+                                    <select v-model="newException.session" class="bg-slate-50 rounded-2xl py-3 px-4 text-sm font-bold text-slate-700 outline-none">
+                                        <option v-for="s in scheduleOptions.sessions" :key="s.id" :value="s.id">{{ s.label }}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 px-1">時間</label>
+                                    <div class="flex items-center gap-2">
+                                        <select v-model="newException.start" class="bg-slate-50 rounded-2xl py-3 px-3 text-sm font-bold text-slate-700 outline-none">
+                                            <option v-for="t in scheduleOptions.times" :key="t" :value="t">{{ t }}</option>
+                                        </select>
+                                        <span class="text-xs font-black text-slate-300">–</span>
+                                        <select v-model="newException.end" class="bg-slate-50 rounded-2xl py-3 px-3 text-sm font-bold text-slate-700 outline-none">
+                                            <option v-for="t in scheduleOptions.times" :key="t" :value="t">{{ t }}</option>
+                                        </select>
+                                        <select v-model.number="newException.capacity" class="bg-slate-50 rounded-2xl py-3 px-3 text-sm font-bold text-slate-700 outline-none">
+                                            <option v-for="c in scheduleOptions.capacities" :key="c" :value="c">{{ c }} 人</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </template>
+                            <button @click="addException" :disabled="!newException.date"
+                                    class="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest disabled:opacity-30">加入</button>
+                        </div>
+                    </div>
+
+                    <p class="text-[11px] font-bold text-slate-500 bg-slate-100 rounded-2xl px-5 py-4 leading-relaxed">
+                        病患的看診號碼一經發出就固定，取消預約只會留下一個空號、不會讓後面的人遞補——
+                        避免已經出門的病患突然被提前而錯過看診。預估時間僅供參考，實際仍以現場叫號進度為準。
+                    </p>
+                </template>
             </section>
         </main>
 
@@ -1132,6 +1307,14 @@
                     // 那筆查閱既沒有被記錄，醫師也沒有意識到自己看了。
                     nationalIdRevealed: false,
                     verifyBusy: false,
+                    // 門診班表。schedule 為草稿：所有編輯都只動記憶體，
+                    // 按下「儲存班表」才寫進 Firestore——半套的班表被病患讀到
+                    // （例如週三已刪掉、週四還沒加上）會直接影響掛號。
+                    schedule: null,
+                    scheduleBusy: false,
+                    scheduleError: '',
+                    scheduleDirty: false,
+                    newException: { date: '', mode: 'closed', session: 'night', start: '19:00', end: '21:00', capacity: 20 },
                     // 報到／指派（無 HIS 時的掛號替代路徑）
                     showAssign: false,
                     assignNid: '',
@@ -1214,6 +1397,62 @@
                 }
             },
             computed: {
+                // 班表 UI 的固定選項全部取自 DbService.schedules，讓醫師端與
+                // 病患端共用同一組診次代號與時間格；兩邊各寫一份遲早會分岔。
+                scheduleOptions() {
+                    const S = DbService.schedules;
+                    return {
+                        sessions: S.SESSIONS,
+                        dowLabels: S.DOW_LABELS,
+                        times: S.TIME_OPTIONS,
+                        capacities: S.CAPACITY_OPTIONS,
+                        avgMinutes: S.AVG_MINUTES_OPTIONS,
+                        windowDays: S.WINDOW_DAYS_OPTIONS
+                    };
+                },
+                todayKey() {
+                    return DbService.adherence.dayKey();
+                },
+                // 名額 x 平均看診分鐘超過診次長度時，最後幾號的預估時間會落在
+                // 下班之後。這在真實門診是常態（醫師會延診），所以刻意不擋、
+                // 只提醒——擋下來等於逼醫師把名額設成一個不符實際的數字。
+                // 病患端顯示的預估時間仍照實計算，不硬壓回診次結束時間：
+                // 把 12:52 顯示成 12:00 才是真正誤導人的做法。
+                scheduleWarnings() {
+                    if (!this.schedule) return [];
+                    const S = DbService.schedules;
+                    const avg = Number(this.schedule.avgMinutes) || S.DEFAULTS.avgMinutes;
+                    const mins = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+                    const out = [];
+                    Object.keys(this.schedule.weekly).forEach(dow => {
+                        Object.keys(this.schedule.weekly[dow]).forEach(sid => {
+                            const s = this.schedule.weekly[dow][sid];
+                            const need = (Number(s.capacity) || 0) * avg;
+                            const have = mins(s.end) - mins(s.start);
+                            if (need > have) {
+                                out.push(S.DOW_LABELS[Number(dow)] + S.sessionLabel(sid)
+                                    + '：' + s.capacity + ' 人 x ' + avg + ' 分 = '
+                                    + Math.round(need / 6) / 10 + ' 小時，超過該診次的 '
+                                    + Math.round(have / 6) / 10 + ' 小時');
+                            }
+                        });
+                    });
+                    return out;
+                },
+                exceptionList() {
+                    const S = DbService.schedules;
+                    const ex = (this.schedule && this.schedule.exceptions) || {};
+                    return Object.keys(ex).sort().map(date => {
+                        const v = ex[date] || {};
+                        const sessions = v.sessions || {};
+                        const text = v.closed === true
+                            ? '全日停診'
+                            : Object.keys(sessions).map(id =>
+                                S.sessionLabel(id) + ' ' + sessions[id].start + '–' + sessions[id].end
+                                + '（' + sessions[id].capacity + ' 人）').join('、') || '（無內容）';
+                        return { date, dow: Number(S.dowOf(date)), closed: v.closed === true, text };
+                    });
+                },
                 // 覆蓋理由的最終文字。結構化選項 + 必要時的補充說明。
                 // 選「其他」時必須實際寫出理由才算數——否則「其他」本身會變成
                 // 一個什麼都沒說的萬用出口，等於換個形式的一鍵覆蓋。
@@ -1289,31 +1528,25 @@
                     const r = this.patientDdi;
                     return r ? r.findings.length : 0;
                 },
-                patientSafetyScore() {
+                // 【這裡曾經是第二套計分邏輯】
+                // 原本這個 computed 自己把引擎的 severity 翻成中文字樣再送進
+                // computeSafetyScore，而那份對應與 db-service 的
+                // _mapEngineSeverityToLegacy 並不相同：major 在這裡是「高風險」
+                //（-20），在 db-service 是「極高風險」（-35）。結果是同一位病患
+                // 在醫師螢幕上 80 分、在自己手機上 65 分，兩邊都說自己是對的。
+                //
+                // 現在一律走 DbService.scoreInputFromAnalysis()——引擎結果進，
+                // 分數出，中間沒有任何一頁可以自己詮釋嚴重度。
+                patientScoreBreakdown() {
                     if (!this.selectedPatient) return null;
                     const meds = this.currentMeds;
                     const r = this.patientDdi;
                     if (!meds.length || !r) return null;
-                    // 對齊 DbService.computeSafetyScore 的形狀：把引擎的分級結果
-                    // 轉成該函式認得的 severity 字樣，而不是另外實作一套算法——
-                    // 兩套算法會在某個邊界上給出不同的分數，而使用者無從得知該信哪個。
-                    //
-                    // 【對應必須依 SEVERITY_ALIASES，不可自行想像】
-                    // ddi-engine 的正規化表把「極高風險」與「高風險」都對應到 major，
-                    // 「中風險」「中度」才是 moderate。先前這裡把 moderate 寫成「高風險」，
-                    // 等於把中度交互作用當成重大來扣分（-20 而非 -8）——
-                    // DDInter 有大量 moderate 記載，五筆就足以把分數壓到 0，
-                    // 於是「5 筆中度」與「5 筆禁忌」在畫面上看起來完全一樣。
-                    // 分數飽和在 0 的那一刻，它就不再提供任何資訊。
-                    //
-                    // 已知的既有問題：computeSafetyScore 對「極高風險」扣 35、「高風險」扣 20，
-                    // 但引擎認為這兩個字樣是同一級。此處沿用該函式的字彙以保持跨頁一致，
-                    // 並以 contraindicated / major 分別對應之，維持排序上的區別。
-                    const alerts = r.findings.map(f => ({
-                        severity: f.severity === 'contraindicated' ? '極高風險'
-                                : (f.severity === 'major' ? '高風險' : '中風險')
-                    }));
-                    return DbService.computeSafetyScore(meds, alerts);
+                    return DbService.safetyScoreBreakdown(meds, DbService.scoreInputFromAnalysis(r));
+                },
+                patientSafetyScore() {
+                    const b = this.patientScoreBreakdown;
+                    return b ? b.score : null;
                 },
 
                 // ── 服藥回報（病患自述）──────────────────────────────────
@@ -1665,6 +1898,10 @@
                     this.loadConversations();
                     this.loadDoctorNotifications();
                 });
+                // 班表獨立 await：讀取失敗只影響看診時間那一區，
+                // 不該讓整個儀表板連帶載入失敗
+                await this.loadSchedule();
+
                 this._closeDropdownHandler = () => { this.showMsgDropdown = false; this.showNotifDropdown = false; };
                 document.addEventListener('click', this._closeDropdownHandler);
                 this._escHandler = (e) => {
@@ -1682,6 +1919,111 @@
                 this.destroyCharts();
             },
             methods: {
+                // ── 門診班表 ──────────────────────────────────────────
+                async loadSchedule() {
+                    this.scheduleError = '';
+                    try {
+                        const saved = await DbService.schedules.get(this.user.username);
+                        // 讀不到就給一份空白草稿（新醫師的正常狀態）；
+                        // 讀取「失敗」則不同——那時不可假裝成空白班表，
+                        // 否則醫師一按儲存就把原本的班表整份洗掉。
+                        this.schedule = saved
+                            ? {
+                                username: saved.username || this.user.username,
+                                displayName: saved.displayName || this.user.name || this.user.username,
+                                department: saved.department || '一般內科',
+                                avgMinutes: saved.avgMinutes || DbService.schedules.DEFAULTS.avgMinutes,
+                                bookingWindowDays: saved.bookingWindowDays || DbService.schedules.DEFAULTS.bookingWindowDays,
+                                weekly: JSON.parse(JSON.stringify(saved.weekly || {})),
+                                exceptions: JSON.parse(JSON.stringify(saved.exceptions || {}))
+                              }
+                            : DbService.schedules.blank(this.user.username, this.user.name);
+                        this.scheduleDirty = false;
+                    } catch (e) {
+                        console.error('班表讀取失敗：', e);
+                        this.schedule = null;
+                        this.scheduleError = '看診時間讀取失敗，請重新整理後再試。在讀取成功前請勿儲存，以免覆蓋原本的班表。';
+                    }
+                },
+
+                // 某個星期幾、某個診次的設定；沒開診時回傳 null（樣板用它判斷開關）
+                cell(dow, sessionId) {
+                    if (!this.schedule) return null;
+                    const day = this.schedule.weekly[String(dow)];
+                    return (day && day[sessionId]) || null;
+                },
+
+                toggleSession(dow, sessionId) {
+                    const key = String(dow);
+                    const weekly = this.schedule.weekly;
+                    if (!weekly[key]) weekly[key] = {};
+                    if (weekly[key][sessionId]) {
+                        delete weekly[key][sessionId];
+                        if (!Object.keys(weekly[key]).length) delete weekly[key];
+                    } else {
+                        const preset = { am: ['09:00', '12:00'], pm: ['14:00', '17:00'], night: ['18:30', '21:00'] }[sessionId];
+                        weekly[key][sessionId] = {
+                            start: preset[0], end: preset[1],
+                            capacity: DbService.schedules.DEFAULTS.capacity
+                        };
+                    }
+                    this.scheduleDirty = true;
+                },
+
+                addException() {
+                    const date = this.newException.date;
+                    if (!date) return;
+                    if (this.newException.mode === 'closed') {
+                        this.schedule.exceptions[date] = { closed: true };
+                    } else {
+                        const prev = this.schedule.exceptions[date];
+                        const sessions = (prev && !prev.closed && prev.sessions) ? prev.sessions : {};
+                        sessions[this.newException.session] = {
+                            start: this.newException.start,
+                            end: this.newException.end,
+                            capacity: this.newException.capacity
+                        };
+                        this.schedule.exceptions[date] = { sessions };
+                    }
+                    this.newException.date = '';
+                    this.scheduleDirty = true;
+                },
+
+                removeException(date) {
+                    delete this.schedule.exceptions[date];
+                    this.scheduleDirty = true;
+                },
+
+                async saveSchedule() {
+                    if (!this.schedule) return;
+                    this.scheduleBusy = true;
+                    this.scheduleError = '';
+                    try {
+                        // 起訖顛倒會讓病患看到一段負長度的診次，且預估時間會排到診次結束之後
+                        const bad = [];
+                        Object.keys(this.schedule.weekly).forEach(dow => {
+                            Object.keys(this.schedule.weekly[dow]).forEach(sid => {
+                                const s = this.schedule.weekly[dow][sid];
+                                if (s.start >= s.end) {
+                                    bad.push(DbService.schedules.DOW_LABELS[Number(dow)] + ' ' + DbService.schedules.sessionLabel(sid));
+                                }
+                            });
+                        });
+                        if (bad.length) {
+                            this.scheduleError = '下列診次的結束時間不晚於開始時間：' + bad.join('、');
+                            return;
+                        }
+                        await DbService.schedules.save(this.user.username, this.schedule);
+                        this.scheduleDirty = false;
+                        this.triggerToast('看診時間已更新', '病患現在只能預約您開放的診次');
+                    } catch (e) {
+                        console.error('班表儲存失敗：', e);
+                        this.scheduleError = '儲存失敗，班表仍維持先前的內容。請確認網路後再試。';
+                    } finally {
+                        this.scheduleBusy = false;
+                    }
+                },
+
                 openPasswordModal() {
                     this.passwordForm = { current: '', next: '', confirm: '' };
                     this.passwordError = '';
@@ -1855,7 +2197,7 @@
                                 patient: username, patientName: username,
                                 doctor: this.user.username, doctorName: this.user.name,
                                 department: '一般內科',
-                                scheduledAt: new Date().toISOString().slice(0, 10),
+                                scheduledAt: DbService.adherence.dayKey(),
                                 note: '櫃檯報到（持證件）'
                             });
                         } catch (e) {

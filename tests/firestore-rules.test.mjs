@@ -1,5 +1,5 @@
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, collection, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, query, where } from 'firebase/firestore';
+import { doc, collection, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, query, where, writeBatch } from 'firebase/firestore';
 import fs from 'fs';
 
 // 直接讀專案根目錄的規則，確保測的就是會被部署的那一份
@@ -1315,6 +1315,143 @@ await run('LINE 推播記錄不可讀',
   () => getDoc(doc(P001(), 'line_push_log/P001__2026-09-09__daily')), 'deny');
 await run('LINE 推播記錄不可寫（可用於封鎖他人的提醒）',
   () => setDoc(doc(ATK(), 'line_push_log/P001__2026-09-10__daily'), { at: new Date() }), 'deny');
+
+// ── 門診班表與叫號預約 ──────────────────────────────────────────────────
+//
+// 【為什麼另立一個醫師帳號 docsch，而不是重用 doctor】
+// 規則以 !hasSchedule(doctor) 讓「舊制自由掛號」與「叫號掛號」互斥。
+// 一旦幫 doctor 建了班表，上面那一整組既有的掛號測試（它們全掛在 doctor 身上、
+// 走舊制路徑）就會整批變成 deny。用獨立帳號才能同時測到兩條路徑。
+const DOCS = () => ctxFor('uidDocS', 'docsch@medsafe.local').firestore();
+
+const dk = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+  + '-' + String(d.getDate()).padStart(2, '0');
+// 相鄰三天必定落在三個不同的星期幾：DK1 有診、DK2 停診（例外日）、DK3 該星期沒排班。
+const D1 = new Date(Date.now() + 2 * 86400000);
+const D2 = new Date(Date.now() + 3 * 86400000);
+const D3 = new Date(Date.now() + 4 * 86400000);
+const DK1 = dk(D1), DK2 = dk(D2), DK3 = dk(D3);
+
+// 早診名額刻意只給 2，用來測「第 3 號超過名額」。
+const SCHED = {
+  username: 'docsch', displayName: '排班醫師', department: '一般內科',
+  avgMinutes: 8, bookingWindowDays: 30,
+  weekly: {
+    [String(D1.getDay())]: {
+      am: { start: '09:00', end: '12:00', capacity: 2 },
+      pm: { start: '14:00', end: '17:00', capacity: 30 }
+    },
+    [String(D2.getDay())]: { am: { start: '09:00', end: '12:00', capacity: 30 } }
+  },
+  exceptions: { [DK2]: { closed: true } }
+};
+
+await env.withSecurityRulesDisabled(async ctx => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'user_roles/uidDocS'),
+    { username: 'docsch', name: '排班醫師', role: 'doctor', status: 'active' });
+  await setDoc(doc(db, 'doctor_schedules/docsch'),
+    Object.assign({}, SCHED, { updatedBy: 'docsch', updatedAt: new Date() }));
+});
+
+// 掛號與計數器必須在同一批次寫入——規則兩側各用 getAfter() 指認對方，
+// 單獨寫任何一份都不會通過。這個 helper 就是前端 bookQueued() 交易的等價物。
+const queued = (db, o) => {
+  const cid = o.doctor + '__' + o.dateKey + '__' + o.session;
+  const aid = cid + '__' + (o.aidSeq === undefined ? o.seq : o.aidSeq);
+  const b = writeBatch(db);
+  b.set(doc(db, 'appointments/' + aid), Object.assign({
+    patient: o.patient, patientName: 'x', doctor: o.doctor, doctorName: '排班醫師',
+    department: '一般內科', dateKey: o.dateKey, session: o.session, seq: o.seq,
+    scheduledAt: Timestamp.fromDate(new Date(Date.now() + 2 * 86400000)),
+    status: 'booked', createdAt: serverTimestamp(), note: ''
+  }, o.extra || {}));
+  b.set(doc(db, 'appointment_counters/' + cid), {
+    doctor: o.doctor, dateKey: o.dateKey, session: o.session,
+    taken: o.taken === undefined ? o.seq : o.taken
+  });
+  return b.commit();
+};
+
+// 合法路徑
+await run('班表 醫師寫自己的班表',
+  () => setDoc(doc(DOCS(), 'doctor_schedules/docsch'),
+    Object.assign({}, SCHED, { updatedBy: 'docsch', updatedAt: serverTimestamp() })), 'allow');
+await run('班表 病患讀得到醫師班表',
+  () => getDoc(doc(P001(), 'doctor_schedules/docsch')), 'allow');
+// 可精確查號、不可列舉（與 patient_index 同一條理由）。
+// 病患的掛號對象是既有的主治醫師，不需要全院醫師名冊。
+await run('班表 病患列舉全院醫師班表',
+  () => getDocs(collection(P001(), 'doctor_schedules')), 'deny');
+await run('班表 醫師列舉全院醫師班表',
+  () => getDocs(collection(DOC(), 'doctor_schedules')), 'deny');
+
+await run('叫號 病患取得第 1 號',
+  () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK1, session: 'am', seq: 1 }), 'allow');
+await run('叫號 第二位病患接著取得第 2 號',
+  () => queued(ATK(), { patient: 'atk', doctor: 'docsch', dateKey: DK1, session: 'am', seq: 2 }), 'allow');
+await run('叫號 病患取消自己的叫號掛號',
+  () => updateDoc(doc(P001(), 'appointments/docsch__' + DK1 + '__am__1'), { status: 'cancelled' }), 'allow');
+// 迴歸：醫師尚未公告班表時，舊制自由掛號必須原封不動地繼續可用
+await run('叫號 迴歸 未公告班表的醫師仍可舊制掛號',
+  () => setDoc(doc(P001(), 'appointments/舊制1'), apptDoc()), 'allow');
+
+// 攻擊路徑：班表
+await run('班表 醫師寫他人的班表',
+  () => setDoc(doc(DOC(), 'doctor_schedules/docsch'),
+    Object.assign({}, SCHED, { updatedBy: 'doctor', updatedAt: serverTimestamp() })), 'deny');
+await run('班表 病患竄改醫師班表',
+  () => setDoc(doc(P001(), 'doctor_schedules/docsch'),
+    Object.assign({}, SCHED, { updatedBy: 'P001', updatedAt: serverTimestamp() })), 'deny');
+// 具名與伺服器時間，與 patient_summaries 的 attestedBy/At 同型
+await run('班表 醫師回填 updatedAt',
+  () => setDoc(doc(DOCS(), 'doctor_schedules/docsch'),
+    Object.assign({}, SCHED, { updatedBy: 'docsch', updatedAt: Timestamp.fromDate(new Date(0)) })), 'deny');
+await run('班表 夾帶白名單外欄位',
+  () => setDoc(doc(DOCS(), 'doctor_schedules/docsch'),
+    Object.assign({}, SCHED, { updatedBy: 'docsch', updatedAt: serverTimestamp(), vip: true })), 'deny');
+await run('班表 病患刪除醫師班表',
+  () => deleteDoc(doc(P001(), 'doctor_schedules/docsch')), 'deny');
+
+// 攻擊路徑：叫號
+// 醫師一旦公告班表，就不能再繞回沒有名額限制的舊制路徑
+await run('叫號 對已公告班表的醫師走舊制自由掛號',
+  () => setDoc(doc(P001(), 'appointments/繞道1'), apptDoc({ doctor: 'docsch' })), 'deny');
+await run('叫號 超過該診次名額',
+  () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK1, session: 'am', seq: 3 }), 'deny');
+await run('叫號 跳號（計數器一次前進多格）',
+  () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK1, session: 'pm', seq: 5 }), 'deny');
+await run('叫號 重複取用已發出的號碼',
+  () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK1, session: 'am', seq: 1, taken: 3 }), 'deny');
+await run('叫號 文件 ID 與號碼不符',
+  () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK1, session: 'pm', seq: 1, aidSeq: 9 }), 'deny');
+await run('叫號 掛在該醫師沒有排班的星期',
+  () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK3, session: 'am', seq: 1 }), 'deny');
+await run('叫號 掛在標記為停診的例外日',
+  () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK2, session: 'am', seq: 1 }), 'deny');
+await run('叫號 替他人掛號',
+  () => queued(P001(), { patient: 'atk', doctor: 'docsch', dateKey: DK1, session: 'pm', seq: 1 }), 'deny');
+await run('叫號 自訂 status 為已完診',
+  () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK1, session: 'pm', seq: 1,
+    extra: { status: 'finished' } }), 'deny');
+// 只推進計數器而不掛號 == 可以把任何醫師的診次灌到額滿
+await run('叫號 只推進計數器而不掛號',
+  () => setDoc(doc(ATK(), 'appointment_counters/docsch__' + DK1 + '__pm'),
+    { doctor: 'docsch', dateKey: DK1, session: 'pm', taken: 1 }), 'deny');
+// 只寫掛號而不推進計數器 == 兩個人可以同時是 1 號
+await run('叫號 只寫掛號而不推進計數器',
+  () => setDoc(doc(P001(), 'appointments/docsch__' + DK1 + '__pm__1'), {
+    patient: 'P001', patientName: '張小泉', doctor: 'docsch', doctorName: '排班醫師',
+    department: '一般內科', dateKey: DK1, session: 'pm', seq: 1,
+    scheduledAt: Timestamp.fromDate(new Date(Date.now() + 2 * 86400000)),
+    status: 'booked', createdAt: serverTimestamp(), note: ''
+  }), 'deny');
+await run('叫號 把計數器改回較小的數',
+  () => updateDoc(doc(ATK(), 'appointment_counters/docsch__' + DK1 + '__am'), { taken: 1 }), 'deny');
+await run('叫號 刪除計數器',
+  () => deleteDoc(doc(P001(), 'appointment_counters/docsch__' + DK1 + '__am')), 'deny');
+await run('叫號 核保端讀取叫號掛號',
+  () => getDoc(doc(INS(), 'appointments/docsch__' + DK1 + '__am__1')), 'deny');
 
 console.log('');
 for (const r of results) console.log(r[0].padEnd(5), r[1], r[2] ? '\n      ' + r[2] : '');
