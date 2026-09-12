@@ -17,7 +17,7 @@ const path = require('path');
 const admin = require('firebase-admin');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
-const { REGION, LINE_CHANNEL_ACCESS_TOKEN } = require('./config');
+const { REGION, LINE_CHANNEL_ACCESS_TOKEN, LIFF_ID } = require('./config');
 
 const RICHMENU_API = 'https://api.line.me/v2/bot/richmenu';
 const RICHMENU_DATA_API = 'https://api-data.line.me/v2/bot/richmenu';
@@ -36,36 +36,53 @@ const SITE_ORIGIN = 'https://medsafe-554b7.web.app';
 
 // 3x2 六宮格。「回報不適」是 Phase 4 完成前的預告格——圖片上標
 // 「即將推出」，文字指令也回覆誠實的開發中訊息（見 webhook.js 的
-// COMING_SOON），不是按了沒反應的死按鈕。「線上預約」在 Phase 3
-// （LIFF 掛號）做完後已經是真功能：按下去送出「預約」文字，webhook.js
-// 的 BOOKING_RE 分支視 LIFF_ID 有無設定回覆掛號連結或開發中提示——
-// 這格維持 message action 不需要改，圖片上的文案沿用即可，是回覆內容
-// 換了，不是這格本身換了。「藥箱」「使用說明」是既有文字指令；
+// COMING_SOON），不是按了沒反應的死按鈕。「使用說明」是既有文字指令；
 // 「用藥查詢」「服藥時間表」直接連到免登入的公開頁面，不需要任何後端處理。
-const AREAS = [
-  { bounds: { x: 0, y: 0, width: 834, height: 843 },
-    action: { type: 'message', label: '藥箱', text: '藥箱' } },
-  { bounds: { x: 834, y: 0, width: 833, height: 843 },
-    action: { type: 'message', label: '線上預約', text: '預約' } },
-  { bounds: { x: 1667, y: 0, width: 833, height: 843 },
-    action: { type: 'message', label: '回報不適', text: '回報不適' } },
-  { bounds: { x: 0, y: 843, width: 834, height: 843 },
-    action: { type: 'message', label: '使用說明', text: '選單' } },
-  { bounds: { x: 834, y: 843, width: 833, height: 843 },
-    action: { type: 'uri', label: '用藥查詢', uri: SITE_ORIGIN + '/check.html' } },
-  { bounds: { x: 1667, y: 843, width: 833, height: 843 },
-    action: { type: 'uri', label: '服藥時間表', uri: SITE_ORIGIN + '/schedule.html' } }
-];
+//
+// 【「藥箱」「線上預約」為什麼是動態決定 message 或 uri】
+// 有了 LIFF_ID 之後，這兩格可以直接 uri 到 https://liff.line.me/{id}，
+// 一次點擊就進 App（原本是 message → bot 回 Quick Reply → 再點一次的
+// 兩次點擊）。已確認可以安全這樣做：即使使用者尚未綁定 LINE，
+// patient.html 的 bootLiff() 失敗處理（renderLiffError，見該檔案）
+// 會顯示正確的「尚未綁定 LINE」引導畫面，不會裸露錯誤或空白頁。
+// 但 LIFF_ID 未設定時（尚未走完 Phase 0）不能硬編一個空字串當 uri——
+// LINE 建立選單時會直接拒絕沒有合法網址的 uri action，因此保留舊的
+// message 分支（借用 webhook.js 既有的文字指令，走 BOOKING_RE／
+// CABINET_RE），與 webhook.js 的 menuItems()「LIFF_ID 未設定不顯示
+// 完整藥箱按鈕」是同一種「功能未就緒時優雅降級」設計。
+function buildAreas() {
+  const liffId = LIFF_ID.value();
+  const cabinetAction = liffId
+    ? { type: 'uri', label: '藥箱', uri: 'https://liff.line.me/' + liffId }
+    : { type: 'message', label: '藥箱', text: '藥箱' };
+  const bookingAction = liffId
+    ? { type: 'uri', label: '線上預約', uri: 'https://liff.line.me/' + liffId + '?view=appointments' }
+    : { type: 'message', label: '線上預約', text: '預約' };
+  return [
+    { bounds: { x: 0, y: 0, width: 834, height: 843 }, action: cabinetAction },
+    { bounds: { x: 834, y: 0, width: 833, height: 843 }, action: bookingAction },
+    { bounds: { x: 1667, y: 0, width: 833, height: 843 },
+      action: { type: 'message', label: '回報不適', text: '回報不適' } },
+    { bounds: { x: 0, y: 843, width: 834, height: 843 },
+      action: { type: 'message', label: '使用說明', text: '選單' } },
+    { bounds: { x: 834, y: 843, width: 833, height: 843 },
+      action: { type: 'uri', label: '用藥查詢', uri: SITE_ORIGIN + '/check.html' } },
+    { bounds: { x: 1667, y: 843, width: 833, height: 843 },
+      action: { type: 'uri', label: '服藥時間表', uri: SITE_ORIGIN + '/schedule.html' } }
+  ];
+}
 
-const DEFINITION = {
-  size: { width: 2500, height: 1686 },
-  // 預設展開（不是收合成一條小 tab）——比照使用者參考的 LINE 官方帳號
-  // 選單體驗，加好友／開啟對話當下就看得到整張圖。
-  selected: true,
-  name: 'MedSafe 主選單',
-  chatBarText: '選單',
-  areas: AREAS
-};
+function buildDefinition() {
+  return {
+    size: { width: 2500, height: 1686 },
+    // 預設展開（不是收合成一條小 tab）——比照使用者參考的 LINE 官方帳號
+    // 選單體驗，加好友／開啟對話當下就看得到整張圖。
+    selected: true,
+    name: 'MedSafe 主選單',
+    chatBarText: '選單',
+    areas: buildAreas()
+  };
+}
 
 // 可注入的 HTTP 層，供測試 mock 用；真實實作見檔尾 defaultHttp。
 let httpImpl = null;
@@ -101,9 +118,10 @@ function call(req) {
 // image 參數可注入（測試用假圖片 buffer），預設讀 functions/assets/richmenu.jpg。
 async function setup(token, image) {
   const jpg = image || fs.readFileSync(IMAGE_PATH);
+  const definition = buildDefinition();
 
   // 一、建立新選單結構，拿到 richMenuId。
-  const created = await call({ method: 'POST', url: RICHMENU_API, token, body: DEFINITION });
+  const created = await call({ method: 'POST', url: RICHMENU_API, token, body: definition });
   const richMenuId = created && created.richMenuId;
   if (!richMenuId) throw new Error('建立選單失敗：LINE 未回傳 richMenuId');
 
@@ -153,8 +171,8 @@ module.exports = {
   setup,
   requireAdmin,
   lineSetupRichMenu,
-  AREAS,
-  DEFINITION,
+  buildAreas,
+  buildDefinition,
   SITE_ORIGIN,
   // 【測試用】注入/恢復 HTTP 實作
   setImpl(fn) { httpImpl = fn; },
