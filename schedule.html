@@ -19,6 +19,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3.5.42/dist/vue.global.prod.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome：字型圖示取代原本畫面上的 emoji 警示符號等——
+         emoji 在不同作業系統／字型的渲染差異大，
+         字型圖示可控制大小、顏色、對齊，且在所有平台呈現一致。 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
     <script>
         tailwind.config = {
@@ -63,7 +67,7 @@
                     <img src="images/LOGO.png" class="h-7 w-7 rounded-lg object-cover" alt="">
                     <span class="text-sm font-black tracking-wide">MedSafe</span>
                 </a>
-                <a href="check.html" class="text-[11px] font-black opacity-80 hover:opacity-100 transition-opacity bg-white/10 rounded-full px-3 py-1.5">💊 用藥交互作用查詢 →</a>
+                <a href="check.html" class="text-[11px] font-black opacity-80 hover:opacity-100 transition-opacity bg-white/10 rounded-full px-3 py-1.5"><i class="fa-solid fa-pills" aria-hidden="true"></i> 用藥交互作用查詢 →</a>
             </div>
             <h1 class="text-2xl sm:text-3xl font-black leading-snug">今日服藥時間表</h1>
             <p class="text-sm sm:text-base font-medium opacity-90 mt-3 max-w-xl mx-auto leading-relaxed">

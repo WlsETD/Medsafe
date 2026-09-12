@@ -18,6 +18,10 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome：字型圖示取代原本畫面上的 emoji 警示符號等——
+         emoji 在不同作業系統／字型的渲染差異大，
+         字型圖示可控制大小、顏色、對齊，且在所有平台呈現一致。 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     
     <script>
         tailwind.config = {
@@ -164,10 +168,10 @@
             <div class="w-full max-w-md">
                 <div class="grid grid-cols-2 gap-2 mb-2">
                     <a href="check.html" class="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] font-black text-primary hover:text-deep bg-mint rounded-2xl py-2 transition-colors text-center">
-                        💊 查藥物交互作用
+                        <i class="fa-solid fa-pills" aria-hidden="true"></i> 查藥物交互作用
                     </a>
                     <a href="schedule.html" class="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] font-black text-primary hover:text-deep bg-mint rounded-2xl py-2 transition-colors text-center">
-                        🖨️ 列印服藥時間表
+                        <i class="fa-solid fa-print" aria-hidden="true"></i> 列印服藥時間表
                     </a>
                 </div>
                 <div class="flex gap-2 mb-3 bg-bgMain rounded-2xl p-1">
@@ -209,7 +213,7 @@
                          警示放在表單最上方、輸入欄位之前，而非只寫在使用者條款裡，
                          才擋得住「懶得點開條款」的使用者。 -->
                     <div class="p-3 bg-amber-50 border border-amber-200 rounded-2xl">
-                        <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 請勿填寫真實個人資料</p>
+                        <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 請勿填寫真實個人資料</p>
                         <p class="text-[10px] text-amber-600 mt-1 leading-relaxed">本系統為競賽展示原型，帳號資料將對外公開供評審與大眾瀏覽。請使用暱稱與虛構的用藥資訊操作，<strong>不要填寫真實姓名、真實身分證字號或真實病歷</strong>。</p>
                     </div>
                     <div>
@@ -254,10 +258,10 @@
                     </div>
 
                     <div class="mb-2.5 p-2 bg-amber-50 border border-amber-200 rounded-xl">
-                        <p class="text-[9px] font-black text-amber-700 uppercase tracking-widest">⚠️ 帳號說明</p>
+                        <p class="text-[9px] font-black text-amber-700 uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 帳號說明</p>
                         <p class="text-[9px] text-amber-600 mt-0.5">
-                          <span class="block">🟢 <strong>展示帳號</strong>（醫師、病患、保險）：一鍵登入，資料皆為展示用途，非真實病歷。</span>
-                          <span class="block mt-0.5">🔴 <strong>管理員</strong>：具備停用帳號與變更系統設定之權限，密碼不隨網頁發佈，請由現場人員手動輸入。</span>
+                          <span class="block"><i class="fa-solid fa-circle text-primary" aria-hidden="true"></i> <strong>展示帳號</strong>（醫師、病患、保險）：一鍵登入，資料皆為展示用途，非真實病歷。</span>
+                          <span class="block mt-0.5"><i class="fa-solid fa-circle text-danger" aria-hidden="true"></i> <strong>管理員</strong>：具備停用帳號與變更系統設定之權限，密碼不隨網頁發佈，請由現場人員手動輸入。</span>
                         </p>
                     </div>
 
@@ -302,7 +306,7 @@
                 </div>
                 <div class="px-6 py-4 overflow-y-auto space-y-3 text-xs font-medium text-content leading-relaxed">
                     <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-2">
-                        <p class="font-black text-amber-700">⚠️ 重要聲明</p>
+                        <p class="font-black text-amber-700"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 重要聲明</p>
                         <p class="text-amber-600 text-[11px] mt-1">本系統為<strong>2026年金源獎(GCA)競賽展示原型</strong>，非上市醫療器材軟體，僅供評審與展示使用。</p>
                     </div>
                     <p><strong class="text-title">1. 展示原型性質</strong><br>MedSafe 系統（以下稱「本系統」）乃獨立開發者參賽作品，作為競賽展示及驗證技術之用，不構成任何醫療服務提供或醫療診療行為。使用者不應將本系統作為真實醫療決策之依據。</p>

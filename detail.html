@@ -14,6 +14,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3.5.42/dist/vue.global.prod.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome：字型圖示取代原本畫面上的 emoji 警示符號等——
+         emoji 在不同作業系統／字型的渲染差異大，
+         字型圖示可控制大小、顏色、對齊，且在所有平台呈現一致。 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #EEF2F7; }
         [v-cloak] { display: none !important; }
@@ -122,7 +126,7 @@
             </div>
 
             <div v-else class="text-center py-24">
-                <div class="text-6xl mb-4">💊</div>
+                <div class="text-6xl mb-4"><i class="fa-solid fa-pills" aria-hidden="true"></i></div>
                 <h2 class="text-2xl font-bold text-gray-800 mb-2">未找到藥品資料</h2>
                 <p class="text-gray-500 mb-8">請檢查連結是否正確，或返回儀表板重新查詢。</p>
                 <button @click="goBack" class="bg-[#1A5276] text-white px-8 py-3 rounded-xl font-bold soft-shadow hover:opacity-90">返回首頁</button>
