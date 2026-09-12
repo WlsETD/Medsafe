@@ -22,6 +22,10 @@
     <!-- LINE 選單設定要呼叫 lineSetupRichMenu callable，見 js/firebase-config.js 的 window.functions -->
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome：字型圖示取代原本畫面上的 emoji 警示符號等——
+         emoji 在不同作業系統／字型的渲染差異大，
+         字型圖示可控制大小、顏色、對齊，且在所有平台呈現一致。 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     
     <script>
         tailwind.config = {
@@ -251,7 +255,7 @@
                                             {{ rule.effect }}
                                             <!-- 出處與複核日期：臨床指引會改版，沒有出處的規則無從複核（P1-13） -->
                                             <div v-if="rule.source" class="text-[10px] font-bold text-slate-400 mt-1">依據：{{ rule.source }}<span v-if="rule.reviewedOn"> · {{ rule.reviewedOn }} 複核</span></div>
-                                            <div v-else class="text-[10px] font-black text-amber-600 mt-1">⚠️ 此規則未標註出處，無從複核</div>
+                                            <div v-else class="text-[10px] font-black text-amber-600 mt-1"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 此規則未標註出處，無從複核</div>
                                         </td>
                                         <td class="px-8 py-5 text-right">
                                             <!-- 內建規則寫在程式碼裡，介面上刪不掉：按下去只會讓它
@@ -914,7 +918,7 @@
                         <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">處置建議 <span class="text-slate-300 normal-case">（選填）</span></label><textarea v-model="newRule.recommendation" rows="2" placeholder="醫師該怎麼做。留白時醫師端會顯示「本知識庫未收錄處置建議」" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-4 px-6 font-bold focus:border-primary/20 outline-none transition-all"></textarea></div>
 
                         <!-- 【出處為必填】（稽核報告 P1-13）
-                             規則列表對沒有出處的規則顯示「⚠️ 此規則未標註出處，無從複核」，
+                             規則列表對沒有出處的規則顯示「（警示圖示）此規則未標註出處，無從複核」，
                              但這張表單原本根本沒有出處欄位——管理員新增的每一條規則
                              都會永久帶著那個警告，且無法消除。
                              系統宣告了一個要求卻不提供滿足它的途徑，結果是警告疲勞，

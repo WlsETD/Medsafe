@@ -21,6 +21,10 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome：字型圖示取代原本畫面上的 emoji 警示符號等——
+         emoji 在不同作業系統／字型的渲染差異大，
+         字型圖示可控制大小、顏色、對齊，且在所有平台呈現一致。 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     
     <script>
         tailwind.config = {
@@ -79,7 +83,7 @@
         <!-- Global Maintenance Lock -->
         <!-- 維護狀態未能確認時的提示。不鎖站，但不隱瞞。 -->
         <div v-if="maintenanceCheckFailed && !maintenanceMode" class="fixed top-0 inset-x-0 z-[998] bg-amber-500 text-white text-center text-[11px] font-black py-2 px-4">
-            ⚠️ 無法確認系統維護狀態，目前以「未維護」繼續使用。若畫面資料異常請重新整理。
+            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 無法確認系統維護狀態，目前以「未維護」繼續使用。若畫面資料異常請重新整理。
         </div>
         <div v-if="maintenanceMode" class="fixed inset-0 z-[999] bg-slate-950 flex items-center justify-center p-8 text-center">
             <div class="max-w-md">
@@ -923,7 +927,7 @@
                                         ✓ 已對應 {{ rxResolved.name_zh }}（{{ rxResolved.atc }}），會納入交互作用比對
                                     </div>
                                     <div v-else class="text-[10px] font-bold text-danger leading-relaxed">
-                                        ⛔ 此藥名不在系統目錄中，<strong>無法開立</strong>。系統無法取得其 ATC 身分，因此不能將它納入交互作用比對——若允許開立，這筆用藥會永遠不被檢查，而後續每次檢測仍會回報「未發現」。<br>
+                                        <i class="fa-solid fa-ban" aria-hidden="true"></i> 此藥名不在系統目錄中，<strong>無法開立</strong>。系統無法取得其 ATC 身分，因此不能將它納入交互作用比對——若允許開立，這筆用藥會永遠不被檢查，而後續每次檢測仍會回報「未發現」。<br>
                                         請從上方選單挑選，或請管理員先將此藥加入藥物目錄。
                                     </div>
                                 </div>
@@ -1003,7 +1007,7 @@
                             <div v-else class="animate-fade-in space-y-4">
 
                                 <!-- 知識庫降級最優先顯示：在涵蓋範圍已縮小的前提下，下方任何結論都要打折扣 -->
-                                <p v-if="ddiRulesUnavailable" class="text-[11px] font-black text-white bg-danger rounded-xl px-3 py-2">⚠️ 雲端規則庫讀取失敗，本次僅以離線內建規則比對，涵蓋範圍顯著縮小，請勿據此判斷安全性。</p>
+                                <p v-if="ddiRulesUnavailable" class="text-[11px] font-black text-white bg-danger rounded-xl px-3 py-2"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 雲端規則庫讀取失敗，本次僅以離線內建規則比對，涵蓋範圍顯著縮小，請勿據此判斷安全性。</p>
 
                                 <!-- 一、查到的交互作用。逐條列出成因與處置建議——
                                      只說「有風險」而不說「怎麼辦」，等於把問題原封不動丟回給醫師。 -->
@@ -1086,7 +1090,7 @@
                                      否則醫師無從判斷該給它多少信任。 -->
                                 <div class="border-t border-slate-200 pt-3 space-y-2">
                                     <p class="text-[10px] font-bold text-slate-500 leading-relaxed">本次以 WHO ATC 碼比對 {{ checkedPatientName }} 的 {{ ddiResult ? ddiResult.entries.length : 0 }} 種用藥（含本次擬開立的 {{ checkedDrugName }}）共 {{ ddiResult ? ddiResult.pairsChecked : 0 }} 組兩兩配對，知識庫共 {{ ddiRuleCount }} 組規則{{ ddiRuleSource === 'local' ? '，離線內建' : '' }}。比對範圍包含現有用藥彼此之間，不限於本次新開立的藥。</p>
-                                    <p class="text-[11px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">⚠️ 本結果為臨床決策輔助資訊，不可取代醫師與藥師之專業判斷。知識庫涵蓋範圍有限，未收錄不等於不存在。</p>
+                                    <p class="text-[11px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 本結果為臨床決策輔助資訊，不可取代醫師與藥師之專業判斷。知識庫涵蓋範圍有限，未收錄不等於不存在。</p>
                                 </div>
                             </div>
                         </div>
@@ -1094,14 +1098,14 @@
 
                     <div class="p-8 bg-slate-50 border-t border-slate-100 space-y-4">
                         <div class="p-3 bg-amber-50 border border-amber-200 rounded-2xl">
-                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 資料上傳警告</p>
+                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 資料上傳警告</p>
                             <p v-if="fhirUnprotected" class="text-[10px] font-bold text-amber-600 mt-1">處方會上傳至 <span class="font-mono">{{ fhirHost }}</span>，該伺服器<strong>目前無存取控制</strong>，任何人皆可讀寫。病患身分以化名送出、不含姓名，但<strong>藥品名稱與劑量為明文</strong>，請勿輸入可識別個人的自由文字。</p>
                         </div>
                         <div class="flex gap-4">
                             <button @click="showPrescriptionModal = false; resetAiCheck()" class="flex-1 py-4 font-black text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest text-[10px]">Cancel</button>
                             <p v-if="aiCheckStatus === 'idle'" class="text-[10px] font-bold text-amber-600 mb-2">尚未執行交互作用檢測。安全檢查為開立處方之必要步驟，未檢測不得開立。</p>
                             <!-- 攔截政策讀取失敗時必須讓醫師看見，不可靜默當作政策為關閉 -->
-                            <p v-if="autoBlockPolicyUnknown" class="text-[10px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2">⚠️ 無法讀取系統的處方攔截政策，本次未套用攔截。請留意此狀態並自行加強評估。</p>
+                            <p v-if="autoBlockPolicyUnknown" class="text-[10px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 無法讀取系統的處方攔截政策，本次未套用攔截。請留意此狀態並自行加強評估。</p>
                             <p v-if="isBlockedByPolicy" class="text-[11px] font-black text-white bg-danger rounded-xl px-3 py-2 mb-2">系統已攔截此處方：管理端啟用了「自動攔截極高風險處方」，偵測到重大以上交互作用時不得開立。如臨床上確有必要，請聯繫管理者調整政策。</p>
                             <p v-if="submitError" class="text-[11px] font-black text-white bg-danger rounded-xl px-3 py-2 mb-2">{{ submitError }}</p>
                             <!-- 未執行交互作用檢測即不得開立（P1-1）。原本的 :disabled 沒有檢查 idle 狀態，

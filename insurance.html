@@ -20,6 +20,10 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome：字型圖示取代原本畫面上的 emoji 警示符號等——
+         emoji 在不同作業系統／字型的渲染差異大，
+         字型圖示可控制大小、顏色、對齊，且在所有平台呈現一致。 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     
     <script>
         tailwind.config = {
@@ -113,7 +117,7 @@
         <!-- Global Maintenance Lock -->
         <!-- 維護狀態未能確認時的提示。不鎖站，但不隱瞞。 -->
         <div v-if="maintenanceCheckFailed && !maintenanceMode" class="fixed top-0 inset-x-0 z-[998] bg-amber-500 text-white text-center text-[11px] font-black py-2 px-4">
-            ⚠️ 無法確認系統維護狀態，目前以「未維護」繼續使用。若畫面資料異常請重新整理。
+            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 無法確認系統維護狀態，目前以「未維護」繼續使用。若畫面資料異常請重新整理。
         </div>
         <div v-if="maintenanceMode" class="fixed inset-0 z-[999] bg-slate-950 flex items-center justify-center p-8 text-center">
             <div class="max-w-md">
@@ -383,7 +387,7 @@
                             <div v-for="gap in coverageGaps" :key="gap.type" class="p-6 md:p-8 bg-red-50 rounded-[32px] border border-red-100 text-left">
                                 <div class="flex justify-between items-start mb-6">
                                     <span class="px-3 py-1 bg-red-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg">風險：{{ gap.riskLevel }}</span>
-                                    <span class="text-2xl">⚠️</span>
+                                    <span class="text-2xl"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span>
                                 </div>
                                 <div class="font-black text-navy text-lg mb-2 truncate">{{ gap.type }}</div>
                                 <div class="text-xs font-bold text-danger mb-6 text-left">受影響保戶: {{ gap.customerCount }} 名</div>
@@ -683,8 +687,8 @@
                                 <h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">FHIR Patient 資源查核</h4>
                                 <div class="p-5 md:p-6 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col gap-3">
                                     <p class="text-[11px] font-bold text-slate-500 leading-relaxed">向 FHIR 伺服器（<span class="font-mono">{{ fhirHost }}</span>）即時查詢是否有對應的 Patient 資源，用於驗證跨院資料交換介接是否暢通。</p>
-                                    <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">⚠️ 該伺服器<strong>目前沒有存取控制</strong>，上面的資料任何人皆可讀取。</p>
-                                    <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2 leading-relaxed">⚠️ 查詢以化名代號進行，<strong>不會將保戶姓名送出</strong>；查得到即代表該個案的跨院資料通道已打通。</p>
+                                    <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 該伺服器<strong>目前沒有存取控制</strong>，上面的資料任何人皆可讀取。</p>
+                                    <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2 leading-relaxed"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 查詢以化名代號進行，<strong>不會將保戶姓名送出</strong>；查得到即代表該個案的跨院資料通道已打通。</p>
                                     <p v-if="fhirCheckStatus === 'not-synced'" class="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 mt-2 leading-relaxed">該保戶尚未同步任何資料至 FHIR 伺服器，因此查無紀錄。這不是查詢失敗，也不代表其用藥有異常。</p>
                                     <div class="flex items-center justify-between gap-4">
                                         <div class="flex items-center gap-2">

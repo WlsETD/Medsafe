@@ -23,6 +23,10 @@
          其餘三個入口不載入，避免多一支用不到的 SDK。 -->
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome：字型圖示取代原本畫面上的 emoji 警示符號等——
+         emoji 在不同作業系統／字型的渲染差異大，
+         字型圖示可控制大小、顏色、對齊，且在所有平台呈現一致。 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     
     <script>
         tailwind.config = {
@@ -82,7 +86,7 @@
         <!-- Global Maintenance Lock -->
         <!-- 維護狀態未能確認時的提示。不鎖站，但不隱瞞。 -->
         <div v-if="maintenanceCheckFailed && !maintenanceMode" class="fixed top-0 inset-x-0 z-[998] bg-amber-500 text-white text-center text-[11px] font-black py-2 px-4">
-            ⚠️ 無法確認系統維護狀態，目前以「未維護」繼續使用。若畫面資料異常請重新整理。
+            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 無法確認系統維護狀態，目前以「未維護」繼續使用。若畫面資料異常請重新整理。
         </div>
         <div v-if="maintenanceMode" class="fixed inset-0 z-[999] bg-slate-950 flex items-center justify-center p-8 text-center">
             <div class="max-w-md">
@@ -514,7 +518,7 @@
 
                     <div v-else class="space-y-3">
                         <div class="p-3 bg-amber-50 border border-amber-200 rounded-2xl">
-                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 請勿填寫真實身分證字號</p>
+                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 請勿填寫真實身分證字號</p>
                             <p class="text-[10px] text-amber-600 mt-1 leading-relaxed">本系統為公開競賽展示原型，非真實醫療院所系統。此欄位僅供操作流程示範，<strong>請填寫格式正確的虛構號碼</strong>（第 2 碼須為 1／2／8／9 開頭並符合檢查碼規則）。</p>
                         </div>
                         <p class="text-xs font-bold text-lightText leading-relaxed">
@@ -873,7 +877,7 @@
                     </div>
                     <div class="p-8 bg-slate-50 border-t border-slate-100 space-y-4 shrink-0">
                         <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left">
-                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 資料上傳警告</p>
+                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 資料上傳警告</p>
                             <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">上傳目標（<span class="font-mono">{{ fhirHost }}</span>）<strong>目前沒有存取控制</strong>，任何人皆可讀取上面的資料。因此本系統<strong>不會送出您的姓名</strong>：改以固定化名代表您，出生日期模糊為 5 年級距的年份，僅用藥品項與劑量會被上傳，用於展示跨院資料交換格式。</p>
                             <p class="text-[11px] font-bold text-red-600 mt-1.5 leading-relaxed">但這<strong>不等於去識別化</strong>：化名由帳號名稱以公開演算法推導，任何人讀了本站原始碼都能還原對應關係；藥品組合本身也可能足以指認個人。<strong>請勿以真實個人資料操作本功能。</strong></p>
                         </div>
@@ -1053,13 +1057,13 @@
                                     <div class="flex justify-between border-b border-white pb-2 mb-2 text-left text-left"><span>比對方式:</span> <span class="text-slate-600 font-black">規則庫藥名字串比對</span></div>
                                     <div class="flex justify-between text-left text-left"><span>證據等級:</span> <span class="text-slate-600 font-black">規則庫收錄，未經統計驗證</span></div>
                                 </div>
-                                <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 leading-relaxed">⚠️ 本警示來自系統內建的交互作用規則庫，以藥品名稱比對產生，非機器學習模型推論，亦未附帶統計顯著性。請以醫師與藥師的專業判斷為準。</p>
+                                <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 leading-relaxed"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 本警示來自系統內建的交互作用規則庫，以藥品名稱比對產生，非機器學習模型推論，亦未附帶統計顯著性。請以醫師與藥師的專業判斷為準。</p>
                             </div>
                         </div>
                     </div>
                     <div class="p-8 md:p-10 bg-slate-50 border-t border-slate-100 space-y-4 shrink-0 text-left">
                         <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">⚠️ 資料上傳警告</p>
+                            <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 資料上傳警告</p>
                             <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">按下確認會以 FHIR Flag 資源，將本次交互作用的藥品名稱上傳至 <span class="font-mono">{{ fhirHost }}</span>。該伺服器<strong>目前沒有存取控制</strong>，任何人皆可讀取。您的身分以固定化名代表，<strong>不會送出姓名或系統帳號</strong>；但化名由公開演算法推導、可被還原，故此非去識別化，請勿以真實資料操作。</p>
                         </div>
                         <div class="flex justify-end">
@@ -2752,7 +2756,7 @@
                 + 'font-family:system-ui,-apple-system,Segoe UI,Noto Sans TC,sans-serif;background:#F7F8FA;padding:24px">'
                 + '<div style="max-width:420px;text-align:center;background:#fff;border-radius:24px;padding:40px 32px;'
                 + 'box-shadow:0 8px 32px rgba(15,23,42,.08)">'
-                + '<div style="font-size:40px;line-height:1;margin-bottom:16px">' + (isNotBound ? '🔗' : '⚠️') + '</div>'
+                + '<div style="font-size:40px;line-height:1;margin-bottom:16px">' + (isNotBound ? '<i class="fa-solid fa-link" aria-hidden="true"></i>' : '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>') + '</div>'
                 + '<h1 style="font-size:20px;font-weight:800;color:#0F172A;margin:0 0 8px">' + title + '</h1>'
                 + '<p style="font-size:13px;color:#64748B;line-height:1.7;margin:0 0 24px">' + body + '</p>'
                 + '<a href="login.html" style="display:inline-block;background:#24A15D;color:#fff;'
