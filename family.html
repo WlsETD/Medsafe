@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1A5276">
+    <link rel="icon" type="image/png" href="images/LOGO.png">
+    <title>家屬檢視 | MedSafe</title>
+    <!-- CDNs：與其餘入口同一套慣例，只是這頁不需要 ECharts（不畫圖表）。
+         firebase-functions-compat 還是要載——家屬帳號本身雖然從不呼叫
+         病患端那些 callable（邀請碼產生/核銷都是病患端與 Cloud Function 的事），
+         但 LIFF 登入這一步本身就是呼叫 lineExchangeToken（見 js/liff-bridge.js
+         的 bootLiff()），少了這支 SDK 會連登入都做不到，不是「少一個用不到的功能」。 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3.5.42/dist/vue.global.prod.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif; background: #F7F8FA; color: #0F172A; }
+        .card { background: #fff; border-radius: 32px; box-shadow: 0 8px 32px rgba(15,23,42,.06); }
+    </style>
+</head>
+<body>
+    <div id="app" v-cloak class="min-h-screen px-4 py-8 sm:px-8">
+        <div class="max-w-3xl mx-auto space-y-6">
+            <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <img src="images/LOGO.png" class="w-10 h-10 rounded-xl object-contain" alt="MedSafe">
+                    <div>
+                        <h1 class="text-xl font-black tracking-tight">家屬檢視</h1>
+                        <p class="text-[11px] font-bold text-slate-400">MedSafe 智慧醫療系統</p>
+                    </div>
+                </div>
+                <!-- 這頁只能透過 LINE 內的 LIFF 連結打開（見下方 IIFE 的說明），
+                     沒有登入表單可以「回去」，因此離開路徑不是登出而是關閉
+                     LIFF 視窗。canClose 只在 liff.isInClient() 為真時才顯示——
+                     現有 LIFF App 是 Full 尺寸（無 LINE 原生關閉列），少了這顆
+                     按鈕，家屬會被困在頁面上只能靠系統返回鍵離開。 -->
+                <button v-if="canClose" @click="closeApp" type="button"
+                        class="shrink-0 w-10 h-10 rounded-2xl bg-white border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center"
+                        aria-label="關閉">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+
+            <div v-if="loading" class="card p-10 text-center text-sm font-bold text-slate-400">載入中…</div>
+
+            <div v-else-if="error" class="card p-8 space-y-3">
+                <p class="text-sm font-black text-danger">{{ error }}</p>
+                <button @click="init" class="px-6 py-3 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest">重新載入</button>
+            </div>
+
+            <div v-else-if="!consents.length" class="card p-10 text-center space-y-2">
+                <p class="text-sm font-black text-title">目前沒有任何有效的家屬授權</p>
+                <p class="text-[11px] font-bold text-slate-400 leading-relaxed">
+                    請確認病患是否已經在 MedSafe 網頁的「家屬檢視」頁面邀請您，
+                    或授權是否已過期／被撤回。
+                </p>
+            </div>
+
+            <template v-else>
+                <!-- 多位病患時提供切換；只有一位時省略這一列，畫面直接顯示內容 -->
+                <div v-if="consents.length > 1" class="flex flex-wrap gap-2">
+                    <button v-for="c in consents" :key="c.patient" @click="switchPatient(c.patient)"
+                            :class="['px-5 py-2.5 rounded-2xl text-xs font-black transition-all', selectedPatient === c.patient ? 'bg-primary text-white' : 'bg-white text-slate-500 border border-slate-200']">
+                        {{ c.relationshipLabel ? (view && view.patient === c.patient ? view.displayName : c.patient) + '（' + c.relationshipLabel + '）' : (view && view.patient === c.patient ? view.displayName : c.patient) }}
+                    </button>
+                </div>
+
+                <div v-if="viewLoading" class="card p-10 text-center text-sm font-bold text-slate-400">載入病患資料中…</div>
+
+                <template v-else-if="view">
+                    <!-- 用藥安全參考分數 -->
+                    <div class="card p-8 flex items-center justify-between gap-6">
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">{{ view.displayName }}</p>
+                            <p class="text-sm font-bold text-slate-500 mt-1">用藥安全參考分數</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-4xl font-black" :class="scoreTone">{{ view.scoreStatus === 'scored' ? view.safetyScore : '—' }}</p>
+                            <p class="text-[10px] font-bold text-slate-400 mt-1">{{ scoreStatusText }}</p>
+                        </div>
+                    </div>
+
+                    <!-- 用藥清單 -->
+                    <div class="card p-8 space-y-4">
+                        <h2 class="text-sm font-black text-title uppercase tracking-widest">用藥清單（{{ view.medicationCount }}）</h2>
+                        <div v-if="!view.medications.length" class="text-xs font-bold text-slate-400">目前沒有登記中的用藥</div>
+                        <div v-for="(m, i) in view.medications" :key="i" class="flex items-center justify-between gap-4 bg-bgMain rounded-2xl px-5 py-3 bg-slate-50">
+                            <div>
+                                <p class="text-sm font-black text-title">{{ m.nameZh || m.nameEn }}</p>
+                                <p class="text-[10px] font-bold text-slate-400">{{ m.nameEn }}</p>
+                            </div>
+                            <div class="text-right text-[11px] font-bold text-slate-500">
+                                <p>{{ m.dosage }}</p>
+                                <p>{{ m.frequency }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- DDI 交互作用警示 -->
+                    <div class="card p-8 space-y-4">
+                        <h2 class="text-sm font-black text-title uppercase tracking-widest">交互作用警示（{{ view.alertCount }}）</h2>
+                        <div v-if="!view.findings.length && !view.ungraded.length" class="text-xs font-bold text-slate-400">目前的用藥組合查無已知交互作用</div>
+                        <div v-for="(f, i) in view.findings" :key="'f' + i" class="rounded-2xl px-5 py-4 bg-red-50 border border-red-100">
+                            <div class="flex items-center justify-between gap-3 mb-1">
+                                <p class="text-sm font-black text-title">{{ f.drugA }} ＋ {{ f.drugB }}</p>
+                                <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-danger text-white shrink-0">{{ f.severityZh }}</span>
+                            </div>
+                            <p v-if="f.effect" class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ f.effect }}</p>
+                            <p v-if="f.recommendation" class="text-[11px] font-bold text-danger mt-1 leading-relaxed">處理建議：{{ f.recommendation }}</p>
+                        </div>
+                        <!-- 未分級：知識庫有記載但未標註嚴重度，不可跟上面已分級的警示混在一起看——
+                             這是 ddi-engine.js 的既有原則，家屬檢視同樣要保留這個區隔。 -->
+                        <div v-for="(f, i) in view.ungraded" :key="'u' + i" class="rounded-2xl px-5 py-4 bg-slate-50 border border-slate-200">
+                            <div class="flex items-center justify-between gap-3">
+                                <p class="text-sm font-black text-title">{{ f.drugA }} ＋ {{ f.drugB }}</p>
+                                <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-400 text-white shrink-0">未分級</span>
+                            </div>
+                            <p class="text-[11px] font-bold text-slate-500 mt-1">知識庫有記載但未標註嚴重度，僅供參考，請洽醫師或藥師。</p>
+                        </div>
+                        <div v-if="view.unevaluable.length" class="text-[11px] font-bold text-slate-400 leading-relaxed">
+                            另有 {{ view.unevaluable.length }} 項用藥系統無法比對交互作用（藥名未收錄或為成分不定的複方），不代表沒有交互作用。
+                        </div>
+                    </div>
+
+                    <!-- 掛號時間 -->
+                    <div class="card p-8 space-y-4">
+                        <h2 class="text-sm font-black text-title uppercase tracking-widest">掛號時間</h2>
+                        <div v-if="!activeAppointments.length" class="text-xs font-bold text-slate-400">目前沒有預約中的回診</div>
+                        <div v-for="a in activeAppointments" :key="a.id" class="bg-slate-50 rounded-2xl px-5 py-4">
+                            <p class="text-sm font-black text-title">{{ a.doctorName || a.doctor }}　{{ a.department }}</p>
+                            <p class="text-[11px] font-bold text-slate-500 mt-1">{{ apptStatusText(a.status) }}<span v-if="apptDateText(a)"> · {{ apptDateText(a) }}</span><span v-if="apptQueueText(a)"> · {{ apptQueueText(a) }}</span></p>
+                        </div>
+                    </div>
+
+                    <!-- 服藥回報 / 遵從度 -->
+                    <div class="card p-8 space-y-4">
+                        <h2 class="text-sm font-black text-title uppercase tracking-widest">近期服藥回報</h2>
+                        <p class="text-[11px] font-bold text-slate-400 leading-relaxed">病患自述，非系統觀測到的事實——沒有回報不代表沒有服藥。</p>
+                        <div v-if="!view.adherenceRecent.length" class="text-xs font-bold text-slate-400">近期沒有回報紀錄</div>
+                        <div v-else class="flex flex-wrap gap-2">
+                            <div v-for="d in view.adherenceRecent" :key="d.date"
+                                 class="w-16 text-center rounded-xl py-2"
+                                 :class="d.total && d.taken >= d.total ? 'bg-primary/10' : (d.taken > 0 ? 'bg-amber-50' : 'bg-slate-50')">
+                                <p class="text-[9px] font-black text-slate-400">{{ d.date.slice(5) }}</p>
+                                <p class="text-xs font-black" :class="d.total && d.taken >= d.total ? 'text-primary' : 'text-slate-600'">{{ d.taken }}/{{ d.total }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p class="text-[10px] font-bold text-slate-400 text-center leading-relaxed">
+                        本頁資料由病患本人授權分享，最後更新於病患上次開啟 MedSafe 網頁的時間，非即時同步。
+                    </p>
+                </template>
+            </template>
+        </div>
+    </div>
+
+    <script src="js/firebase-config.js"></script>
+    <script src="js/db-service.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/line-liff-config.js"></script>
+    <script src="js/liff-bridge.js"></script>
+    <script>
+        const { createApp } = Vue;
+
+        const app = createApp({
+            data() {
+                return {
+                    loading: true,
+                    viewLoading: false,
+                    error: '',
+                    consents: [],
+                    selectedPatient: '',
+                    view: null,
+                    appointments: [],
+                    schedulesByDoctor: {},
+                    canClose: false
+                };
+            },
+            computed: {
+                activeAppointments() {
+                    return (this.appointments || []).filter(a => this.apptIsActive(a));
+                },
+                scoreTone() {
+                    if (this.view.scoreStatus !== 'scored') return 'text-slate-300';
+                    const s = this.view.safetyScore;
+                    return s >= 80 ? 'text-primary' : (s >= 50 ? 'text-amber-500' : 'text-danger');
+                },
+                // 四態沿用 DbService.safetyScoreBreakdown() 的既有語意，
+                // 不可把「無法評分」說成任何一個數字（見 js/db-service.js 的說明）。
+                scoreStatusText() {
+                    return ({
+                        'no-medications': '目前沒有登記中的用藥',
+                        'not-assessed': '尚未評估',
+                        'all-unevaluable': '用藥皆無法比對，無法評分',
+                        'scored': '依用藥數量與已知警示計算，僅供參考'
+                    })[this.view.scoreStatus] || '';
+                }
+            },
+            methods: {
+                async init() {
+                    this.loading = true;
+                    this.error = '';
+                    try {
+                        this.consents = await DbService.getFamilyConsentsForViewer(getVerifiedUser().username);
+                        if (this.consents.length) {
+                            await this.switchPatient(this.consents[0].patient);
+                        }
+                    } catch (e) {
+                        console.error('家屬授權清單讀取失敗：', e);
+                        this.error = '讀取失敗，請確認網路連線後重試。';
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async switchPatient(patient) {
+                    this.selectedPatient = patient;
+                    this.viewLoading = true;
+                    this.view = null;
+                    this.appointments = [];
+                    this.schedulesByDoctor = {};
+                    try {
+                        const snap = await window.db.collection('family_views').doc(patient).get();
+                        // 病患從未在「家屬檢視」分頁發布過摘要（例如剛核銷完邀請碼，
+                        // 病患自己都還沒開過一次 App）——不是錯誤，是誠實的空狀態。
+                        this.view = snap.exists ? snap.data() : {
+                            patient, displayName: patient, medications: [], findings: [], ungraded: [],
+                            unevaluable: [], medicationCount: 0, alertCount: 0, safetyScore: null,
+                            scoreStatus: 'not-assessed', remindersSchedule: [], adherenceRecent: []
+                        };
+                        this.appointments = await DbService.appointments.byPatient(patient);
+                        await this.loadSchedules();
+                    } catch (e) {
+                        console.error('病患資料讀取失敗：', e);
+                        this.error = '讀取失敗，可能是授權已過期或被撤回，請重新整理後確認。';
+                    } finally {
+                        this.viewLoading = false;
+                    }
+                },
+                // 只抓掛號紀錄裡出現過的醫師，不列舉整個 doctor_schedules——
+                // 跟 patient.html 的 loadSchedules() 同一個理由（見該處註解）。
+                async loadSchedules() {
+                    const names = [...new Set(this.appointments.map(a => a.doctor).filter(Boolean))];
+                    const map = {};
+                    await Promise.all(names.map(async (n) => {
+                        try {
+                            const s = await DbService.schedules.get(n);
+                            if (s) map[n] = Object.assign({ id: n }, s);
+                        } catch (e) {
+                            console.error('看診時間讀取失敗（' + n + '）：', e);
+                        }
+                    }));
+                    this.schedulesByDoctor = map;
+                },
+                apptIsActive(a) {
+                    return DbService.appointments.ACTIVE.indexOf(a && a.status) !== -1;
+                },
+                closeApp() {
+                    if (typeof liff !== 'undefined' && typeof liff.closeWindow === 'function') liff.closeWindow();
+                },
+                apptStatusText(s) {
+                    return ({ booked: '已預約', arrived: '已報到', finished: '已完診', cancelled: '已取消' })[s] || s || '—';
+                },
+                apptDateText(a) {
+                    if (a && a.dateKey) return a.dateKey;
+                    const v = a && a.scheduledAt;
+                    if (!v) return '';
+                    const d = v.toDate ? v.toDate() : new Date(v);
+                    return isNaN(d.getTime()) ? '' : DbService.adherence.dayKey(d);
+                },
+                // 與 patient.html 的 apptQueueText() 完全同一套邏輯——
+                // 權威事實是 seq，預估時間由目前的班表重算，不信任 scheduledAt。
+                apptQueueText(a) {
+                    if (!a || !a.seq) return '';
+                    const S = DbService.schedules;
+                    const label = S.sessionLabel(a.session);
+                    const sch = this.schedulesByDoctor[a.doctor];
+                    if (sch && a.dateKey) {
+                        const info = S.sessionsFor(sch, a.dateKey).find(s => s.id === a.session);
+                        if (info && info.spec) {
+                            const at = S.estimateAt(a.dateKey, info.spec, a.seq,
+                                Number(sch.avgMinutes) || S.DEFAULTS.avgMinutes);
+                            return `${label} 第 ${a.seq} 號 · 預估 ${S.timeText(at)}`;
+                        }
+                    }
+                    return `${label} 第 ${a.seq} 號`;
+                }
+            }
+        });
+
+        (async () => {
+            // 家屬帳號沒有帳號密碼（見 functions/src/bindings.js
+            // redeemFamilyInviteCode() 的說明），唯一入口是核銷邀請碼後
+            // Bot 回覆的 LIFF 連結。不帶 ?liff=1 直接打開本頁時，
+            // 沒有 login.html 可以導過去（那裡收不了這支帳號），
+            // 因此在這裡就說清楚，而不是讓它落到一個登入不了的畫面。
+            if (new URLSearchParams(location.search).get('liff') !== '1' || !window.bootLiff) {
+                document.getElementById('app').innerHTML =
+                    '<div class="max-w-md mx-auto mt-24 card p-10 text-center space-y-3">'
+                    + '<p class="text-sm font-black text-title">請透過家人傳送的 LINE 連結開啟本頁</p>'
+                    + '<p class="text-[11px] font-bold text-slate-400 leading-relaxed">'
+                    + '家屬檢視帳號沒有帳號密碼，需要先由病患在 MedSafe 網頁的「家屬檢視」頁面'
+                    + '產生邀請並完成 LINE 綁定，才能使用本頁。</p></div>';
+                return;
+            }
+            const liffResult = await window.bootLiff(window.FAMILY_LIFF_ID);
+            if (liffResult.reason === 'redirecting') return;
+            if (!liffResult.ok) {
+                console.error('家屬 LIFF 登入未完成：', liffResult.reason, liffResult.message || '');
+                document.getElementById('app').innerHTML =
+                    '<div class="max-w-md mx-auto mt-24 card p-10 text-center space-y-3">'
+                    + '<p class="text-sm font-black text-danger">登入時發生錯誤</p>'
+                    + '<p class="text-[11px] font-bold text-slate-400 leading-relaxed">請稍後再試一次；若持續發生，請聯繫病患確認邀請是否仍然有效。</p>'
+                    + '<p class="text-[10px] font-bold text-slate-300 mt-2">代碼：' + liffResult.reason + '</p></div>';
+                return;
+            }
+            const mounted = await mountWhenAuthorized(app, 'family');
+            if (mounted) {
+                // isInClient() 而非單看有沒有 ?liff=1：LIFF 也支援在一般瀏覽器
+                // 開啟做開發除錯，那種情境下沒有 LINE 原生容器可以關閉，
+                // liff.closeWindow() 會是無效呼叫，此時不顯示按鈕更誠實。
+                mounted.canClose = typeof liff !== 'undefined' && !!(liff.isInClient && liff.isInClient());
+                mounted.init();
+            }
+        })();
+    </script>
+</body>
+</html>

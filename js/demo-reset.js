@@ -66,6 +66,54 @@ window.DemoReset = (function () {
     return { atc, name, zhName, dosage, freq, category, hospital, safetyCheck };
   }
 
+  // ── 過去 30 天用藥回報模擬（僅 patient01 使用）───────────────────────
+  // dashboard.html 的遵從度月曆讀的是 adherenceLog，而那份紀錄平常只在
+  // 病患實際點擊 toggleReminder() 時才會逐日累積——重置流程本身從不
+  // 模擬病患操作，因此展示帳號重置後這裡向來是空的，評審打開月曆
+  // 只會看到一片空白。這裡直接生成一份格式與 DbService.adherence.record()
+  // 實際寫入的 dayRecord（total/schedule/taken）完全相同的歷史紀錄。
+  //
+  // 用「距今天數」而非絕對日期產生每一天的 key（與本檔案其餘示範資料的
+  // 既有原則一致），並用 i（距今天數）本身做確定性的規律缺勤，而非
+  // Math.random()——同一天內不論重置幾次，看到的月曆都長一樣，
+  // 不會因為評審多按了一次重置鈕，遵從度歷史就整批換掉。
+  //
+  // 只套用在 patient01：使用者僅要求王大明這個帳號要有這份資料，
+  // 其餘展示帳號的月曆維持系統原本「無回報記錄」的樣子。
+  function buildAdherenceLog(schedule) {
+    const dayKey = window.DbService.adherence.dayKey;
+    const log = {};
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = dayKey(d);
+      // 每 7 天漏一次晚上的華法林、每 11 天漏一次中午的二甲雙胍——
+      // 讓月曆看起來像真實病患的遵從趨勢，而非全勤到不自然。
+      const skipEvening = i % 7 === 3;
+      const skipNoon = i % 11 === 5;
+      const taken = [];
+      schedule.forEach((r) => {
+        if (i === 0) {
+          // 今天：一天尚未結束，只回報已經過去的早上時段，
+          // 避免「今天」看起來是預知未來的完美勾選。
+          if (r.time !== '08:00') return;
+        } else if ((r.time === '20:00' && skipEvening) || (r.time === '12:00' && skipNoon)) {
+          return;
+        }
+        const [hh, mm] = r.time.split(':').map(Number);
+        const at = new Date(d);
+        at.setHours(hh, mm, 0, 0);
+        taken.push({ time: r.time, text: r.text, at: at.getTime() });
+      });
+      log[key] = {
+        total: schedule.length,
+        schedule: schedule.map((r) => ({ time: r.time, text: r.text })),
+        taken
+      };
+    }
+    return log;
+  }
+
   // ── 病患種子資料 ────────────────────────────────────────────────────
   // 用藥組合刻意對應 mockData.ddiRules 裡確實存在的規則，讓 DDI 偵測、
   // 醫師端關係圖與這裡的 ddiAlerts 三處呈現一致，而非各自表述。
@@ -78,7 +126,12 @@ window.DemoReset = (function () {
       reminders: []
     };
     switch (username) {
-      case 'patient01':
+      case 'patient01': {
+        const reminders = [
+          { time: '08:00', text: '服用阿斯匹靈、賴諾普利', completed: false },
+          { time: '12:00', text: '服用二甲雙胍 (飯後)', completed: false },
+          { time: '20:00', text: '服用華法林', completed: false }
+        ];
         return Object.assign({}, common, {
           profile: {
             id: 'patient01', name: '王大明', nationalId: 'A123456789',
@@ -93,12 +146,10 @@ window.DemoReset = (function () {
             med('A11CC05', 'Vitamin D3', '維生素 D3', '1000IU', '每日一次', '營養補充', '馬偕醫院', 'no-known-interaction'),
             med('A11A', 'Multivitamin', '綜合維他命', '1錠', '每日一次', '營養補充', '台大醫院', 'unevaluable')
           ],
-          reminders: [
-            { time: '08:00', text: '服用阿斯匹靈、賴諾普利', completed: false },
-            { time: '12:00', text: '服用二甲雙胍 (飯後)', completed: false },
-            { time: '20:00', text: '服用華法林', completed: false }
-          ]
+          reminders: reminders,
+          adherenceLog: buildAdherenceLog(reminders)
         });
+      }
       case 'P001':
         return Object.assign({}, common, {
           profile: {

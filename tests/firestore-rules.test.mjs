@@ -1453,6 +1453,123 @@ await run('叫號 刪除計數器',
 await run('叫號 核保端讀取叫號掛號',
   () => getDoc(doc(INS(), 'appointments/docsch__' + DK1 + '__am__1')), 'deny');
 
+// ── 家屬檢視（family_consents／family_views，掛號的家屬讀取分支）────────
+//
+// 授權來源刻意比照 consents，但建立方式更嚴格：family_consents 只能由
+// 核銷邀請碼的 Cloud Function（Admin SDK）建立，前端一律 create:false——
+// 這裡用 withSecurityRulesDisabled 直接種入資料模擬那個已核銷完成的狀態，
+// 測的是「核銷完成之後」規則怎麼判斷讀取權，不是核銷流程本身
+// （核銷流程在 functions/ 底下，走的是 Admin SDK，不受本檔案管轄）。
+await env.withSecurityRulesDisabled(async ctx => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'user_roles/uidFam'), { username: 'family01', name: '家屬', role: 'family', status: 'active' });
+  const future = Timestamp.fromDate(new Date(Date.now() + 30 * 86400000));
+  const past = Timestamp.fromDate(new Date(Date.now() - 86400000));
+  // P001 已授權 family01；atk 對 family01 的授權已過期；P900 已撤回
+  await setDoc(doc(db, 'family_consents/P001__family01'), {
+    patient: 'P001', family: 'family01', relationshipLabel: '女兒',
+    grantedAt: new Date(), expiresAt: future, revokedAt: null, sourceCode: 'ABCDEFGH' });
+  await setDoc(doc(db, 'family_consents/atk__family01'), {
+    patient: 'atk', family: 'family01', relationshipLabel: '兒子',
+    grantedAt: new Date(), expiresAt: past, revokedAt: null, sourceCode: 'IJKLMNOP' });
+  await setDoc(doc(db, 'family_consents/P900__family01'), {
+    patient: 'P900', family: 'family01', relationshipLabel: '配偶',
+    grantedAt: new Date(), expiresAt: future, revokedAt: new Date(), sourceCode: 'QRSTUVWX' });
+  await setDoc(doc(db, 'family_views/P001'), {
+    patient: 'P001', displayName: '張小泉', medications: [{ nameZh: '華法林', nameEn: 'Warfarin', dosage: '5mg', frequency: '每日一次' }],
+    findings: [], ungraded: [], unevaluable: [], medicationCount: 1, alertCount: 0,
+    safetyScore: 100, scoreStatus: 'scored', remindersSchedule: [], adherenceRecent: [],
+    publishedBy: 'P001', publishedAt: new Date() });
+});
+const FAM = () => ctxFor('uidFam', 'family01@medsafe.local').firestore();
+
+// 讀取：只有「有效、未撤回、未過期」的授權能讀到 family_views 與掛號
+await run('家屬 讀取已授權病患的家屬檢視摘要',
+  () => getDoc(doc(FAM(), 'family_views/P001')), 'allow');
+await run('家屬 讀取從未授權過的病患的家屬檢視摘要（連 family_consents 文件都不存在）',
+  () => getDoc(doc(FAM(), 'family_views/P002')), 'deny');
+await run('家屬 授權已過期時不得讀取家屬檢視摘要',
+  () => getDoc(doc(FAM(), 'family_views/atk')), 'deny');
+await run('家屬 授權已撤回時不得讀取家屬檢視摘要（P900 的同意已撤回）',
+  () => getDoc(doc(FAM(), 'family_views/P900')), 'deny');
+await run('家屬 憑有效授權讀取該病患的掛號',
+  () => getDoc(doc(FAM(), 'appointments/AP1')), 'allow');
+await run('家屬 讀取未授權病患的掛號',
+  () => getDoc(doc(FAM(), 'appointments/AP2')), 'deny');
+// family.html 實際上是用 where('patient', '==', ...) 查詢，不是逐筆 getDoc——
+// 這是不同的規則求值路徑（list 查詢），跟醫師端「where(doctor==自己)」
+// 是同一種模式，須另外驗證：帶正確條件的查詢通過，不帶條件的整批列舉被拒。
+await run('家屬 以 where(patient==該病患) 查詢掛號',
+  () => getDocs(query(collection(FAM(), 'appointments'), where('patient', '==', 'P001'))), 'allow');
+await run('家屬 不受限地列舉全部掛號',
+  () => getDocs(collection(FAM(), 'appointments')), 'deny');
+
+// 建立：family_consents 一律拒絕客戶端 create（只有核銷 Cloud Function 能寫）
+await run('家屬 自行建立對某病患的授權（自我授權）',
+  () => setDoc(doc(FAM(), 'family_consents/P900__family01'), {
+    patient: 'P900', family: 'family01', relationshipLabel: '配偶',
+    grantedAt: serverTimestamp(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)),
+    revokedAt: null, sourceCode: 'FORGED01' }), 'deny');
+await run('病患自行建立家屬授權（繞過邀請碼核銷流程）',
+  () => setDoc(doc(P001(), 'family_consents/P001__family02'), {
+    patient: 'P001', family: 'family02', relationshipLabel: '兒子',
+    grantedAt: serverTimestamp(), expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)),
+    revokedAt: null, sourceCode: 'FORGED02' }), 'deny');
+
+// 撤回：只能由病患本人，且只能改 revokedAt
+await run('病患撤回自己給出的家屬授權',
+  () => updateDoc(doc(P001(), 'family_consents/P001__family01'), { revokedAt: serverTimestamp() }), 'allow');
+await run('家屬自行撤改對自己的授權（延長效期）',
+  () => updateDoc(doc(FAM(), 'family_consents/atk__family01'),
+    { expiresAt: Timestamp.fromDate(new Date(Date.now() + 86400000)) }), 'deny');
+await run('刪除家屬授權（同意與撤回的歷程必須保存）',
+  () => deleteDoc(doc(P001(), 'family_consents/atk__family01')), 'deny');
+
+// family_views 的欄位白名單：多一個欄位就是摘要逐漸長回完整病歷的風險
+await run('病患發布自己的家屬檢視摘要',
+  () => setDoc(doc(P001(), 'family_views/P001'), {
+    patient: 'P001', displayName: '張小泉', medications: [], findings: [], ungraded: [], unevaluable: [],
+    medicationCount: 0, alertCount: 0, safetyScore: 100, scoreStatus: 'scored',
+    remindersSchedule: [], adherenceRecent: [],
+    publishedBy: 'P001', publishedAt: serverTimestamp() }), 'allow');
+await run('家屬檢視摘要夾帶白名單外的欄位（身分證字號）',
+  () => setDoc(doc(P001(), 'family_views/P001'), {
+    patient: 'P001', displayName: '張小泉', medications: [], findings: [], ungraded: [], unevaluable: [],
+    medicationCount: 0, alertCount: 0, safetyScore: 100, scoreStatus: 'scored',
+    remindersSchedule: [], adherenceRecent: [], nationalId: 'A123456789',
+    publishedBy: 'P001', publishedAt: serverTimestamp() }), 'deny');
+await run('病患竄改他人的家屬檢視摘要',
+  () => setDoc(doc(P001(), 'family_views/P900'), {
+    patient: 'P900', displayName: 'x', medications: [], findings: [], ungraded: [], unevaluable: [],
+    medicationCount: 0, alertCount: 0, safetyScore: 100, scoreStatus: 'scored',
+    remindersSchedule: [], adherenceRecent: [],
+    publishedBy: 'P900', publishedAt: serverTimestamp() }), 'deny');
+await run('家屬自行撰寫病患的家屬檢視摘要',
+  () => setDoc(doc(FAM(), 'family_views/P001'), {
+    patient: 'P001', displayName: 'x', medications: [], findings: [], ungraded: [], unevaluable: [],
+    medicationCount: 0, alertCount: 0, safetyScore: 20, scoreStatus: 'scored',
+    remindersSchedule: [], adherenceRecent: [],
+    publishedBy: 'family01', publishedAt: serverTimestamp() }), 'deny');
+await run('偽稱家屬檢視摘要由他人發布（publishedBy 不符）',
+  () => setDoc(doc(P001(), 'family_views/P001'), {
+    patient: 'P001', displayName: '張小泉', medications: [], findings: [], ungraded: [], unevaluable: [],
+    medicationCount: 0, alertCount: 0, safetyScore: 100, scoreStatus: 'scored',
+    remindersSchedule: [], adherenceRecent: [],
+    publishedBy: 'doctor', publishedAt: serverTimestamp() }), 'deny');
+
+// 家屬端只能查到「授權對象是自己」的授權文件，無法列舉他人的
+await run('家屬查詢自己收到的授權',
+  () => getDocs(query(collection(FAM(), 'family_consents'), where('family', '==', 'family01'))), 'allow');
+await run('家屬列舉全部家屬授權（不帶 family 條件）',
+  () => getDocs(collection(FAM(), 'family_consents')), 'deny');
+
+// 邀請碼集合對所有前端一律關閉，只有核銷用的 Cloud Function 能碰
+await run('病患自行讀取家屬邀請碼集合',
+  () => getDoc(doc(P001(), 'family_invite_codes/ABCDEFGH')), 'deny');
+await run('病患自行建立家屬邀請碼',
+  () => setDoc(doc(P001(), 'family_invite_codes/NEWCODE1'),
+    { patient: 'P001', patientUid: 'uidP001', expiresAt: Timestamp.fromDate(new Date(Date.now() + 1800000)), used: false, createdAt: serverTimestamp() }), 'deny');
+
 console.log('');
 for (const r of results) console.log(r[0].padEnd(5), r[1], r[2] ? '\n      ' + r[2] : '');
 const failed = results.filter(r => r[0] === 'FAIL');

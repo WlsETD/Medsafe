@@ -22,12 +22,18 @@ function loadScript(src) {
   });
 }
 
-async function bootLiff() {
+// liffId 為選填的指定 LIFF App ID，預設沿用 window.LIFF_ID（病患端 patient.html
+// 的既有行為，呼叫端不需要跟著改）。family.html 會傳入 window.FAMILY_LIFF_ID——
+// 家屬檢視是另一個獨立的 LIFF App（同一個 LINE Login channel 底下即可，
+// 見 functions/src/config.js 的 FAMILY_LIFF_ID 說明），因為它要開的是
+// family.html 這個唯讀頁面，不是病患自己的 patient.html。
+async function bootLiff(liffId) {
   const params = new URLSearchParams(location.search);
   if (params.get('liff') !== '1') return { attempted: false };
 
-  if (!window.LIFF_ID) {
-    console.error('LIFF_ID 未設定（js/line-liff-config.js），無法使用 LINE 內建登入');
+  const id = liffId || window.LIFF_ID;
+  if (!id) {
+    console.error('LIFF ID 未設定（js/line-liff-config.js），無法使用 LINE 內建登入');
     return { attempted: true, ok: false, reason: 'no-liff-id' };
   }
 
@@ -39,7 +45,7 @@ async function bootLiff() {
   }
 
   try {
-    await liff.init({ liffId: window.LIFF_ID });
+    await liff.init({ liffId: id });
   } catch (e) {
     console.error('LIFF 初始化失敗：', e);
     return { attempted: true, ok: false, reason: 'init-failed' };

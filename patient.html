@@ -16,6 +16,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3.5.42/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <!-- 家屬邀請 QR code：本專案第一個需要引入的 QR 產生庫，用途只有
+         把 lineCreateFamilyInviteCode 回傳的 sendUrl 畫成掃描用的圖——
+         比照既有 CDN script tag 慣例，釘住確切版本、暴露單一全域 window.QRCode。 -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
@@ -167,12 +171,18 @@
                         <span class="flex-1">LINE 提醒</span>
                         <span v-if="lineBinding && lineBinding.active" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary text-white shrink-0">已綁定</span>
                     </button>
+                    <button @click="activeView = 'family'; showMobileMenu = false"
+                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all text-left', activeView === 'family' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-2.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-4-4" /></svg>
+                        <span class="flex-1">家屬檢視</span>
+                        <span v-if="familyConsents.filter(c => !c.revokedAt).length" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary text-white shrink-0">{{ familyConsents.filter(c => !c.revokedAt).length }}</span>
+                    </button>
                 </nav>
 
                 <div class="mt-auto pt-6 border-t border-slate-100">
                     <button @click="openPasswordModal()" class="flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-content hover:bg-slate-100 w-full transition-all text-left"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg><span>變更密碼</span></button>
                     <button @click="logout" class="flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-danger hover:bg-red-50 w-full transition-all text-left">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> 退出登入
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> {{ isLiffMode ? '關閉' : '退出登入' }}
                     </button>
                 </div>
             </div>
@@ -780,6 +790,100 @@
                 </div>
             </section>
 
+            <!-- ── 家屬檢視 ──────────────────────────────────────────────────
+                 與「資料授權」同一種「病患自己決定誰看得到什麼」精神，但對象
+                 是家人而非保險端，看到的也是真正的用藥清單與 DDI 內容而非
+                 統計摘要（見 firestore.rules 家屬檢視一節的說明）。
+
+                 邀請碼由 Cloud Function 產生，不是前端自己寫進 Firestore——
+                 跟 LINE 提醒頁的綁定碼同一個理由，只是核銷出來的是「查看某位
+                 病患」的家屬身分，而不是「這支 LINE 就是這個帳號本人」，
+                 因此是獨立的碼、獨立的核銷流程。 -->
+            <section v-show="activeView === 'family'" class="animate-fade-in text-left">
+                <div class="flex items-center gap-3 mb-6">
+                    <span class="w-1.5 h-7 bg-primary rounded-full"></span>
+                    <h2 class="text-2xl font-black text-title tracking-tight">家屬檢視</h2>
+                </div>
+
+                <div v-if="familyError" class="mb-6 text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-2xl px-4 py-3">{{ familyError }}</div>
+
+                <!-- 已邀請的家屬清單 -->
+                <div class="bg-white rounded-[40px] p-8 sm:p-10 shadow-sm space-y-6 mb-6">
+                    <h3 class="text-lg font-black text-title">已邀請的家屬</h3>
+                    <p class="text-xs font-bold text-lightText leading-relaxed">
+                        家屬可以透過 LINE 查看您目前的用藥、交互作用警示、掛號時間與服藥回報，
+                        看不到身分證字號、對話紀錄或其他病歷內容。您可以隨時撤回。
+                    </p>
+                    <div v-if="!familyConsents.length" class="text-xs font-bold text-lightText bg-bgMain rounded-2xl px-5 py-6 text-center">
+                        尚未邀請任何家屬
+                    </div>
+                    <div v-for="c in familyConsents" :key="c.id" class="flex flex-wrap items-center justify-between gap-4 bg-bgMain rounded-2xl px-5 py-4">
+                        <div>
+                            <p class="text-sm font-black text-title">{{ c.relationshipLabel || '家屬' }}</p>
+                            <p class="text-[11px] font-bold" :class="familyConsentStatus(c).tone">{{ familyConsentStatus(c).text }}</p>
+                        </div>
+                        <button v-if="!c.revokedAt" @click="revokeFamily(c)" :disabled="familyBusy"
+                                class="px-5 py-2 rounded-xl bg-white text-slate-500 border border-slate-200 text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 disabled:opacity-40">撤回</button>
+                    </div>
+                </div>
+
+                <!-- 產生新邀請 -->
+                <div class="bg-white rounded-[40px] p-8 sm:p-10 shadow-sm space-y-6">
+                    <h3 class="text-lg font-black text-title">邀請新家屬</h3>
+
+                    <div v-if="!familyCode">
+                        <label class="block text-[10px] font-black text-lightText uppercase mb-2">關係備註（選填，例如「女兒」）</label>
+                        <input v-model="familyRelationshipLabel" type="text" maxlength="20"
+                               class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3 px-5 font-bold text-title text-sm focus:border-primary/20 focus:bg-white outline-none transition-all mb-4">
+                        <button @click="createFamilyInvite" :disabled="familyBusy"
+                                class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">
+                            {{ familyBusy ? '產生中…' : '產生邀請' }}
+                        </button>
+                    </div>
+
+                    <div v-else class="space-y-5">
+                        <div class="bg-bgMain rounded-2xl px-5 py-6 text-center space-y-3">
+                            <p class="text-[10px] font-black text-lightText uppercase tracking-widest">邀請 QR code</p>
+                            <!-- QR 畫在 canvas 上，family.qrError 為 true 時（QRCode 庫載入失敗）
+                                 退回純文字代碼，功能不因外部 CDN 一時打不開而整個壞掉。 -->
+                            <canvas v-show="!familyQrError" ref="familyQrCanvas" class="mx-auto rounded-xl"></canvas>
+                            <p class="font-mono text-2xl font-black text-title tracking-[0.3em]">{{ familyCode }}</p>
+                            <p class="text-[11px] font-bold" :class="familyCodeSecondsLeft > 300 ? 'text-lightText' : 'text-danger'">
+                                {{ familyCodeSecondsLeft > 0 ? '剩餘 ' + familyCodeCountdown : '已失效，請重新產生' }}
+                            </p>
+                        </div>
+
+                        <ol class="space-y-3 text-xs font-bold text-content leading-relaxed">
+                            <li><span class="text-primary font-black">1.</span> 請家人用 LINE 掃描上面的 QR code，或加入 MedSafe 官方帳號好友</li>
+                            <li><span class="text-primary font-black">2.</span> 把這組代碼傳給它</li>
+                            <li><span class="text-primary font-black">3.</span> 家人收到「已連結」的回覆就完成了</li>
+                        </ol>
+
+                        <div v-if="familyAddFriendUrl || familySendUrl" class="flex flex-wrap gap-3">
+                            <a v-if="familyAddFriendUrl" :href="familyAddFriendUrl" target="_blank" rel="noopener"
+                               class="px-8 py-3.5 rounded-2xl bg-white border-2 border-primary/20 text-primary text-[11px] font-black uppercase tracking-widest">加入好友</a>
+                            <a v-if="familySendUrl" :href="familySendUrl" target="_blank" rel="noopener"
+                               class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest">用 LINE 傳送這組碼</a>
+                        </div>
+
+                        <div class="flex flex-wrap gap-3">
+                            <button @click="createFamilyInvite" :disabled="familyBusy"
+                                    class="px-8 py-3.5 rounded-2xl bg-white border-2 border-slate-200 text-content text-[11px] font-black uppercase tracking-widest disabled:opacity-40">重新產生</button>
+                            <button @click="loadFamilyConsents" :disabled="familyBusy"
+                                    class="px-8 py-3.5 rounded-2xl bg-white border-2 border-slate-200 text-content text-[11px] font-black uppercase tracking-widest disabled:opacity-40">已邀請，檢查狀態</button>
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                        <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">關於隱私</p>
+                        <p class="text-[10px] text-amber-600 mt-1 leading-relaxed">
+                            這組邀請碼／QR code 核銷後即可查看您的用藥與掛號資訊，請只交給您信任的家人，
+                            不要公開分享。邀請碼 30 分鐘後自動失效；已核銷的家屬存取權可隨時在上方撤回。
+                        </p>
+                    </div>
+                </div>
+            </section>
+
             <section v-show="activeView === 'consent'" class="animate-fade-in text-left">
                 <div class="flex items-center gap-3 mb-6">
                     <span class="w-1.5 h-7 bg-primary rounded-full"></span>
@@ -1191,6 +1295,10 @@
                     myConsents: [],
                     // 側欄的檢視切換。資料授權與掛號各自獨立成一個檢視。
                     activeView: 'home',
+                    // 是否透過 LINE LIFF 開啟（見檔尾 IIFE）。這種情境下
+                    // 使用者是被 LINE 帶進來的，沒有「登入表單」可以回去，
+                    // 側欄的「退出登入」因此改為關閉 LIFF 視窗而非登出重導。
+                    isLiffMode: false,
                     showScoreDetail: false,
                     // 掛號（醫病關係的來源）
                     myAppointments: [],
@@ -1216,6 +1324,18 @@
                     lineAddFriendUrl: '',
                     lineBusy: false,
                     lineError: '',
+                    // 家屬檢視。familyConsents 讀自 family_consents，
+                    // 含已過期／已撤回的（供畫面呈現狀態），不只是目前有效的。
+                    familyConsents: [],
+                    familyRelationshipLabel: '',
+                    familyCode: '',
+                    familyCodeExpiresAt: 0,
+                    familyCodeSecondsLeft: 0,
+                    familySendUrl: '',
+                    familyAddFriendUrl: '',
+                    familyBusy: false,
+                    familyError: '',
+                    familyQrError: false,
                     // 身分證字號。nationalIdVerified 由頂層欄位決定，病患寫不了它。
                     nidInput: '',
                     nidBusy: false,
@@ -1307,6 +1427,12 @@
                 // 綁定碼剩餘時間的顯示字串（mm:ss）
                 lineCodeCountdown() {
                     const s = Math.max(0, this.lineCodeSecondsLeft);
+                    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+                },
+                // 家屬邀請碼剩餘時間，同一種 mm:ss 格式（30 分鐘的碼會超過 9:59，
+                // 因此不補零卡在兩位數，分鐘數直接顯示原始值）。
+                familyCodeCountdown() {
+                    const s = Math.max(0, this.familyCodeSecondsLeft);
                     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
                 },
                 formatLineLinkedAt() {
@@ -1674,7 +1800,14 @@
                 // 當下讀到的仍是 data() 的 fallback（自助註冊者會落到 patient01 的用藥）。
                 // 真實資料抵達後必須重畫，否則空狀態與真實分佈都無法呈現。
                 medications: {
-                    handler() { this.$nextTick(() => this.initCharts()); },
+                    handler() { this.$nextTick(() => this.initCharts()); this._maybePublishFamilyView(); },
+                    deep: true
+                },
+                // 服藥回報改變時（例如病患自己打勾、或即時監聽收到 LINE 端寫入的
+                // 回報）也要跟著重新發布——家屬檢視的「服藥回報/遵從度」欄位
+                // 才不會停在上次開藥時的舊快照。
+                adherenceLog: {
+                    handler() { this._maybePublishFamilyView(); },
                     deep: true
                 }
             },
@@ -1701,6 +1834,8 @@
                 if (this.maintenanceMode) return;
                 try {
                     await this.loadConsents();
+                    // 家屬授權清單同理：側欄的家屬人數徽章要在進站時就正確。
+                    await this.loadFamilyConsents();
                     // 掛號決定哪位醫師看得到自己的資料，與授權同屬「誰在看我」的資訊，
                     // 一併於進站時載入，讓側欄的兩個數字都是實際狀態
                     await this.loadAppointments();
@@ -1717,24 +1852,7 @@
                     this.fhirUnprotected = window.FhirClient.isUnprotected();
                     const data = await DbService.getPatientData(this._username);
                     if (data) {
-                        this.profile = data.profile;
-                        this.stats = data.stats;
-                        this.allMedications = data.medications || [];
-                        // 已停用的藥不算「目前用藥」：DDI 分析、安全評分、每日提醒
-                        // 都讀 this.medications，藥都停了還把它算進交互作用比對，
-                        // 是比沒有警示更危險的錯誤（見 dashboard.html 的同一個理由）。
-                        try {
-                            this.medicationDiscontinuations = await DbService.getMedicationDiscontinuations(this._username);
-                        } catch (e) {
-                            console.error('讀取停用紀錄失敗：', e);
-                            this.medicationDiscontinuations = {};
-                        }
-                        this.medications = this.allMedications.filter(m => !this.medicationDiscontinuations[m.id]);
-                        this.ddiAlerts = data.ddiAlerts;
-                        this.reminders = data.reminders;
-                        this.adherenceLog = data.adherenceLog || {};
-                        // 核驗狀態是頂層欄位，病患寫不了它——這正是它可信的原因
-                        this.nationalIdVerified = !!data.nationalIdVerifiedBy;
+                        this.applyPatientData(data);
                         // 補發索引：既有病歷（含示範資料）的證號是直接寫進 profile 的，
                         // 沒有經過會順帶建立索引的表單流程，櫃檯因此查不到他們。
                         // 這裡在登入時補上，失敗不影響其他功能——只是查號會失敗，
@@ -1756,6 +1874,23 @@
                         // 指派醫師之後才重新初始化對話：participants 在建立當下就要寫對，
                         // 事後補寫等於讓對話有一段時間讀不到或人人可讀。
                         this.chatReady = await window.chatStore.init('patient', this._username);
+
+                        // ── 即時監聽：接下來的用藥/停藥/回報變化不必重新整理頁面 ──────
+                        // 上面這段是「登入當下」的一次性設定（主治醫師是誰、對話要不要
+                        // 重新初始化），這兩個監聽則是「開著頁面期間」的持續同步——
+                        // 醫師開藥或停藥、LINE bot 寫入服藥回報，畫面都要立刻反映。
+                        // 已停用的藥不算「目前用藥」：DDI 分析、安全評分、每日提醒
+                        // 都讀 this.medications，藥都停了還把它算進交互作用比對，
+                        // 是比沒有警示更危險的錯誤（見 dashboard.html 的同一個理由）。
+                        // 兩份監聽各自獨立、誰先到都沒關係，applyPatientData() 與這裡
+                        // 都用「目前已知」的 medicationDiscontinuations 重算一次 medications。
+                        this._patientDataUnsub = DbService.watchPatientData(this._username, (d) => {
+                            if (d) this.applyPatientData(d);
+                        });
+                        this._medDiscUnsub = DbService.watchMedicationDiscontinuations(this._username, (map) => {
+                            this.medicationDiscontinuations = map;
+                            this.medications = this.allMedications.filter(m => !this.medicationDiscontinuations[m.id]);
+                        });
                     }
                     // 班表必須等主治醫師確定之後再載入——doctorUsername 有兩個來源
                     //（病歷上的 assignedDoctor、最近一筆進行中的掛號），
@@ -1810,11 +1945,36 @@
                 document.removeEventListener('click', this._notifClickHandler);
                 document.removeEventListener('keydown', this._escHandler);
                 if (this._chatUnsub) this._chatUnsub();
+                if (this._patientDataUnsub) this._patientDataUnsub();
+                if (this._medDiscUnsub) this._medDiscUnsub();
                 if (this._lineTimer) clearInterval(this._lineTimer);
                 if (this._linePoll) clearInterval(this._linePoll);
+                if (this._familyTimer) clearInterval(this._familyTimer);
+                if (this._familyPoll) clearInterval(this._familyPoll);
                 this.destroyCharts();
             },
             methods: {
+                // 套用一次 patient_data 快照到畫面上會即時變動的欄位——
+                // 初次載入與之後的即時監聽（見 created() 底部）共用同一份邏輯，
+                // 避免兩處各自維護一份、日後改一邊忘了改另一邊。
+                //
+                // 刻意不包含 assignedDoctor / assignedDoctorName：主治醫師與
+                // 對話參與者只在登入當下解析一次，之後改由掛號流程接手
+                // （見 created() 內的說明）。即時監聽若也覆寫這兩個欄位，
+                // 會導致 chatStore.init() 被重複呼叫、對話訂閱不斷重建。
+                applyPatientData(data) {
+                    this.profile = data.profile;
+                    this.stats = data.stats;
+                    this.allMedications = data.medications || [];
+                    // 已停用的藥不算「目前用藥」——見下方 medicationDiscontinuations
+                    // 監聽的相同說明。這裡用的是「目前已知」的停用紀錄，
+                    // 兩份監聽誰先到都沒關係，各自到位後都會重算一次。
+                    this.medications = this.allMedications.filter(m => !this.medicationDiscontinuations[m.id]);
+                    this.ddiAlerts = data.ddiAlerts;
+                    this.reminders = data.reminders;
+                    this.adherenceLog = data.adherenceLog || {};
+                    this.nationalIdVerified = !!data.nationalIdVerifiedBy;
+                },
                 // ── LINE 綁定 ─────────────────────────────────────────────────
                 //
                 // 綁定碼一律由 Cloud Function 產生。前端不自行寫入 line_link_codes——
@@ -1918,6 +2078,113 @@
                     } finally {
                         this.lineBusy = false;
                     }
+                },
+
+                // ── 家屬檢視 ──────────────────────────────────────────────
+                async loadFamilyConsents() {
+                    this.familyError = '';
+                    try {
+                        this.familyConsents = await DbService.getMyFamilyConsents(this._username);
+                    } catch (e) {
+                        console.error('家屬授權清單讀取失敗：', e);
+                        this.familyError = '家屬授權清單讀取失敗，畫面顯示可能不是最新狀態。';
+                    }
+                },
+                // 顯示用的狀態文字/顏色。三態：已撤回、已到期、有效（附剩餘天數）——
+                // 跟資料授權頁對保險端同意書的呈現方式同一個原則，
+                // 不把「已到期」與「已撤回」混為一句話，兩者的下一步動作不同
+                // （到期後重新邀請即可，撤回是病患主動決定，不會自動恢復）。
+                familyConsentStatus(c) {
+                    if (c.revokedAt) return { text: '已撤回', tone: 'text-slate-400' };
+                    const now = Date.now();
+                    if (c.expiresAt && c.expiresAt.toMillis() < now) return { text: '已到期', tone: 'text-slate-400' };
+                    const days = c.expiresAt ? Math.max(0, Math.ceil((c.expiresAt.toMillis() - now) / 86400000)) : null;
+                    return { text: '有效中' + (days != null ? '（尚餘 ' + days + ' 天）' : ''), tone: 'text-primary' };
+                },
+                async createFamilyInvite() {
+                    this.familyBusy = true;
+                    this.familyError = '';
+                    try {
+                        const r = await this._fnCall('lineCreateFamilyInviteCode', { relationshipLabel: this.familyRelationshipLabel });
+                        this.familyCode = r.data.code;
+                        this.familyCodeExpiresAt = r.data.expiresAt;
+                        this.familySendUrl = r.data.sendUrl || '';
+                        this.familyAddFriendUrl = r.data.addFriendUrl || '';
+                        this._startFamilyCountdown();
+                        this.$nextTick(() => this._renderFamilyQr());
+                    } catch (e) {
+                        console.error('產生家屬邀請碼失敗：', e);
+                        this.familyError = e.message || '產生邀請碼失敗，請稍後再試。';
+                    } finally {
+                        this.familyBusy = false;
+                    }
+                },
+                // 用 QRCode 庫把邀請連結畫成掃描用的圖。刻意容錯：
+                // 外部 CDN 一時載入失敗時只是不顯示 QR 圖，文字代碼與
+                // 一鍵傳送連結仍然可用，功能不因這個 CDN 打不開而整個壞掉。
+                _renderFamilyQr() {
+                    const canvas = this.$refs.familyQrCanvas;
+                    const target = this.familySendUrl || this.familyCode;
+                    if (!canvas || !window.QRCode) { this.familyQrError = true; return; }
+                    window.QRCode.toCanvas(canvas, target, { width: 200, margin: 1 }, (err) => {
+                        if (err) { console.error('QR code 產生失敗：', err); this.familyQrError = true; }
+                        else this.familyQrError = false;
+                    });
+                },
+                _startFamilyCountdown() {
+                    if (this._familyTimer) clearInterval(this._familyTimer);
+                    const tick = () => {
+                        this.familyCodeSecondsLeft = Math.max(0,
+                            Math.floor((this.familyCodeExpiresAt - Date.now()) / 1000));
+                        if (this.familyCodeSecondsLeft <= 0 && this._familyTimer) {
+                            clearInterval(this._familyTimer);
+                            this._familyTimer = null;
+                        }
+                    };
+                    tick();
+                    this._familyTimer = setInterval(tick, 1000);
+                    // 核銷是在 LINE 那一端完成的，網頁不會收到通知，因此在碼有效期間
+                    // 定期回查一次家屬授權清單，讓畫面自己出現新邀請的家屬——
+                    // 跟 LINE 提醒頁的 _linePoll 同一個理由。
+                    if (this._familyPoll) clearInterval(this._familyPoll);
+                    this._familyPoll = setInterval(() => {
+                        if (this.familyCodeSecondsLeft <= 0) {
+                            clearInterval(this._familyPoll);
+                            this._familyPoll = null;
+                            return;
+                        }
+                        this.loadFamilyConsents();
+                    }, 5000);
+                },
+                async revokeFamily(c) {
+                    if (this.familyBusy) return;
+                    this.familyBusy = true;
+                    this.familyError = '';
+                    try {
+                        await DbService.revokeFamilyConsent(this._username, c.family);
+                        await this.loadFamilyConsents();
+                        this.triggerToast('已撤回', (c.relationshipLabel || '該位家屬') + ' 已無法再查看您的資料。');
+                    } catch (e) {
+                        console.error('撤回家屬授權失敗：', e);
+                        this.familyError = '撤回失敗，該位家屬目前仍可查看您的資料。請重試。';
+                    }
+                    this.familyBusy = false;
+                },
+                // 病患開著 App 期間，用藥或服藥回報一有變動就順手重新發布一次
+                // 家屬檢視摘要——不需要另外做 Cloud Function 觸發器（見
+                // firestore.rules 家屬檢視一節的說明）。只在至少有一位「目前
+                // 有效」的家屬時才發布，沒有家屬的病患不需要每次用藥變動
+                // 都跟著寫一次 family_views。
+                _maybePublishFamilyView() {
+                    if (!this._username) return;
+                    const now = Date.now();
+                    const hasActive = this.familyConsents.some(c =>
+                        !c.revokedAt && c.expiresAt && c.expiresAt.toMillis() > now);
+                    if (!hasActive) return;
+                    DbService.publishFamilyView(this._username, {
+                        profile: this.profile, medications: this.medications,
+                        reminders: this.reminders, adherenceLog: this.adherenceLog
+                    }, this.ddiForMe).catch(e => console.error('家屬檢視自動發布失敗：', e));
                 },
 
                 async syncToCloud() {
@@ -2335,6 +2602,10 @@
 
                 async bookQueued(sessionInfo) {
                     if (this.apptBusy || !sessionInfo.bookable) return;
+                    // 號碼一經發出即固定、取消也不會遞補（見下方說明文字），
+                    // 誤按一次就是真的多一筆掛號，因此跟取消掛號一樣先確認一次，
+                    // 而不是點下去就立刻送出。
+                    if (!confirm(`確定要掛「${sessionInfo.label}」嗎？\n\n${sessionInfo.statusText}`)) return;
                     const sch = this.selectedSchedule;
                     this.apptBusy = true;
                     this.apptError = '';
@@ -2350,10 +2621,12 @@
                             schedule: sch
                         });
                         const at = DbService.schedules.timeText(r.estimatedAt);
-                        await this.refreshDay();
                         await this.loadAppointments();
                         this.triggerToast('掛號完成',
                             `${sessionInfo.label} 第 ${r.seq} 號，預估 ${at} 看診`);
+                        // 掛號成功後收合日期／診次選擇區——這筆掛號已經進了上方清單，
+                        // 表單留著開開的容易讓人以為「還沒掛成功」而重複按掛號。
+                        this.newAppt.date = '';
                     } catch (e) {
                         console.error('叫號掛號失敗：', e);
                         if (e && e.stage === 'relation') {
@@ -2450,6 +2723,9 @@
                     if (this.apptBusy) return;
                     const doctor = (this.legacyAppt.doctor || '').trim();
                     if (!doctor || !this.legacyAppt.date) return;
+                    // 這條路徑系統驗不了帳號是不是真的醫師（見上方的說明文字），
+                    // 誤按、打錯帳號都不會有任何提示，先跟病患確認一次要掛的對象。
+                    if (!confirm(`確定要用「${doctor}」這個帳號掛 ${this.legacyAppt.date} 的門診嗎？`)) return;
                     this.apptBusy = true;
                     this.apptError = '';
                     try {
@@ -2467,6 +2743,9 @@
                         // 下一次掛號就能直接走上方的診次選擇。
                         await this.loadSchedules();
                         this.triggerToast('掛號完成', `${doctor} 醫師現在可以看到您的用藥資料`);
+                        // 掛號成功後收合這個展開區塊——這筆掛號已經進了上方清單，
+                        // 表單留著開開的容易誤以為還沒掛成功而重複送出。
+                        this.showLegacyBooking = false;
                     } catch (e) {
                         console.error('掛號失敗：', e);
                         if (e && e.stage === 'relation') {
@@ -2615,7 +2894,16 @@
                         this.changingPassword = false;
                     }
                 },
-                logout() { logout(); },
+                // LIFF 模式下沒有 login.html 可以回去（使用者是被 LINE 帶進來
+                // 的），因此不呼叫全域 logout()（會 signOut 並導去 login.html），
+                // 改為關閉 LIFF 視窗——與 family.html 的 closeApp() 同一個理由。
+                logout() {
+                    if (this.isLiffMode) {
+                        if (typeof liff !== 'undefined' && typeof liff.closeWindow === 'function') liff.closeWindow();
+                        return;
+                    }
+                    logout();
+                },
                 scrollChat() {
                     const el = document.getElementById('chat-scroll'); if (el) el.scrollTop = el.scrollHeight;
                 },
@@ -2783,6 +3071,10 @@
             // （理由見 linebot.md §4.2：規則已經把關，對話式重刻只會多一份
             // 邏輯要跟 firestore.rules 保持一致，卻不會更安全）。
             if (mounted) {
+                // isInClient() 而非單看有沒有 ?liff=1：LIFF 也支援在一般瀏覽器
+                // 開啟做開發除錯，那種情境下沒有 LINE 原生容器，側欄應維持
+                // 一般的「退出登入」行為（見 methods.logout() 的說明）。
+                mounted.isLiffMode = liffResult.ok && typeof liff !== 'undefined' && !!(liff.isInClient && liff.isInClient());
                 const view = new URLSearchParams(location.search).get('view');
                 if (['home', 'appointments', 'consent', 'line'].includes(view)) {
                     mounted.activeView = view;

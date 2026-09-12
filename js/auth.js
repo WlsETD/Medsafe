@@ -29,7 +29,11 @@ const ROLE_HOME = {
   admin: 'admin.html',
   doctor: 'dashboard.html',
   patient: 'patient.html',
-  insurance: 'insurance.html'
+  insurance: 'insurance.html',
+  // 家屬帳號沒有帳號密碼，login.html 對它沒有意義——見 family.html／
+  // functions/src/bindings.js redeemFamilyInviteCode() 的說明，
+  // 這支帳號唯一的登入方式永遠是 LIFF 換發的 Custom Token。
+  family: 'family.html'
 };
 
 // 「你不該進這棟樓」：沒有登入，或帳號已被停用。

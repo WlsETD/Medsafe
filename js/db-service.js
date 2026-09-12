@@ -472,6 +472,35 @@ window.DbService = {
     return byMedId;
   },
 
+  // ── 即時監聽：與上面兩個一次性 fetch 對應的即時版本 ──────────────────
+  //
+  // 一次性 .get() 只讀到「當下這一刻」的快照——換一台裝置、另一位使用者
+  // 開了藥或停了藥、LINE bot 寫入服藥回報，開著頁面的人完全看不到，
+  // 得自己按重新整理才會知道。這裡改用 onSnapshot，資料一變就推播進來。
+  //
+  // 回傳取消訂閱函式，呼叫端自行決定何時訂閱、何時取消——比照
+  // js/chatStore.js 既有的「選定對象時訂閱、換對象或離開頁面時取消」模式，
+  // 不在此處自動管理生命週期（不同頁面的訂閱時機差異太大，硬塞一套反而僵化）。
+  watchPatientData(username, onData, onError) {
+    return window.db.collection('patient_data').doc(username)
+      .onSnapshot(
+        snap => onData(snap.exists ? snap.data() : null),
+        onError || (e => console.error('[watchPatientData] 監聽失敗：', username, e))
+      );
+  },
+  watchMedicationDiscontinuations(username, onData, onError) {
+    return window.db.collection('medication_discontinuations')
+      .where('patient', '==', username)
+      .onSnapshot(
+        snap => {
+          const byMedId = {};
+          snap.forEach(d => { byMedId[d.data().medId] = d.data(); });
+          onData(byMedId);
+        },
+        onError || (e => console.error('[watchMedicationDiscontinuations] 監聽失敗：', username, e))
+      );
+  },
+
   // 病患目前指派的醫師（用查詢代替寫死名單），讓 demo 資料跟真實註冊的病患走同一套邏輯
   async getPatientsByDoctor(doctorUsername) {
     const snap = await window.db.collection('patient_data').where('assignedDoctor', '==', doctorUsername).get();
@@ -1104,6 +1133,118 @@ window.DbService = {
       }
     }
     return out;
+  },
+
+  // ── 家屬檢視 ──────────────────────────────────────────────────────────
+  //
+  // 同一套「病患自述、白名單固定」精神，但欄位比核保摘要寬得多——
+  // 家屬檢視存在的目的就是要看到真正的藥名、DDI 說明文字與服藥回報，
+  // 不能沿用 buildUnderwritingSummary() 的統計數字白名單（也不能把這些
+  // 欄位加進 patient_summaries，那會連帶讓保險端也看得到，見
+  // firestore.rules 家屬檢視一節的說明）。
+  //
+  // liveAnalysis 同樣是必須傳入、不能省略的參數，理由與
+  // buildUnderwritingSummary() 完全一樣：ddiAlerts 是存量快照，
+  // 用藥變動後不會自動重算。
+  buildFamilyView(username, patientDoc, liveAnalysis) {
+    const meds = (patientDoc && patientDoc.medications) || [];
+    const profile = (patientDoc && patientDoc.profile) || {};
+    const reminders = (patientDoc && patientDoc.reminders) || [];
+    const adherenceLog = (patientDoc && patientDoc.adherenceLog) || {};
+
+    const scoreInput = liveAnalysis
+      ? this.scoreInputFromAnalysis(liveAnalysis)
+      : (patientDoc && patientDoc.ddiAlerts) || [];
+
+    // findings 與 ungraded 共用同一種顯示形狀，但兩者絕不合併——
+    // ungraded 是「知識庫有記載但未標註嚴重度」，混進 findings 會讓
+    // 家屬把它當成已分級的交互作用看待（與 ddi-engine.js 的既有原則相同）。
+    const describe = (f) => ({
+      severity: f.severity,
+      severityZh: f.severityZh,
+      drugA: (f.a && (f.a.name_zh || f.a.name_en)) || '',
+      drugB: (f.b && (f.b.name_zh || f.b.name_en)) || '',
+      effect: f.effect || '',
+      recommendation: f.recommendation || ''
+    });
+    const findings = (liveAnalysis && liveAnalysis.findings) ? liveAnalysis.findings.map(describe) : [];
+    const ungraded = (liveAnalysis && liveAnalysis.ungraded) ? liveAnalysis.ungraded.map(describe) : [];
+    const unevaluable = (liveAnalysis && liveAnalysis.unevaluable)
+      ? liveAnalysis.unevaluable.map(u => ({
+          drugName: (u.entry && (u.entry.name_zh || u.entry.name_en || u.entry.raw)) || '',
+          reason: u.reason || ''
+        }))
+      : [];
+
+    // 近 14 天遵從度：只取「打了幾格、總共幾格」，不含逐筆時間戳細節——
+    // 家人要看的是趨勢（這幾天有沒有正常服藥），不需要知道幾點幾分按的。
+    const recentDays = Object.keys(adherenceLog).sort().slice(-14);
+    const adherenceRecent = recentDays.map(date => {
+      const rec = adherenceLog[date] || {};
+      const taken = Array.isArray(rec.taken) ? rec.taken.length : 0;
+      const total = typeof rec.total === 'number' ? rec.total
+        : (Array.isArray(rec.schedule) ? rec.schedule.length : 0);
+      return { date, taken, total };
+    });
+
+    return {
+      patient: username,
+      displayName: profile.name || username,
+      medications: meds.map(m => {
+        const name = window.DrugCatalog ? window.DrugCatalog.medDisplayName(m)
+          : { zh: m.name_zh || m.zhName || m.name || '', en: m.name_en || m.name || '' };
+        return { nameZh: name.zh, nameEn: name.en, dosage: m.dosage || '', frequency: m.freq || '' };
+      }),
+      findings, ungraded, unevaluable,
+      medicationCount: meds.length,
+      alertCount: (liveAnalysis && liveAnalysis.findings) ? liveAnalysis.findings.length : 0,
+      safetyScore: this.computeSafetyScore(meds, scoreInput),
+      scoreStatus: this.safetyScoreStatus(meds, scoreInput),
+      remindersSchedule: reminders.map(r => ({ time: r.time, text: r.text })),
+      adherenceRecent
+    };
+  },
+
+  // 病患發布自己的家屬檢視摘要。publishedBy/publishedAt 由規則強制為
+  // 本人與伺服器時間，跟核保摘要的 attestedBy/attestedAt 同一個理由：
+  // 讓讀到的人看得出這是病患自述，不是系統驗證過的事實。
+  //
+  // 呼叫時機見 patient.html：除了病患主動在「家屬檢視」分頁按發布，
+  // 也掛在既有的即時監聽（watchPatientData 更新 medications/adherenceLog
+  // 時）上，讓病患開著 App 期間這份快照自動保持新鮮，不需要額外的
+  // Cloud Function 觸發器（見 firestore.rules 家屬檢視一節的說明）。
+  async publishFamilyView(username, patientDoc, liveAnalysis) {
+    const view = this.buildFamilyView(username, patientDoc, liveAnalysis);
+    view.publishedBy = username;
+    view.publishedAt = window.firebase.firestore.FieldValue.serverTimestamp();
+    await window.db.collection('family_views').doc(username).set(view);
+    return view;
+  },
+
+  // 病患查看自己邀請過的所有家屬（含已過期、已撤回的，供畫面呈現狀態用）
+  async getMyFamilyConsents(patientUsername) {
+    const snap = await window.db.collection('family_consents')
+      .where('patient', '==', patientUsername).get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  },
+
+  // 撤回家屬授權。不刪除文件——同意與撤回的歷程本身就是需要保存的證據，
+  // 與 revokeConsent() 對保險端同樣的立場。
+  async revokeFamilyConsent(patientUsername, familyUsername) {
+    await window.db.collection('family_consents')
+      .doc(patientUsername + '__' + familyUsername)
+      .update({ revokedAt: window.firebase.firestore.FieldValue.serverTimestamp() });
+  },
+
+  // 家屬端：查看自己被哪些病患授權（供一位家屬同時查看多位病患時切換用）。
+  // where(family == 自己) 是安全規則要求查詢自帶的條件，
+  // 少了它整個查詢會被拒絕——與核保端查詢同意書同一個理由。
+  async getFamilyConsentsForViewer(familyUsername) {
+    const snap = await window.db.collection('family_consents')
+      .where('family', '==', familyUsername).get();
+    const now = Date.now();
+    return snap.docs.map(d => d.data()).filter(c =>
+      !c.revokedAt && c.expiresAt && c.expiresAt.toMillis() > now);
   },
 
   // --- Insurance Claims ---
