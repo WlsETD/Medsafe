@@ -8,7 +8,7 @@ const admin = require('firebase-admin');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 
-const { REGION, LINE_BASIC_ID, LINK_CODE_TTL_MS } = require('./config');
+const { REGION, LINE_BASIC_ID, LINK_CODE_TTL_MS, FAMILY_INVITE_TTL_MS } = require('./config');
 const bindings = require('./bindings');
 
 // 由 uid 取出可信的身分。回傳 { uid, username }，不合格就丟 HttpsError。
@@ -58,4 +58,27 @@ exports.lineUnbind = onCall({ region: REGION }, async (request) => {
   const r = await bindings.unbind(username);
   logger.info('解除綁定', { username, ok: r.ok });
   return { ok: r.ok, reason: r.reason || null };
+});
+
+// 家屬邀請碼：只有病患能替自己的病歷邀請家屬（requirePatient() 同一道關卡），
+// 產生的碼與病患自己綁定用的碼是不同集合、不同核銷語意，見 bindings.js
+// createFamilyInviteCode() 的說明。relationshipLabel 是病患自己輸入的
+// 備註（例如「女兒」），純顯示用途，不影響授權範圍。
+exports.lineCreateFamilyInviteCode = onCall({ region: REGION }, async (request) => {
+  const { uid, username } = await requirePatient(request);
+  const relationshipLabel = typeof request.data?.relationshipLabel === 'string'
+    ? request.data.relationshipLabel.trim().slice(0, 20)
+    : '';
+  const { code, expiresAt } = await bindings.createFamilyInviteCode(uid, username, relationshipLabel);
+
+  const basicId = LINE_BASIC_ID.value();
+  const sendUrl = basicId
+    ? 'https://line.me/R/oaMessage/' + encodeURIComponent(basicId) + '/?' + encodeURIComponent(code)
+    : null;
+  const addFriendUrl = basicId
+    ? 'https://line.me/R/ti/p/' + encodeURIComponent(basicId)
+    : null;
+
+  logger.info('產生家屬邀請碼', { username, relationshipLabel });
+  return { code, expiresAt, ttlMs: FAMILY_INVITE_TTL_MS, sendUrl, addFriendUrl };
 });

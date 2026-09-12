@@ -4,7 +4,7 @@
 
 const admin = require('firebase-admin');
 const crypto = require('crypto');
-const { LINK_CODE_TTL_MS } = require('./config');
+const { LINK_CODE_TTL_MS, FAMILY_INVITE_TTL_MS, FAMILY_CONSENT_TTL_MS } = require('./config');
 
 const db = () => admin.firestore();
 
@@ -109,6 +109,112 @@ async function findByLineUserId(lineUserId) {
   return snap.exists ? snap.data() : null;
 }
 
+// 由 uid 查 user_roles.role。webhook 用來判斷「這支已綁定的 LINE 帳號
+// 是病患本人、還是家屬檢視身分」——家屬帳號沒有自己的 patient_data，
+// 誤觸病患專屬的指令（藥箱查詢、下次回診等）必須被攔下，不能讓它們
+// 照舊制路徑去讀一份根本不存在的病歷。
+async function roleOf(uid) {
+  const snap = await db().collection('user_roles').doc(uid).get();
+  return snap.exists ? snap.data().role : null;
+}
+
+// ── 家屬邀請碼：與病患自己的綁定碼同一種碼形狀，但集合與核銷語意都
+// 是獨立的（見 firestore.rules 家屬邀請碼一節的說明，不重複展開）。
+async function createFamilyInviteCode(uid, username, relationshipLabel) {
+  const code = randomCode();
+  const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + FAMILY_INVITE_TTL_MS);
+  await db().collection('family_invite_codes').doc(code).set({
+    patient: username,
+    patientUid: uid,
+    relationshipLabel: relationshipLabel || '',
+    expiresAt,
+    used: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  return { code, expiresAt: expiresAt.toMillis() };
+}
+
+// 核銷家屬邀請碼。回傳 { ok, reason?, patient?, familyUsername?, relationshipLabel? }。
+//
+// 與 redeemLinkCode 同樣用交易包住「檢查是否用過」與「標記已用」，
+// 理由相同（防止同一組碼被連續送達兩次時各自核銷一輪）。
+//
+// 【一支 LINE 帳號同一時間只能是一個 MedSafe 身分】
+// line_users/{lineUserId} 只存一組 {username, uid}，這是既有病患綁定
+// 本來就有的限制（見檔頭核銷邏輯），家屬邀請碼沿用同一把索引，因此
+// 同一支 LINE 帳號：
+//   ・若還沒綁過任何身分 → 全新建立一個沒有密碼的家屬帳號。
+//   ・若已經是某位病患的家屬身分 → 直接沿用，同一支 LINE 可以看多位病患
+//     （同一個 family username 底下累積多筆 family_consents）。
+//   ・若已經是某位病患本人（role=='patient'）→ 拒絕。不能自己邀自己，
+//     也不能讓「本人」與「別人的家屬」共用同一支 LINE，否則核銷 Custom
+//     Token 時無法判斷這支 LINE 這一刻該換發哪一個身分。
+async function redeemFamilyInviteCode(code, lineUserId) {
+  const codeRef = db().collection('family_invite_codes').doc(code);
+
+  const outcome = await db().runTransaction(async (tx) => {
+    const snap = await tx.get(codeRef);
+    if (!snap.exists) return { ok: false, reason: 'not-found' };
+
+    const data = snap.data();
+    if (data.used) return { ok: false, reason: 'used' };
+    if (!data.expiresAt || data.expiresAt.toMillis() < Date.now()) {
+      return { ok: false, reason: 'expired' };
+    }
+
+    tx.update(codeRef, {
+      used: true,
+      usedAt: admin.firestore.FieldValue.serverTimestamp(),
+      usedByLineUserId: lineUserId
+    });
+
+    return { ok: true, patient: data.patient, relationshipLabel: data.relationshipLabel || '' };
+  });
+
+  if (!outcome.ok) return outcome;
+  const { patient, relationshipLabel } = outcome;
+
+  const existing = await findByLineUserId(lineUserId);
+  let familyUsername, familyUid;
+
+  if (existing) {
+    const role = await roleOf(existing.uid);
+    if (role !== 'family') {
+      return { ok: false, reason: 'already-bound-other-role' };
+    }
+    if (existing.username === patient) {
+      return { ok: false, reason: 'self-invite' };
+    }
+    familyUsername = existing.username;
+    familyUid = existing.uid;
+  } else {
+    // 全新家屬身分：不設 email/password 的 Firebase Auth 使用者——
+    // 之後唯一的登入方式永遠是 LIFF 換發的 Custom Token（見 exchange.js），
+    // 跟病患自己的 LIFF 綁定完全同一套機制，只是身分的建立時機不同
+    // （病患是自助註冊時就有帳號，家屬帳號要等第一次核銷邀請碼才存在）。
+    const authUser = await admin.auth().createUser({});
+    familyUid = authUser.uid;
+    familyUsername = 'family_' + crypto.randomBytes(6).toString('hex');
+    await db().collection('user_roles').doc(familyUid).set({
+      username: familyUsername, role: 'family', status: 'active'
+    });
+    await db().collection('line_users').doc(lineUserId).set({ username: familyUsername, uid: familyUid });
+  }
+
+  const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + FAMILY_CONSENT_TTL_MS);
+  await db().collection('family_consents').doc(patient + '__' + familyUsername).set({
+    patient,
+    family: familyUsername,
+    relationshipLabel,
+    grantedAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAt,
+    revokedAt: null,
+    sourceCode: code
+  });
+
+  return { ok: true, patient, familyUsername, relationshipLabel };
+}
+
 async function getBinding(username) {
   const snap = await db().collection('line_bindings').doc(username).get();
   return snap.exists ? snap.data() : null;
@@ -177,6 +283,9 @@ module.exports = {
   deactivateByLineUserId,
   reactivateByLineUserId,
   listActiveBindings,
+  roleOf,
+  createFamilyInviteCode,
+  redeemFamilyInviteCode,
   CODE_LEN,
   ALPHABET
 };

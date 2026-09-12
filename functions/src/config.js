@@ -34,10 +34,30 @@ const LINE_LOGIN_CHANNEL_ID = defineString('LINE_LOGIN_CHANNEL_ID', { default: '
 // 「完整藥箱」按鈕，其餘功能不受影響。
 const LIFF_ID = defineString('LIFF_ID', { default: '' });
 
+// 非機密：家屬檢視專用的 LIFF App ID。刻意與 LIFF_ID 分開——家屬看到的
+// 是唯讀摘要頁（family.html），不是病患自己的 patient.html，兩者是不同的
+// LIFF App（見 js/liff-bridge.js 支援指定 LIFF ID 的說明），但可以共用同一個
+// LINE Login channel，因此不需要新增 LINE_LOGIN_CHANNEL_ID。未設定時
+// 核銷成功後的確認訊息會退回純文字說明，不含可點擊連結。
+const FAMILY_LIFF_ID = defineString('FAMILY_LIFF_ID', { default: '' });
+
 const REGION = 'asia-east1';
 
 // 綁定碼有效期。夠長到讓長輩換手機操作，短到讓暴力猜測不可行。
 const LINK_CODE_TTL_MS = 10 * 60 * 1000;
+
+// 家屬邀請碼有效期，刻意比病患自己綁定用的 LINK_CODE_TTL_MS 寬鬆：
+// 邀請家人通常需要實際把手機遞過去、對方再打開 LINE 操作，
+// 10 分鐘對這個情境偏緊。字母表與長度不變，暴力猜測的可行性不受影響
+// （見 ALPHABET/CODE_LEN 的說明——安全性來自碼的亂度，不是效期長短）。
+const FAMILY_INVITE_TTL_MS = 30 * 60 * 1000;
+
+// 家屬同意（family_consents）的有效期上限。跟保險端的 consents 同樣的
+// 個資法理由：一份「永久有效」的授權形同未取得同意。家屬照護關係通常
+// 是長期的，因此給比保險端典型的 90 天寬鬆許多的上限，到期後病患
+// 重新邀請一次即可（見 firestore.rules 家屬檢視一節：沒有 regrant 分支，
+// 重新授權一律走「再邀請一次」，才會留下新的 sourceCode 可供稽核）。
+const FAMILY_CONSENT_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 // 與 js/db-service.js 的 adherence.KEEP_DAYS 必須一致。
 // 伺服器端若不做同樣的裁切，LINE 回報會讓 adherenceLog 無限成長，
@@ -53,8 +73,11 @@ module.exports = {
   LINE_BASIC_ID,
   LINE_LOGIN_CHANNEL_ID,
   LIFF_ID,
+  FAMILY_LIFF_ID,
   REGION,
   LINK_CODE_TTL_MS,
+  FAMILY_INVITE_TTL_MS,
+  FAMILY_CONSENT_TTL_MS,
   KEEP_DAYS,
   TZ
 };

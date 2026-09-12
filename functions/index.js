@@ -38,6 +38,7 @@ setGlobalOptions({ region: REGION, maxInstances: 10 });
 const callable = require('./src/callable');
 exports.lineCreateLinkCode = callable.lineCreateLinkCode;
 exports.lineUnbind = callable.lineUnbind;
+exports.lineCreateFamilyInviteCode = callable.lineCreateFamilyInviteCode;
 
 const richmenu = require('./src/richmenu');
 exports.lineSetupRichMenu = richmenu.lineSetupRichMenu;

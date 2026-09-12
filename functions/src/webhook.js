@@ -9,7 +9,7 @@ const { onRequest } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 
 const {
-  LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN, OPENAI_API_KEY, REGION, LIFF_ID
+  LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN, OPENAI_API_KEY, REGION, LIFF_ID, FAMILY_LIFF_ID
 } = require('./config');
 const lineApi = require('./line-api');
 const bindings = require('./bindings');
@@ -170,11 +170,47 @@ async function replyWithTodayCard(token, replyToken, username) {
   }
 }
 
+// 家屬邀請碼核銷成功後的回覆。刻意不含任何醫療內容（用藥、DDI、掛號等）——
+// 這則訊息走的是 Bot 文字回覆（Admin SDK），而顯示病歷內容的路徑一律
+// 必須走 LIFF + Custom Token 讓 firestore.rules 照常生效（見 CLAUDE.md）。
+// 這裡只確認綁定本身成功，實際內容留給家屬自己打開 LIFF 頁面查看。
+async function replyFamilyBound(token, replyToken, outcome) {
+  const label = outcome.relationshipLabel ? '（' + outcome.relationshipLabel + '）' : '';
+  const lines = [
+    '已成功連結為家屬檢視身分' + label + '。',
+    '之後可以透過家屬檢視頁面查看用藥、交互作用警示、掛號時間與服藥回報。'
+  ];
+  const liffId = FAMILY_LIFF_ID.value();
+  if (liffId) {
+    lines.push('', 'https://liff.line.me/' + liffId);
+  } else {
+    // 未設定家屬 LIFF App 時（尚未走完部署設定）不給一個開不了的死連結，
+    // 跟 bookingReply()／menuItems() 對 LIFF_ID 未設定時的處理是同一個原則。
+    lines.push('', '（家屬檢視頁面尚未開通，請洽系統管理者）');
+  }
+  return lineApi.reply(token, replyToken, lineApi.textMessage(lines.join('\n')));
+}
+
+// 家屬帳號誤觸病患專屬指令時的回覆。不查詢、不判斷意圖，一律導去
+// 家屬檢視頁面——這支帳號沒有自己的 patient_data，任何往下的路徑
+// 都只會得到「查無資料」或更糟的誤判，不如在這裡就說清楚。
+function replyFamilyRedirect(token, replyToken) {
+  const liffId = FAMILY_LIFF_ID.value();
+  const lines = ['這支帳號是家屬檢視身分，用藥、交互作用警示與掛號時間請開啟家屬檢視頁面查看，無法在對話中查詢。'];
+  if (liffId) lines.push('', 'https://liff.line.me/' + liffId);
+  return lineApi.reply(token, replyToken, lineApi.textMessage(lines.join('\n')));
+}
+
 async function handleText(token, event) {
   const lineUserId = event.source && event.source.userId;
   const text = String(event.message.text || '').trim();
 
-  // ── 綁定碼 ──
+  // ── 綁定碼／家屬邀請碼 ──
+  //
+  // 兩種碼共用同一種字母表與長度（見 firestore.rules 家屬邀請碼一節：
+  // 刻意用獨立集合，不是共用同一份文件形狀），因此格式比對只需要一次，
+  // 核銷時先試病患本人綁定碼，找不到再試家屬邀請碼——兩邊都 not-found
+  // 才真的是「這組碼不存在」。
   const candidate = text.toUpperCase().replace(/[\s-]/g, '');
   if (CODE_RE.test(candidate)) {
     const r = await bindings.redeemLinkCode(candidate, lineUserId);
@@ -182,12 +218,30 @@ async function handleText(token, event) {
       logger.info('綁定成功', { username: r.username });
       return replyWithTodayCard(token, event.replyToken, r.username);
     }
-    const why = {
-      'not-found': '這組綁定碼不存在，請確認是否輸入正確。',
-      'expired': '這組綁定碼已超過 10 分鐘失效，請回網頁重新產生一組。',
-      'used': '這組綁定碼已經使用過了，請回網頁重新產生一組。'
-    }[r.reason] || '綁定失敗，請稍後再試。';
-    return lineApi.reply(token, event.replyToken, lineApi.textMessage(why));
+    if (r.reason !== 'not-found') {
+      const why = {
+        'expired': '這組綁定碼已超過 10 分鐘失效，請回網頁重新產生一組。',
+        'used': '這組綁定碼已經使用過了，請回網頁重新產生一組。'
+      }[r.reason] || '綁定失敗，請稍後再試。';
+      return lineApi.reply(token, event.replyToken, lineApi.textMessage(why));
+    }
+
+    const fr = await bindings.redeemFamilyInviteCode(candidate, lineUserId);
+    if (fr.ok) {
+      logger.info('家屬邀請碼核銷成功', { patient: fr.patient, familyUsername: fr.familyUsername });
+      return replyFamilyBound(token, event.replyToken, fr);
+    }
+    if (fr.reason !== 'not-found') {
+      const why2 = {
+        'expired': '這組邀請碼已超過 30 分鐘失效，請請病患重新產生一組。',
+        'used': '這組邀請碼已經使用過了，請請病患重新產生一組。',
+        'self-invite': '不能用病患自己的 LINE 帳號核銷自己的家屬邀請碼。',
+        'already-bound-other-role': '這支 LINE 帳號已經綁定為其他身分，無法再核銷家屬邀請碼。'
+      }[fr.reason] || '核銷失敗，請稍後再試。';
+      return lineApi.reply(token, event.replyToken, lineApi.textMessage(why2));
+    }
+
+    return lineApi.reply(token, event.replyToken, lineApi.textMessage('這組代碼不存在，請確認是否輸入正確。'));
   }
 
   // ── 以下功能都需要已綁定 ──
@@ -196,6 +250,16 @@ async function handleText(token, event) {
     return lineApi.reply(token, event.replyToken, lineApi.textMessage(
       '您還沒有綁定帳號。\n\n請在 MedSafe 網頁的「LINE 提醒」中取得 8 碼綁定碼，再傳給我。'
     ));
+  }
+
+  // ── 家屬檢視身分：往下的每一條路徑（藥箱查詢、下次回診、自由文字 NLU）
+  // 都是讀「這位使用者自己的」patient_data，家屬帳號沒有這份病歷——
+  // 必須在這裡攔下，不能讓它們照舊制路徑跑到查無病歷或（更糟）誤判。
+  // 見 CLAUDE.md：任何顯示病歷內容的路徑都必須走 LIFF + Custom Token，
+  // 對第三方（家屬）比對病患本人更嚴格適用，Bot 文字回覆一律不碰。
+  const role = await bindings.roleOf(user.uid);
+  if (role === 'family') {
+    return replyFamilyRedirect(token, event.replyToken);
   }
 
   // ── 選單 ──

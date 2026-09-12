@@ -24,6 +24,12 @@ service cloud.firestore {
     function isAdmin() { return hasRole('admin'); }
     function isDoctor() { return hasRole('doctor'); }
     function isInsurance() { return hasRole('insurance'); }
+    // 家屬檢視帳號：LIFF-only，沒有帳號密碼，由 LINE 家屬邀請碼核銷時
+    // 以 Admin SDK 建立（見 family_consents／family_views 兩節）。
+    // 目前沒有規則直接依賴這個角色本身（family_views／appointments 的
+    // 家屬讀取權限都是靠 family_consents 這份明確授權文件判斷，而非角色），
+    // 保留這個 helper 是防禦性設計，供未來規則需要時使用。
+    function isFamily() { return hasRole('family'); }
     // 帳號的合成 email 由 Firebase Auth 簽發（username@medsafe.local），前端無法竄改，
     // 因此以 token.email 作為 username 的唯一可信來源。
     // 不可改用「檢查 users/{username} 是否存在」——那是 TOCTOU：攻擊者可先寫 user_roles
@@ -503,6 +509,87 @@ service cloud.firestore {
            ])
         && request.resource.data.attestedBy == profile().username
         && request.resource.data.attestedAt == request.time;
+      allow delete: if isOwnUsername(username) || isAdmin();
+    }
+
+    // ── 家屬檢視：同意文件 ──────────────────────────────────────────────
+    //
+    // 與 consents（保險端）同一套「同意後最小揭露」精神，但授權的建立方式
+    // 刻意更嚴格：consents 允許病患自己 create，是因為保險端的身分（uid、
+    // username）在授予當下就已經是雙方各自已註冊、已驗證過的帳號。
+    // 家屬檢視不是這樣——家屬帳號的存在本身，就是這次授權流程的產物
+    // （見 functions/src/bindings.js 的 redeemFamilyInviteCode()：核銷邀請碼時
+    // 才第一次建立這位家屬的 Firebase 帳號）。讓前端自己宣告
+    // { patient: 自己, family: 任意字串 } 並直接 create，等同讓病患能把
+    // 讀取權硬塞給一個尚未透過 LINE 綁定驗證過身分的假帳號——
+    // 這正是 line_link_codes 當初改成伺服器產生的同一個理由
+    // （見該節「讓前端決定授權文件的內容」的說明）。因此本集合的
+    // create 一律拒絕，只有核銷邀請碼的 Cloud Function（Admin SDK）能寫入；
+    // 病患能做的唯一客戶端寫入是撤銷。
+    function familyConsentPath(patientUsername) {
+      return /databases/$(database)/documents/family_consents/$(patientUsername + '__' + profile().username);
+    }
+    // 四個條件缺一不可，理由與 hasValidConsent() 相同：
+    // 文件存在、未撤回、未過期、（若日後家屬檢視也分用途）用途相符。
+    // 目前只有一種 scope，故不比對 scope 欄位，但欄位仍會寫入供未來擴充與稽核。
+    function hasActiveFamilyConsent(patientUsername) {
+      return exists(familyConsentPath(patientUsername))
+        && get(familyConsentPath(patientUsername)).data.revokedAt == null
+        && get(familyConsentPath(patientUsername)).data.expiresAt > request.time;
+    }
+    match /family_consents/{fcid} {
+      // 病患讀自己給出的所有家屬授權；家屬只讀得到「授權對象是自己」的那些。
+      // 後者的 list 查詢必須自帶 where(family == 自己) 才會通過
+      // （與 consents 的 insurer 查詢限制同一個理由）。
+      allow read: if isActive() && (
+        isAdmin()
+        || (resource != null && isOwnUsername(resource.data.patient))
+        || (resource != null && resource.data.family == profile().username)
+      );
+      allow create: if false;
+      // 撤回：只能由病患本人，且只能改 revokedAt——不允許刪除，
+      // 同意與撤回的歷程本身就是需要保存的證據（比照 consents/appointments）。
+      // 沒有比照 consents 的 regrant 分支：家屬檢視要重新授權時，
+      // 病患走的是「再邀請一次、重新走一次核銷流程」，而不是把舊文件復活——
+      // 這樣才會產生新的 sourceCode／grantedAt，稽核軌跡才看得出是哪一次邀請生效的。
+      allow update: if isActive()
+        && resource != null
+        && isOwnUsername(resource.data.patient)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revokedAt'])
+        && request.resource.data.revokedAt == request.time;
+      allow delete: if false;
+    }
+
+    // ── 家屬檢視：實際顯示的白名單資料 ────────────────────────────────────
+    //
+    // 與 patient_summaries 同一種「固定欄位白名單、病患自述、寫入時蓋自己
+    // 名字與伺服器時間」設計，但欄位範圍寬得多：保險端的核保摘要只需要
+    // 統計數字（medicationCount/alertCount/safetyScore），家屬檢視的存在
+    // 目的就是要看到真正的藥名、劑量、DDI 說明文字與服藥回報——
+    // 因此不能沿用 patient_summaries 的白名單，也不能把這些欄位加進
+    // patient_summaries（那會連帶讓保險端透過 hasValidConsent() 也看得到）。
+    //
+    // 【誠實的限制】跟 patient_summaries 一樣，這份資料由病患端自行產生並
+    // 寫入，系統無法驗證其真實性。與 patient_summaries 不同的是，本專案的
+    // patient.html 已經把 medications／ddiForMe／adherenceLog 都改成即時
+    // 監聽（見 js/db-service.js 的 watchPatientData()），因此病患開著 App
+    // 期間這份快照會隨即時監聽自動重新發布、維持新鮮；只有病患完全沒開過
+    // App 時才會停留在上次發布時的樣子。
+    match /family_views/{username} {
+      allow read: if isActive() && (
+        isAdmin() || isOwnUsername(username) || hasActiveFamilyConsent(username)
+      );
+      // 白名單固定：多一個欄位就是多一分「摘要逐漸長回完整病歷」的風險，
+      // 與 patient_summaries 的同一句註解同樣的理由。
+      allow create, update: if isActive()
+        && isOwnUsername(username)
+        && request.resource.data.keys().hasOnly([
+             'patient', 'displayName', 'medications', 'findings', 'ungraded', 'unevaluable',
+             'medicationCount', 'alertCount', 'safetyScore', 'scoreStatus',
+             'remindersSchedule', 'adherenceRecent', 'publishedBy', 'publishedAt'
+           ])
+        && request.resource.data.publishedBy == profile().username
+        && request.resource.data.publishedAt == request.time;
       allow delete: if isOwnUsername(username) || isAdmin();
     }
 
@@ -1089,12 +1176,17 @@ service cloud.firestore {
     // dateKey / session / seq 三個欄位，scheduledAt 只是由它們推導出來的顯示值。
     // 顯示端應以 dateKey + seq 重算，不要盲信寫進來的 scheduledAt。
     match /appointments/{aid} {
-      // 病患讀自己的掛號；醫師只讀得到指向自己的那些。
-      // 醫師端的 list 查詢必須自帶 where(doctor == 自己) 才會通過。
+      // 病患讀自己的掛號；醫師只讀得到指向自己的那些；
+      // 有效家屬同意的家屬讀得到該病患的掛號（掛號時間本來就不含身分證字號、
+      // 對話等敏感內容，不需要另外做一份會過期的快照——見 family_views 一節
+      // 為什麼掛號時間不比照那份摘要處理）。
+      // 醫師端與家屬端的 list 查詢都必須自帶 where(doctor == 自己) /
+      // where(patient == 該病患) 才會通過，同一個理由。
       allow read: if isActive() && (
         isAdmin()
         || (resource != null && isOwnUsername(resource.data.patient))
         || (resource != null && isDoctor() && resource.data.doctor == profile().username)
+        || (resource != null && hasActiveFamilyConsent(resource.data.patient))
       );
 
       // 掛號：只能替自己掛。status 與 createdAt 不可由呼叫端自訂——
@@ -1276,6 +1368,14 @@ service cloud.firestore {
     // 前端讀得到別人的碼，就等於一個可枚舉的授權漏洞
     // （與 patient_index 只開 get、不開 list 是同一個顧慮的更嚴格版本）。
     match /line_link_codes/{code} {
+      allow read, write: if false;
+    }
+
+    // 家屬邀請碼：同一種碼、同一種顧慮，但刻意用獨立集合而不是塞進
+    // line_link_codes——後者的核銷語意是「把這支 LINE 綁成這個帳號本人」，
+    // 家屬邀請碼要核銷出來的卻是「把這支 LINE 綁成查看某位病患的家屬身分」，
+    // 兩者若共用同一份文件形狀，日後任何一邊改欄位都可能悄悄影響到另一邊。
+    match /family_invite_codes/{code} {
       allow read, write: if false;
     }
 
