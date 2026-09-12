@@ -26,7 +26,8 @@ function effectiveConfidence(llmConfidence, matchConfidence) {
 // 【對外】處理一句自由文字。
 //
 // 回傳：
-//   { status: 'no-extraction' }                     句子裡沒提到任何藥
+//   { status: 'intent', intent }                    不是服藥回報，由 webhook 路由
+//   { status: 'no-extraction' }                     是服藥回報但句子裡沒提到任何藥
 //   { status: 'error', error }                      LLM 或比對過程出錯
 //   { status: 'ok', toRecord, confirm, notRecorded, unmatched }
 //
@@ -44,13 +45,21 @@ async function processUserInput(text, patientData) {
   const meds = (patientData && patientData.medications) || [];
   const reminders = (patientData && patientData.reminders) || [];
 
-  let extracted;
+  let understanding;
   try {
-    extracted = await llm.extractMedications(text, meds);
+    understanding = await llm.understandMessage(text, meds);
   } catch (e) {
     return { status: 'error', error: e.message };
   }
 
+  // 不是服藥回報就到此為止，把意圖交還給 webhook 去路由。
+  // 這一層刻意不知道「藥箱查詢」「預約」要怎麼回覆——那是執行層的事，
+  // 與本檔開頭「這一層不碰 Firestore、也不碰 LINE」是同一個分工。
+  if (understanding.intent !== 'adherence-report') {
+    return { status: 'intent', intent: understanding.intent };
+  }
+
+  const extracted = understanding.items;
   if (!Array.isArray(extracted) || extracted.length === 0) {
     return { status: 'no-extraction' };
   }
