@@ -135,9 +135,9 @@
             <div class="p-4 border-b border-white/5 lg:hidden">
                 <h4 class="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2 px-2">功能導航</h4>
                 <div class="space-y-1">
-                    <a @click.prevent="scrollTo('#doctor-dashboard'); showMobileMenu = false" href="#" class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 font-bold text-sm transition-all"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg> 儀表板總覽</a>
-                    <a @click.prevent="scrollTo('#patient-station'); showMobileMenu = false" href="#" class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 font-bold text-sm transition-all"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> 病患診斷站</a>
-                    <a @click.prevent="scrollTo('#clinic-hours'); showMobileMenu = false" href="#" class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-300 hover:bg-white/5 font-bold text-sm transition-all"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> 看診時間設定</a>
+                    <a @click.prevent="goToWorkstation('#doctor-dashboard'); showMobileMenu = false" href="#" :class="['flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all', activeSection === 'workstation' ? 'bg-white/10 text-white' : 'text-slate-300 hover:bg-white/5']"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg> 儀表板總覽</a>
+                    <a @click.prevent="goToWorkstation('#patient-station'); showMobileMenu = false" href="#" :class="['flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all', activeSection === 'workstation' ? 'bg-white/10 text-white' : 'text-slate-300 hover:bg-white/5']"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> 病患診斷站</a>
+                    <a @click.prevent="goToSchedule(); showMobileMenu = false" href="#" :class="['flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all', activeSection === 'schedule' ? 'bg-white/10 text-white' : 'text-slate-300 hover:bg-white/5']"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> 看診時間設定</a>
                 </div>
             </div>
 
@@ -165,9 +165,10 @@
                     </button>
                     <!-- 看診時間：病患端的可預約時段完全由這份班表決定。
                          沒有設定時，病患走的是舊制自由掛號（只有日期、沒有名額）。 -->
-                    <button @click="scrollTo('#clinic-hours')" class="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white/10 text-white/90 hover:bg-white/20 transition-all text-[10px] font-black uppercase tracking-widest">
+                    <button @click="activeSection === 'schedule' ? goToWorkstation() : goToSchedule()"
+                            :class="['mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest', activeSection === 'schedule' ? 'bg-white/20 text-white' : 'bg-white/10 text-white/90 hover:bg-white/20']">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        看診時間設定
+                        {{ activeSection === 'schedule' ? '返回工作站' : '看診時間設定' }}
                     </button>
                 </div>
                 <div v-for="p in recentPatients" :key="p.id" 
@@ -235,7 +236,7 @@
             </div>
             
             <!-- TOP LAYER: DOCTOR GLOBAL DASHBOARD -->
-            <section id="doctor-dashboard" class="p-8 space-y-8 min-h-screen border-b-4 border-slate-200">
+            <section v-if="activeSection === 'workstation'" id="doctor-dashboard" class="p-8 space-y-8 min-h-screen border-b-4 border-slate-200">
                 <div class="flex justify-between items-end">
                     <div>
                         <h1 class="text-3xl font-black text-slate-900 tracking-tight leading-none mb-4">醫師端總控中心</h1>
@@ -332,7 +333,7 @@
             </section>
 
             <!-- BOTTOM LAYER: PATIENT CARE STATION -->
-            <section id="patient-station" class="p-8 space-y-8 bg-slate-50 min-h-screen">
+            <section v-if="activeSection === 'workstation'" id="patient-station" class="p-8 space-y-8 bg-slate-50 min-h-screen">
                 <div v-if="!selectedPatient" class="h-[60vh] flex flex-col items-center justify-center text-slate-300 italic">
                     <h2 class="text-2xl font-black">請從側邊欄選擇病患進行診斷</h2>
                 </div>
@@ -600,18 +601,15 @@
                  這份班表是病患端唯一的可預約時段來源：哪天有診、哪個診次
                  還有名額、病患會拿到第幾號、預估幾點看診，全部由此推導。
                  尚未設定前，病患走的是舊制自由掛號（只有日期、沒有名額限制）。 -->
-            <section id="clinic-hours" class="p-8 space-y-8 min-h-screen border-t-4 border-slate-200">
+            <section v-if="activeSection === 'schedule'" id="clinic-hours" class="p-8 pb-28 space-y-8 min-h-screen">
                 <div class="flex flex-wrap items-end justify-between gap-4">
                     <div>
+                        <button @click="goToWorkstation()" class="flex items-center gap-1.5 text-[11px] font-black text-slate-400 hover:text-primary uppercase tracking-widest mb-3 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                            返回工作站
+                        </button>
                         <h2 class="text-3xl font-black text-slate-900 tracking-tight">看診時間設定</h2>
                         <p class="text-xs font-bold text-slate-400 mt-1">病患只能預約您在此開放的診次，並依前面已預約人數自動取得看診號碼</p>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <span v-if="scheduleDirty" class="text-[10px] font-black text-warning uppercase tracking-widest">尚未儲存</span>
-                        <button @click="saveSchedule" :disabled="scheduleBusy || !schedule"
-                                class="px-8 py-3 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">
-                            {{ scheduleBusy ? '儲存中…' : '儲存班表' }}
-                        </button>
                     </div>
                 </div>
 
@@ -700,13 +698,23 @@
 
                     <!-- 特殊日期 -->
                     <div class="bg-white rounded-3xl p-8 shadow-sm space-y-5">
-                        <div>
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">特殊日期（停診／加診）</p>
-                            <p class="text-[11px] font-bold text-slate-400 mt-1">例外日優先於每週班表。已經掛號的病患不會自動被取消——停診後請一併通知他們。</p>
+                        <div class="flex flex-wrap items-end justify-between gap-4">
+                            <div>
+                                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">特殊日期（停診／加診）</p>
+                                <p class="text-[11px] font-bold text-slate-400 mt-1">例外日優先於每週班表。已經掛號的病患不會自動被取消——停診後請一併通知他們。</p>
+                            </div>
+                            <!-- 只在有累積到值得搜尋的量時才顯示——一兩筆例外日期一眼掃過就好，
+                                 搜尋框反而是多餘的介面雜訊。 -->
+                            <div v-if="exceptionList.length > 5" class="relative w-full sm:w-64">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z" /></svg>
+                                <input v-model="exceptionSearch" type="text" placeholder="搜尋日期、星期或停診/加診內容"
+                                       class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-2.5 pl-10 pr-4 text-xs font-bold text-slate-800 focus:border-primary/20 focus:bg-white outline-none transition-all">
+                            </div>
                         </div>
 
                         <div v-if="!exceptionList.length" class="text-xs font-bold text-slate-400 bg-slate-50 rounded-2xl px-5 py-6 text-center">尚無特殊日期</div>
-                        <div v-for="e in exceptionList" :key="e.date" class="flex flex-wrap items-center justify-between gap-4 bg-slate-50 rounded-2xl px-5 py-4">
+                        <div v-else-if="!filteredExceptionList.length" class="text-xs font-bold text-slate-400 bg-slate-50 rounded-2xl px-5 py-6 text-center">查無符合「{{ exceptionSearch }}」的特殊日期</div>
+                        <div v-for="e in filteredExceptionList" :key="e.date" class="flex flex-wrap items-center justify-between gap-4 bg-slate-50 rounded-2xl px-5 py-4">
                             <div>
                                 <p class="text-sm font-black text-slate-800">{{ e.date }}（{{ scheduleOptions.dowLabels[e.dow] }}）</p>
                                 <p class="text-[11px] font-bold" :class="e.closed ? 'text-danger' : 'text-primary'">{{ e.text }}</p>
@@ -763,6 +771,20 @@
                     </p>
                 </template>
             </section>
+
+            <!-- 儲存班表：改成固定在畫面底部的浮動列。這份表單捲下去很長
+                 （每週 7 天 x 3 診次 + 特殊日期），原本按鈕釘在最上方，
+                 改完最後一格還要捲回頂端才按得到儲存，浮動列讓它隨時搆得到。
+                 left-72 對齊桌面版固定側欄寬度，手機版側欄本來就是覆蓋而非佔版位，
+                 故 left-0 即可。 -->
+            <div v-if="activeSection === 'schedule'"
+                 class="fixed bottom-0 left-0 lg:left-72 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 px-8 py-4 flex items-center justify-end gap-4 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+                <span v-if="scheduleDirty" class="text-[10px] font-black text-warning uppercase tracking-widest">尚未儲存</span>
+                <button @click="saveSchedule" :disabled="scheduleBusy || !schedule"
+                        class="px-8 py-3 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">
+                    {{ scheduleBusy ? '儲存中…' : '儲存班表' }}
+                </button>
+            </div>
         </main>
 
         <!-- FULLSCREEN MODAL -->
@@ -1319,6 +1341,10 @@
                     scheduleError: '',
                     scheduleDirty: false,
                     newException: { date: '', mode: 'closed', session: 'night', start: '19:00', end: '21:00', capacity: 20 },
+                    // 'workstation' = 總控中心 + 病患診斷站（同一份連續捲動內容）
+                    // 'schedule' = 看診時間設定，獨立成一頁，不與工作站混在同一捲動軸
+                    activeSection: 'workstation',
+                    exceptionSearch: '',
                     // 報到／指派（無 HIS 時的掛號替代路徑）
                     showAssign: false,
                     assignNid: '',
@@ -1456,6 +1482,17 @@
                                 + '（' + sessions[id].capacity + ' 人）').join('、') || '（無內容）';
                         return { date, dow: Number(S.dowOf(date)), closed: v.closed === true, text };
                     });
+                },
+                // 特殊日期一旦累積起來（停診、加診逐筆加入，只能移除不會自動清除），
+                // 找一筆特定日期就得從頭掃過整串——用日期、星期幾、內容描述一起比對，
+                // 只打「停診」或月份數字都找得到，不用記住完整日期格式。
+                filteredExceptionList() {
+                    const q = (this.exceptionSearch || '').trim().toLowerCase();
+                    if (!q) return this.exceptionList;
+                    return this.exceptionList.filter(e =>
+                        e.date.includes(q)
+                        || this.scheduleOptions.dowLabels[e.dow].includes(q)
+                        || e.text.toLowerCase().includes(q));
                 },
                 // 覆蓋理由的最終文字。結構化選項 + 必要時的補充說明。
                 // 選「其他」時必須實際寫出理由才算數——否則「其他」本身會變成
@@ -1838,6 +1875,12 @@
                         if (this.recentPatients && this.recentPatients.length > 0) {
                             const fp = this.recentPatients[0];
                             this.selectedPatient = fp;
+                            // 同一類疏漏，換了一個要接上的東西：switchToPatient() 與
+                            // openChatForPatient() 選定病患時都會呼叫 watchSelectedPatient()，
+                            // 這條初次載入自動選人的路徑本來沒有——於是 medicationDiscontinuations
+                            // 停在初始值 {}，已經停用的藥物在重新整理頁面後全部顯示回「作用中」，
+                            // 不是紀錄遺失，是畫面沒去接上已經存在的即時監聽。
+                            this.watchSelectedPatient(fp.id);
                             // 交互作用關係圖的容器位於 v-else（selectedPatient 為真時才渲染）之內。
                             // 設定 selectedPatient 之後 Vue 尚未重繪，容器在這個 tick 還不存在，
                             // 因此必須等到下一個 tick 才能初始化 D3——否則 initD3Container()
@@ -1920,6 +1963,8 @@
                 document.removeEventListener('keydown', this._escHandler);
                 document.removeEventListener('click', this._closeDropdownHandler);
                 if (this._chatUnsub) this._chatUnsub();
+                if (this._medDiscUnsub) this._medDiscUnsub();
+                if (this._selectedPatientUnsub) this._selectedPatientUnsub();
                 this.destroyCharts();
             },
             methods: {
@@ -2068,6 +2113,24 @@
                     this.$nextTick(() => {
                         const el = document.querySelector(selector);
                         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    });
+                },
+                // 看診時間設定改為獨立頁面（不再是工作站捲動軸上的一段），
+                // 兩者互斥用 v-if 切換，而不是 scrollIntoView——避免離開時
+                // 仍把整份班表表單留在 DOM 裡（含大量 select，切走沒有意義的成本）。
+                goToWorkstation(anchor) {
+                    this.activeSection = 'workstation';
+                    if (anchor) { this.scrollTo(anchor); return; }
+                    this.$nextTick(() => {
+                        const main = document.querySelector('main');
+                        if (main) main.scrollTop = 0;
+                    });
+                },
+                goToSchedule() {
+                    this.activeSection = 'schedule';
+                    this.$nextTick(() => {
+                        const main = document.querySelector('main');
+                        if (main) main.scrollTop = 0;
                     });
                 },
                 // 側欄每一位病患的今日回報狀態。醫師要能一眼掃過清單看出
@@ -2303,13 +2366,35 @@
                     if (isNaN(start.getTime())) return false;
                     return (start.getTime() + med.durationDays * 86400000) < Date.now();
                 },
-                async loadMedicationDiscontinuations(pid) {
-                    try {
-                        this.medicationDiscontinuations = await DbService.getMedicationDiscontinuations(pid);
-                    } catch (e) {
-                        console.error('讀取停用紀錄失敗：', e);
-                        this.medicationDiscontinuations = {};
-                    }
+                // 選定病患時要接上的即時監聽：停用紀錄、以及該病患 patient_data
+                // 裡會即時變動的欄位（用藥、DDI 警示、提醒、服藥回報、統計）。
+                // 原本這裡是各自的一次性 loadXxx()，換病患、開藥、停藥都要手動
+                // 重抓一次；現在資料一變就自動推播進來，畫面不必等重新整理。
+                //
+                // 換病患前務必先取消前一組訂閱——不取消的話，前一位病患之後若
+                // 又被改動（例如另一位醫師同時在看診），推播會晚一步蓋掉現在
+                // 畫面上這位新選定病患的資料。三個呼叫端（初次自動選人、
+                // switchToPatient、openChatForPatient）統一都經過這個函式。
+                watchSelectedPatient(pid) {
+                    if (this._medDiscUnsub) { this._medDiscUnsub(); this._medDiscUnsub = null; }
+                    if (this._selectedPatientUnsub) { this._selectedPatientUnsub(); this._selectedPatientUnsub = null; }
+                    this.medicationDiscontinuations = {};
+                    this._medDiscUnsub = DbService.watchMedicationDiscontinuations(pid, (map) => {
+                        this.medicationDiscontinuations = map;
+                    });
+                    // 直接改 selectedPatient 上的欄位，而不是整個換掉物件——
+                    // selectedPatient 與 recentPatients 陣列裡的那一筆是同一個參考，
+                    // 換掉整個物件會讓側欄病患清單的狀態點失去連動。
+                    // pid 比對是多一層保險：理論上不會發生（上面已先取消訂閱），
+                    // 但求值順序若日後被改動，這裡能擋下把資料寫到錯的病患身上。
+                    this._selectedPatientUnsub = DbService.watchPatientData(pid, (data) => {
+                        if (!data || !this.selectedPatient || this.selectedPatient.id !== pid) return;
+                        this.selectedPatient.medications = data.medications || [];
+                        this.selectedPatient.ddiAlerts = data.ddiAlerts;
+                        this.selectedPatient.reminders = data.reminders;
+                        this.selectedPatient.adherenceLog = data.adherenceLog || {};
+                        this.selectedPatient.stats = data.stats;
+                    });
                 },
                 openDiscontinueModal(med) {
                     this.discontinueTarget = med;
@@ -2348,7 +2433,8 @@
                     }
                     const audit = await window.Audit.log(window.Audit.ACTIONS.MED_DISCONTINUE, pid,
                         { medId: med.id, drug: this.medName(med).zh, reason });
-                    await this.loadMedicationDiscontinuations(pid);
+                    // 不需要手動重抓——watchSelectedPatient() 訂閱的即時監聽
+                    // 會在這筆寫入生效的同時自動推播新的停用紀錄進來。
                     this.showDiscontinueModal = false;
                     this.discontinueBusy = false;
                     this.triggerToast(
@@ -2372,7 +2458,7 @@
                     // 醫師也沒有意識到自己看了。
                     this.nationalIdRevealed = false;
                     this.selectedPatient = p; this.triggerToast('同步成功', `載入 ${p.name} 的雲端資料`);
-                    this.loadMedicationDiscontinuations(p.id);
+                    this.watchSelectedPatient(p.id);
                     this.$nextTick(() => {
                         const el = document.getElementById('patient-station'); if (el) el.scrollIntoView({ behavior: 'smooth' });
                         this.initD3Container(); this.loadScenario(this.scenarioFor(p));
@@ -2474,7 +2560,7 @@
                     this.overrideReasonNote = '';
                     this.showOverrideModal = false;
                     this.submitError = '';
-                    this.newRx = { drugName: '', dosage: '', instruction: '', takeHome: true, reminderTimes: [] };
+                    this.newRx = { drugName: '', dosage: '', instruction: '', takeHome: true, reminderTimes: [], durationDays: null };
                     this.ddiRulesUnavailable = false;
                 },
                 toggleReminderTime(time) {
@@ -2784,7 +2870,7 @@
                     const patient = this.recentPatients.find(p => p.id === patientId)
                         || { id: patientId, name: patientName || patientId, status: '警告', lastCheck: '-' };
                     this.selectedPatient = patient;
-                    this.loadMedicationDiscontinuations(patient.id);
+                    this.watchSelectedPatient(patient.id);
                     this.$nextTick(() => {
                         const el = document.getElementById('patient-station'); if (el) el.scrollIntoView({ behavior: 'smooth' });
                         this.initD3Container(); this.loadScenario(this.scenarioFor(patient));
