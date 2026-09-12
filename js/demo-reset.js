@@ -28,6 +28,12 @@
 //     hasActiveCareRelation() 判斷時自然失效，不需要、也無法主動清除。
 //   - 不動 doctor_data/main、insurance_data/main：db-service.js 沒有任何
 //     路徑會寫入這兩份文件，它們是靜態設定，不會被展示過程污染。
+//   - 不清 appointment_counters：號碼一經發出就固定、取消不遞補（見
+//     firestore.rules 的門診班表一節），把計數器歸零會讓新掛號拿到
+//     已經有人用過的號碼，也就會撞上既有掛號文件而整批寫入失敗。
+//     示範用的號碼從目前的數字繼續往下發即可。
+//   - doctor_schedules/doctor 則是「重設」而非「不動」：它是示範醫師的
+//     門診班表，沒有它病患端就看不到叫號預約這個功能。
 window.DemoReset = (function () {
 
   // 與 firestore.rules 的 isDemoPatientUsername() 保持一致——見該處註解。
@@ -252,8 +258,8 @@ window.DemoReset = (function () {
     if (!gate.ok) return { ok: false, reason: 'cooldown', remainingMs: gate.remainingMs };
 
     const summary = { patients: 0, careCases: 0, claims: 0, policies: 0,
-      appointmentsCancelled: 0, appointmentCreated: false, conversationsCleared: 0,
-      warnings: [] };
+      appointmentsCancelled: 0, appointmentCreated: false, scheduleSeeded: false,
+      conversationsCleared: 0, warnings: [] };
 
     // 各區塊互相獨立、各自 try/catch：任一區塊失敗（例如規則尚未部署、
     // 網路中斷）不應讓已經成功的區塊也一併回報失敗。呼叫端據 warnings
@@ -331,6 +337,36 @@ window.DemoReset = (function () {
       summary.appointmentCreated = true;
     } catch (e) {
       summary.warnings.push('掛號紀錄：' + (e.message || e));
+    }
+
+    // 3b) 示範醫師的門診班表。沒有這一份，病患端的醫師選單會是空的，
+    //     掛號只剩下「以醫師帳號掛號」那條舊制路徑——評審打開就看不到
+    //     叫號與預估時間這個功能。週一到週五各排早診與午診。
+    //
+    //     admin 可以寫任一位醫師的班表（見 firestore.rules 的 isAdmin 分支）；
+    //     這裡刻意不設 exceptions，讓示範資料不會因為某天被停診而看起來壞掉。
+    try {
+      const weekly = {};
+      [1, 2, 3, 4, 5].forEach(dow => {
+        weekly[String(dow)] = {
+          am: { start: '09:00', end: '12:00', capacity: 30 },
+          pm: { start: '14:00', end: '17:00', capacity: 30 }
+        };
+      });
+      await window.db.collection('doctor_schedules').doc(DEMO_DOCTOR).set({
+        username: DEMO_DOCTOR,
+        displayName: '李小美醫師',
+        department: '一般內科',
+        avgMinutes: 8,
+        bookingWindowDays: 30,
+        weekly,
+        exceptions: {},
+        updatedBy: DEMO_DOCTOR,
+        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+      });
+      summary.scheduleSeeded = true;
+    } catch (e) {
+      summary.warnings.push('門診班表：' + (e.message || e));
     }
 
     // 4) 醫病對話：僅白名單帳號可被刪除（firestore.rules 的

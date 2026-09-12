@@ -85,33 +85,140 @@ window.DbService = {
     }
   },
 
-  // --- Safety Score Computation ---
-  // 回傳 null 代表「無法評分」，呼叫端必須顯示「尚無足夠資料」而非任何數字。
+  // ── 用藥安全參考分數 ─────────────────────────────────────────────────
   //
-  // 為何空的 ddiAlerts 也回傳 null：系統目前沒有任何流程會自動計算並寫入 ddiAlerts
-  // （addMedicationToPatient 只寫 medications），因此空陣列的真正含意是
-  // 「從未做過交互作用評估」，而不是「已確認無交互作用」。
-  // 若把未評估當成滿分，等於對病患與核保端主動製造錯誤的安全感——
-  // 這與 fail-open 是同一種錯誤，只是換到了分數上。
-  computeSafetyScore(medications, ddiAlerts) {
-    if (!medications || medications.length === 0) return null;
-    if (!Array.isArray(ddiAlerts) || ddiAlerts.length === 0) return null;
+  // 【這不是臨床量表】下列權重是產品常數，不是任何已發表的藥學評分系統。
+  // 它的用途是把「有幾組交互作用、多嚴重、藥有多少種」壓成一個可比較的數字，
+  // 讓病患看得出變化方向。任何把它當成臨床判斷依據的用法都是誤用，
+  // 因此介面上一律以「參考分數」稱之，並附免責說明與可展開的計分明細。
+  //
+  // 【只有這一份計分邏輯】曾經有兩份：db-service 這一份與 dashboard.html 內
+  // 自己寫的一份，兩者對 major 的對應不同（-35 對 -20），於是同一位病患在
+  // 醫師螢幕上是 80 分、在自己手機上是 65 分，而沒有人看得出該信哪一個。
+  // 所有呼叫端一律經過 scoreInputFromAnalysis() 進來，不得自行把引擎的
+  // severity 翻成中文字樣。
+  SCORE: {
+    BASE: 100,
+    CONTRAINDICATED_OR_MAJOR: 35,   // 極高風險
+    MODERATE: 20,                   // 高風險
+    MINOR_OR_UNGRADED: 8,           // 輕微／未分級
+    POLYPHARMACY_AT: 5,
+    POLYPHARMACY: 10
+  },
 
-    let score = 100;
-    for (const alert of ddiAlerts) {
-      if (alert.severity === '極高風險') score -= 35;
-      else if (alert.severity === '高風險') score -= 20;
-      else score -= 8;
+  // 把 DdiEngine.analyze() 的結果轉成計分輸入。
+  //
+  // 【為什麼需要這一層，不能直接傳 findings】
+  // 「引擎跑過、而且查無交互作用」與「從來沒有評估過」是完全不同的兩件事，
+  // 但兩者的 findings 都是空陣列。少了 assessed 這個旗標，前者會被顯示成
+  // 「尚未評估」——而那句話在畫面上，就緊鄰著同一份引擎結果產生的
+  //「本系統的知識庫未收錄您目前用藥之間的交互作用」。同一頁自我矛盾。
+  //
+  // ungraded（知識庫有記載但未標註嚴重度）也在這裡併入：引擎刻意把它與
+  // findings 分開回傳，先前計分只讀 findings，於是這些記載一路被扣 0 分——
+  // 等於對使用者宣稱它們不存在，正是 ddi-engine 那段註解在防的事。
+  scoreInputFromAnalysis(analysis) {
+    if (!analysis) return null;
+    const graded = this.legacyAlertsFromFindings(analysis.findings || []);
+    const ungraded = (analysis.ungraded || []).map(() => ({ severity: '未分級' }));
+    return {
+      assessed: true,
+      alerts: graded.concat(ungraded),
+      unevaluableCount: (analysis.unevaluable || []).length
+    };
+  },
+
+  _normalizeScoreInput(input) {
+    // 舊制形狀：儲存在病歷裡的 ddiAlerts 快照。
+    // 空陣列在這個形狀下的真正含意仍然是「從未評估過」——系統沒有任何流程
+    // 會自動計算並寫入該欄位（addMedicationToPatient 只寫 medications）。
+    // 把未評估當成滿分，是對病患與核保端主動製造錯誤的安全感。
+    if (Array.isArray(input)) {
+      return { assessed: input.length > 0, alerts: input, unevaluableCount: 0 };
     }
-    if (medications.length >= 5) score -= 10;
-    return Math.max(0, score);
+    if (input && typeof input === 'object') {
+      return {
+        assessed: input.assessed !== false,
+        alerts: input.alerts || [],
+        unevaluableCount: input.unevaluableCount || 0
+      };
+    }
+    return { assessed: false, alerts: [], unevaluableCount: 0 };
+  },
+
+  // 分數 + 逐項明細 + 但書。UI 用它把「這個分數怎麼來的」攤開給使用者看，
+  // 而不是丟一個無從檢查的數字。
+  safetyScoreBreakdown(medications, input) {
+    const meds = medications || [];
+    if (!meds.length) return { status: 'no-medications', score: null, lines: [], caveats: [] };
+
+    const n = this._normalizeScoreInput(input);
+    if (!n.assessed) return { status: 'not-assessed', score: null, lines: [], caveats: [] };
+
+    // 每一項用藥都無法比對時，這個分數涵蓋不到任何東西。
+    // 給 100 分再附一句但書，讀起來就是「滿分，但是…」——使用者記得的是滿分。
+    // 「無法評估」不可以被收斂成「安全」，這是 P0-3 那條規則在分數上的形式。
+    if (n.unevaluableCount >= meds.length) {
+      return {
+        status: 'all-unevaluable', score: null, lines: [],
+        caveats: ['您目前的 ' + meds.length + ' 項用藥都無法比對交互作用'
+          + '（藥名未收錄或為成分不定的複方），因此無法給出分數。']
+      };
+    }
+
+    const W = this.SCORE;
+    const lines = [{ label: '基礎分數', delta: W.BASE }];
+    const tally = { '極高風險': 0, '高風險': 0, '輕微或未分級': 0 };
+    for (const a of n.alerts) {
+      if (a.severity === '極高風險') tally['極高風險']++;
+      else if (a.severity === '高風險') tally['高風險']++;
+      else tally['輕微或未分級']++;
+    }
+
+    let score = W.BASE;
+    const rows = [
+      ['極高風險', W.CONTRAINDICATED_OR_MAJOR],
+      ['高風險', W.MODERATE],
+      ['輕微或未分級', W.MINOR_OR_UNGRADED]
+    ];
+    for (const [label, weight] of rows) {
+      const count = tally[label];
+      if (!count) continue;
+      const delta = -weight * count;
+      score += delta;
+      lines.push({ label: label + ' 交互作用 ' + count + ' 組（每組 −' + weight + '）', delta });
+    }
+
+    if (meds.length >= W.POLYPHARMACY_AT) {
+      score -= W.POLYPHARMACY;
+      lines.push({ label: '用藥 ' + meds.length + ' 種（' + W.POLYPHARMACY_AT + ' 種以上）', delta: -W.POLYPHARMACY });
+    }
+
+    const floored = Math.max(0, score);
+    if (floored !== score) lines.push({ label: '分數下限為 0', delta: null });
+
+    // 但書不是裝飾：無法評估的藥沒有被扣分，也沒有被證明安全。
+    // 不寫出來，這個分數就會被當成涵蓋了全部用藥。
+    const caveats = [];
+    if (n.unevaluableCount > 0) {
+      caveats.push('有 ' + n.unevaluableCount + ' 項用藥無法比對交互作用（藥名未收錄或為複方），'
+        + '本分數未涵蓋這些藥。');
+    }
+    if (!n.alerts.length) {
+      caveats.push('本次比對未在知識庫中找到您用藥之間的交互作用記載。'
+        + '這代表「查無記載」，不代表用藥必然安全。');
+    }
+    return { status: 'scored', score: floored, lines: lines, caveats: caveats };
+  },
+
+  // 回傳 null 代表「無法評分」，呼叫端必須顯示說明文字而非任何數字。
+  computeSafetyScore(medications, input) {
+    return this.safetyScoreBreakdown(medications, input).score;
   },
 
   // 供 UI 區分「無法評分」的兩種原因，以顯示精確的說明文字
-  safetyScoreStatus(medications, ddiAlerts) {
-    if (!medications || medications.length === 0) return 'no-medications';
-    if (!Array.isArray(ddiAlerts) || ddiAlerts.length === 0) return 'not-assessed';
-    return 'scored';
+  safetyScoreStatus(medications, input) {
+    return this.safetyScoreBreakdown(medications, input).status;
   },
 
   // --- Auth ---
@@ -479,6 +586,79 @@ window.DbService = {
       return ref.id;
     },
 
+    // 叫號掛號：醫師已公告班表時走這條。
+    //
+    // 【為什麼一定要用交易，而不是「先查人數再寫入」】
+    // 兩位病患同時按下掛號時，各自讀到的都是 11 人，於是兩人都算出自己是 12 號。
+    // runTransaction 對 counter 這份文件做樂觀鎖並自動重試，後到的那位會重讀到
+    // 12 而拿到 13 號。firestore.rules 的 getAfter() 交叉檢查與
+    // {doctor}__{date}__{session}__{seq} 這個文件 ID 是第二、第三道防線——
+    // 真的撞號時，後到者的寫入會落在既有文件上而變成 update，被規則擋下，
+    // 不會兩個人拿到同一號。
+    //
+    // 【號碼與預估時間的關係】
+    // 權威事實是 seq；scheduledAt 是由「診次開始時間 + (seq-1) x 平均看診分鐘」
+    // 推導出來的顯示值，規則驗不了這段算術（規則無法解析 '09:00' 做時間加法）。
+    // 顯示端要重算，不要盲信這個欄位——見 firestore.rules 同一段註解。
+    async bookQueued({ patient, patientName, doctor, doctorName, department,
+                       dateKey, session, schedule, note }) {
+      const S = window.DbService.schedules;
+      const info = S.sessionsFor(schedule, dateKey).find(s => s.id === session);
+      if (!info || !info.open) {
+        const e = new Error('該診次目前不開放預約');
+        e.stage = 'closed';
+        throw e;
+      }
+      const avgMinutes = Number(schedule.avgMinutes) || S.DEFAULTS.avgMinutes;
+      const counterRef = window.db.collection('appointment_counters')
+        .doc(S.counterId(doctor, dateKey, session));
+
+      const booked = await window.db.runTransaction(async (tx) => {
+        const snap = await tx.get(counterRef);
+        const taken = snap.exists ? (snap.data().taken || 0) : 0;
+        const seq = taken + 1;
+        if (seq > info.spec.capacity) {
+          const e = new Error('該診次已額滿');
+          e.stage = 'full';
+          throw e;
+        }
+        const estimatedAt = S.estimateAt(dateKey, info.spec, seq, avgMinutes);
+        const apptRef = window.db.collection('appointments')
+          .doc(S.appointmentId(doctor, dateKey, session, seq));
+
+        // 計數器與掛號必須在同一個交易裡——規則兩側都用 getAfter() 指認對方，
+        // 任一份單獨寫入都不會通過。
+        if (snap.exists) tx.update(counterRef, { taken: seq });
+        else tx.set(counterRef, { doctor, dateKey, session, taken: seq });
+
+        tx.set(apptRef, {
+          patient, patientName: patientName || patient,
+          doctor, doctorName: doctorName || doctor,
+          department: department || schedule.department || '一般內科',
+          dateKey, session, seq,
+          scheduledAt: window.firebase.firestore.Timestamp.fromDate(estimatedAt),
+          status: 'booked',
+          createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+          note: note || ''
+        });
+        return { id: apptRef.id, seq, estimatedAt };
+      });
+
+      // 與 create() 完全相同的授權後續與錯誤分階段，理由見上一個函式的長註解：
+      // 「掛號沒建立」與「掛號建立了但授權失敗」對病患的下一步完全不同。
+      try {
+        await this._grantRelation(patient, doctor);
+      } catch (e) {
+        const err = new Error('掛號已建立，但照護關係授予失敗');
+        err.stage = 'relation';
+        err.appointmentId = booked.id;
+        err.seq = booked.seq;
+        err.cause = e;
+        throw err;
+      }
+      return booked;
+    },
+
     // 醫師端：只查指向自己的掛號。
     // 刻意不在查詢中串 where(status) + orderBy(scheduledAt)——那需要複合索引，
     // 而索引未建立時查詢會直接失敗。資料量小，篩選與排序在前端做即可。
@@ -515,6 +695,149 @@ window.DbService = {
       if (remaining.length) return { relationRevoked: false, remaining: remaining.length };
       await this._revokeRelation(patient, doctor);
       return { relationRevoked: true, remaining: 0 };
+    }
+  },
+
+  // ── 門診班表 ─────────────────────────────────────────────────────────
+  //
+  // 醫師自己的看診時間，一位醫師一份 doctor_schedules/{username}。
+  // 病患端讀它來決定「哪天有診、哪個診次還有名額、我會是第幾號」。
+  //
+  // 【診次固定三個，時間只給預設選項】
+  // 與 dashboard.html 的 reminderSlots 同一個立場：不開放自由輸入時間，
+  // 避免一次輸錯格式就讓整份班表算不出時間。規則那邊也依賴診次是固定的
+  // Map key 才能做 O(1) 查詢（規則沒有迴圈，查不了陣列）。
+  schedules: {
+    SESSIONS: [
+      { id: 'am', label: '早診' },
+      { id: 'pm', label: '午診' },
+      { id: 'night', label: '夜診' }
+    ],
+    DOW_LABELS: ['週日', '週一', '週二', '週三', '週四', '週五', '週六'],
+    CAPACITY_OPTIONS: [5, 10, 15, 20, 25, 30, 40, 50, 60],
+    AVG_MINUTES_OPTIONS: [3, 5, 8, 10, 12, 15, 20, 30],
+    WINDOW_DAYS_OPTIONS: [7, 14, 30, 60, 90],
+    DEFAULTS: { avgMinutes: 8, bookingWindowDays: 30, capacity: 30 },
+
+    // 06:00~22:00，每 30 分鐘一格
+    TIME_OPTIONS: (function () {
+      const out = [];
+      for (let m = 6 * 60; m <= 22 * 60; m += 30) {
+        out.push(String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'));
+      }
+      return out;
+    })(),
+
+    sessionLabel(id) {
+      const s = this.SESSIONS.find(x => x.id === id);
+      return s ? s.label : (id || '');
+    },
+
+    // 星期幾的鍵。用當地時間逐項組 Date——new Date('2026-09-15') 會被當成 UTC
+    // 午夜解析，在 UTC+8 會退成前一天的星期，與 dayKey() 註解警告的是同一個坑。
+    dowOf(dateKey) {
+      const p = String(dateKey || '').split('-').map(Number);
+      return String(new Date(p[0], p[1] - 1, p[2]).getDay());
+    },
+
+    counterId(doctor, dateKey, session) {
+      return doctor + '__' + dateKey + '__' + session;
+    },
+    appointmentId(doctor, dateKey, session, seq) {
+      return doctor + '__' + dateKey + '__' + session + '__' + seq;
+    },
+
+    // 某一天三個診次各自的狀態。
+    // 【這段邏輯與 firestore.rules 的 sessionSpec()／sessionIsOpen() 是同一套，
+    //   改其中一邊必須同步改另一邊】——不一致時前端會顯示「可預約」而規則
+    //   拒絕寫入，病患看到的是一個按了沒反應的按鈕。
+    sessionsFor(schedule, dateKey) {
+      const sch = schedule || {};
+      const ex = (sch.exceptions || {})[dateKey] || {};
+      const closed = ex.closed === true;
+      const weekly = (sch.weekly || {})[this.dowOf(dateKey)] || {};
+      return this.SESSIONS.map(s => {
+        const spec = (ex.sessions || {})[s.id] || weekly[s.id] || null;
+        const open = !closed && !!spec
+          && typeof spec.start === 'string' && spec.start.length === 5
+          && Number(spec.capacity) > 0;
+        return { id: s.id, label: s.label, spec, open, closed, added: !!(ex.sessions || {})[s.id] };
+      });
+    },
+
+    // 預估看診時間 = 診次開始 + (號碼 - 1) x 平均看診分鐘
+    estimateAt(dateKey, spec, seq, avgMinutes) {
+      const d = String(dateKey).split('-').map(Number);
+      const t = String(spec.start).split(':').map(Number);
+      const at = new Date(d[0], d[1] - 1, d[2], t[0], t[1], 0, 0);
+      at.setMinutes(at.getMinutes() + (Math.max(1, seq) - 1) * (avgMinutes || this.DEFAULTS.avgMinutes));
+      return at;
+    },
+
+    timeText(date) {
+      return String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+    },
+
+    // 這一診是否已經開始（只對「今天」有意義）。規則的 withinBookingWindow()
+    // 刻意只做到「日」的粗略護欄——UTC 與台北差 8 小時，規則做不到分鐘級的判斷，
+    // 因此「今天下午兩點還能不能掛早診」這件事由這裡決定。
+    hasStarted(dateKey, spec, now) {
+      const ref = now || new Date();
+      if (dateKey !== window.DbService.adherence.dayKey(ref)) return false;
+      const t = String(spec.start).split(':').map(Number);
+      return (ref.getHours() * 60 + ref.getMinutes()) >= (t[0] * 60 + t[1]);
+    },
+
+    blank(username, displayName, department) {
+      return {
+        username,
+        displayName: displayName || username,
+        department: department || '一般內科',
+        avgMinutes: this.DEFAULTS.avgMinutes,
+        bookingWindowDays: this.DEFAULTS.bookingWindowDays,
+        weekly: {},
+        exceptions: {}
+      };
+    },
+
+    async get(username) {
+      const snap = await window.db.collection('doctor_schedules').doc(username).get();
+      return snap.exists ? snap.data() : null;
+    },
+
+    // 刻意沒有 listAll()：病患的掛號對象是既有的主治醫師，不需要、
+    // 也不該拿到全院醫師名冊。firestore.rules 因此只開放 get、關閉 list
+    // （與 patient_index 同一條理由）。要做醫師名錄請先改規則，別在這裡繞。
+
+    async save(username, schedule) {
+      await window.db.collection('doctor_schedules').doc(username).set({
+        username,
+        displayName: schedule.displayName || username,
+        department: schedule.department || '一般內科',
+        avgMinutes: Number(schedule.avgMinutes) || this.DEFAULTS.avgMinutes,
+        bookingWindowDays: Number(schedule.bookingWindowDays) || this.DEFAULTS.bookingWindowDays,
+        weekly: schedule.weekly || {},
+        exceptions: schedule.exceptions || {},
+        // 規則要求具名且等於伺服器時間，與 patient_summaries 的 attestedBy/At 同型
+        updatedBy: username,
+        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+      });
+    },
+
+    // 某位醫師某一天三個診次的已預約人數。
+    // 讀不到的診次視為 0 人——計數器要到第一個人掛號時才會被建立。
+    async getCounters(doctor, dateKey) {
+      const out = {};
+      await Promise.all(this.SESSIONS.map(async (s) => {
+        try {
+          const snap = await window.db.collection('appointment_counters')
+            .doc(this.counterId(doctor, dateKey, s.id)).get();
+          out[s.id] = snap.exists ? (snap.data().taken || 0) : 0;
+        } catch (e) {
+          out[s.id] = 0;
+        }
+      }));
+      return out;
     }
   },
 
@@ -697,9 +1020,13 @@ window.DbService = {
   // 同一份即時分析結果，而不是任由本函式退回去讀存量欄位。
   buildUnderwritingSummary(username, patientDoc, liveAnalysis) {
     const meds = (patientDoc && patientDoc.medications) || [];
-    const alerts = liveAnalysis && liveAnalysis.findings
-      ? this.legacyAlertsFromFindings(liveAnalysis.findings)
+    // 有即時分析就走 scoreInputFromAnalysis（帶 assessed 旗標與 ungraded／
+    // unevaluable），沒有才退回儲存的快照陣列。兩種形狀都由
+    // _normalizeScoreInput() 吸收，計分邏輯只有一份。
+    const scoreInput = liveAnalysis
+      ? this.scoreInputFromAnalysis(liveAnalysis)
       : (patientDoc && patientDoc.ddiAlerts) || [];
+    const alerts = Array.isArray(scoreInput) ? scoreInput : scoreInput.alerts;
     const alertCount = liveAnalysis && liveAnalysis.findings ? liveAnalysis.findings.length : alerts.length;
     const profile = (patientDoc && patientDoc.profile) || {};
     const age = Number(profile.age);
@@ -711,8 +1038,8 @@ window.DbService = {
       ageBand: band,
       medicationCount: meds.length,
       alertCount: alertCount,
-      safetyScore: this.computeSafetyScore(meds, alerts),
-      scoreStatus: this.safetyScoreStatus(meds, alerts)
+      safetyScore: this.computeSafetyScore(meds, scoreInput),
+      scoreStatus: this.safetyScoreStatus(meds, scoreInput)
     };
   },
 
