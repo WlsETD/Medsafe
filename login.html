@@ -339,12 +339,13 @@
                     slideDir: 'slide-left',
                     username: '', password: '', error: '', loading: false,
                     regName: '', regUsername: '', regPassword: '', regPasswordConfirm: '', agreeTerms: false, showTermsModal: false,
-                    // 全 4 個角色都顯示以完整展示系統功能。
-                    // doctor、patient01、insurance01：展示帳號，一鍵登入，供評審快速走完跨端流程。
-                    // admin：唯一具備停用帳號、改動系統設定、維護模式等破壞性權限的角色，
-                    // 其憑證不隨前端靜態檔案發佈，須由現場人員手動輸入。
-                    demoUsers: window.mockData.users.filter(u => ['admin', 'doctor', 'patient01', 'insurance01'].includes(u.username)),
-                    demoAutoLoginAccounts: ['doctor', 'patient01', 'insurance01'],
+                    // 保險端暫不對外展示（產品決策，2026-09-12）：insurance01 從
+                    // 展示帳號選單移除，但角色、頁面、規則與帳號本身完全不動——
+                    // 知道帳密的人仍可手動輸入 insurance01/123456 登入。
+                    // 之後要重新展示，把 'insurance01' 加回下面兩個陣列即可，
+                    // 不需要動其他任何檔案。
+                    demoUsers: window.mockData.users.filter(u => ['admin', 'doctor', 'patient01'].includes(u.username)),
+                    demoAutoLoginAccounts: ['doctor', 'patient01'],
                     carouselIndex: 0,
                     carouselDir: 'next',
                     carouselImages: ['images/slide1.png', 'images/slide2.png', 'images/slide3.png'],
