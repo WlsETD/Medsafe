@@ -25,8 +25,10 @@ window.auth = firebase.auth();
 // 少了這個參數，SDK 會打到預設的 us-central1 並得到 404 not-found，
 // 錯誤訊息不會提到區域，會看起來像「函式沒部署成功」。
 //
-// 只有載入了 firebase-functions-compat.js 的頁面（目前是 patient.html）
-// 才有 firebase.app().functions；其餘頁面此處靜默略過，不影響原有功能。
+// 只有載入了 firebase-functions-compat.js 的頁面（patient.html、family.html——
+// 後者雖然自己從不呼叫其他 callable，但 LIFF 登入本身就是呼叫
+// lineExchangeToken，見 js/liff-bridge.js）才有 firebase.app().functions；
+// 其餘頁面此處靜默略過，不影響原有功能。
 window.functions = (typeof firebase.app().functions === 'function')
   ? firebase.app().functions('asia-east1')
   : null;
