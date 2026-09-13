@@ -22,6 +22,8 @@
       "2026-09-06.md",
       "linebot.md",
       "LINE_DEVELOPMENT_PLAN.md",
+      "PROMPT_CHECKOUT_DEMO.md",
+      "PROMPT_LIFF_APPOINTMENTS.md",
       "functions/**",
       "*.bak",
       "firestore.rules.deployed.bak",
