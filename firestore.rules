@@ -354,6 +354,15 @@ service cloud.firestore {
     // participants 是這串對話的存取控制清單，在建立當下就必須寫對——
     // 事後補寫等於讓對話有一段時間無人可讀或人人可讀。且建立後不可變更，
     // 否則任何參與者都能把自己以外的人加進來，形同單方面轉發整串病歷對話。
+    //
+    // 【誠實的例外】functions/src/webhook.js 的 forwardSymptomReport()（回報不適
+    // 轉發，Phase 4）用 Admin SDK 寫入這個集合，不受此規則管轄——病患在 LINE
+    // 描述的不適會被寫成一則 from:'patient' 的訊息，若換了主治醫師（轉診）
+    // 還會把新醫師加進既有對話的 participants（舊醫師仍保留，不是取代）。
+    // 這不是規則層開了一個洞：Admin SDK 本來就完全不受本檔案管轄（見
+    // CLAUDE.md「Cloud Functions / LINE integration」一節），這裡只是提醒
+    // 「建立後不可變更 participants」這句話說的是*客戶端*寫入路徑，
+    // 不要誤以為 conversations.participants 在資料庫層真的永遠不會再變。
     match /conversations/{pid} {
       function convData() {
         return get(/databases/$(database)/documents/conversations/$(pid)).data;
@@ -1175,6 +1184,50 @@ service cloud.firestore {
     // 規則無法解析 '09:00' 做時間加法。因此權威事實是受規則約束的
     // dateKey / session / seq 三個欄位，scheduledAt 只是由它們推導出來的顯示值。
     // 顯示端應以 dateKey + seq 重算，不要盲信寫進來的 scheduledAt。
+    // ── 一個病患同時只能有一筆進行中的掛號（見 appointment_locks 一節）──
+    function apptLockPath(p) {
+      return /databases/$(database)/documents/appointment_locks/$(p);
+    }
+    function apptDocPath(aid) {
+      return /databases/$(database)/documents/appointments/$(aid);
+    }
+    // 這次寫入是否把該病患的掛號鎖指向這筆新掛號。
+    // 鎖本身能不能移動，由 appointment_locks 的規則判斷（舊掛號必須已結束）。
+    function lockMovesTo(aid) {
+      return getAfter(apptLockPath(request.resource.data.patient)).data.appointment == aid;
+    }
+
+    // ── 結帳（純示範）─────────────────────────────────────────────────
+    //
+    // 【這不是金流】掛號流程在送出前多一個「線上付款／到場付款」的確認畫面
+    // （patient.html），純粹是展示用途——本專案不申請 LINE Pay 商家帳號、
+    // 不串任何金流 API，兩個欄位只是掛號文件上的顯示用標記，不是收費紀錄。
+    // 因此值刻意帶 -demo／pending 字樣，不讓它看起來像一組真的收款確認碼——
+    // 與 fhirPseudonym、nationalId 等欄位「格式管得住、真實性管不住」是同一種
+    // 誠實表述，差別只在這裡連「格式」都是假的，是有意為之的展示標記。
+    //
+    // 【為什麼仍要在規則層驗證，而不是只在前端限制值】
+    // 與本檔案一貫立場相同：前端能限制的東西，攻擊者用 SDK 直接寫就繞得過去。
+    // 這裡雖然只是展示欄位、後果輕微，但「規則是唯一真正的存取控制邊界」
+    // 不因欄位重要性高低而有例外——否則日後若真的接上金流，這個先例會被
+    // 誤認為「顯示用欄位不必驗證」而繼續沿用。
+    //
+    // 【三條 create 路徑都要驗證，包含醫護櫃檯報到】
+    // 路徑 A／B 是病患自己送出，欄位來自新增的結帳確認畫面。路徑 C（醫護持
+    // 證件報到，dashboard.html 的現場報到流程）沒有結帳畫面，但為了讓三條
+    // 路徑寫出的掛號文件形狀一致（醫師端／管理端的列表才能無腦顯示付款標籤，
+    // 不必為了「這筆掛號來自哪條路徑」另外分支判斷欄位存不存在），
+    // js/db-service.js 在路徑 C 一律帶固定值 { paymentMethod: 'onsite',
+    // paymentStatus: 'pending-onsite' }——語意上也成立：現場報到本來就還沒
+    // 線上付款。只允許 (online, paid-demo) 與 (onsite, pending-onsite) 這兩組
+    // 精確配對，不允許任意組合，避免出現「線上付款、卻標到場」這種自相矛盾的紀錄。
+    function paymentFieldsOk() {
+      return (request.resource.data.paymentMethod == 'online'
+              && request.resource.data.paymentStatus == 'paid-demo')
+        || (request.resource.data.paymentMethod == 'onsite'
+            && request.resource.data.paymentStatus == 'pending-onsite');
+    }
+
     match /appointments/{aid} {
       // 病患讀自己的掛號；醫師只讀得到指向自己的那些；
       // 有效家屬同意的家屬讀得到該病患的掛號（掛號時間本來就不含身分證字號、
@@ -1212,13 +1265,21 @@ service cloud.firestore {
             && request.resource.data.status == 'booked'
             && request.resource.data.createdAt == request.time
             && request.resource.data.scheduledAt is timestamp
+            // 不可掛在已經過去的日期：過去日期的掛號會立刻被視為「已結束」而釋放
+            // 掛號鎖，等於用一筆假掛號繞過「一次只能一筆」。16 小時的換算見 apptDayOver()。
+            && request.resource.data.scheduledAt + duration.value(16, 'h') > request.time
             && request.resource.data.keys().hasOnly(
                  ['patient', 'patientName', 'doctor', 'doctorName', 'department',
-                  'scheduledAt', 'status', 'createdAt', 'note'])
+                  'scheduledAt', 'status', 'createdAt', 'note',
+                  'paymentMethod', 'paymentStatus'])
+            && paymentFieldsOk()
+            && lockMovesTo(aid)
            )
         // 路徑 B：叫號掛號。
         || (isOwnUsername(request.resource.data.patient)
             && queuedBookingWellFormed(aid)
+            && paymentFieldsOk()
+            && lockMovesTo(aid)
            )
         || (isDoctor()
             && request.resource.data.doctor == profile().username
@@ -1230,7 +1291,9 @@ service cloud.firestore {
             && request.resource.data.scheduledAt is timestamp
             && request.resource.data.keys().hasOnly(
                  ['patient', 'patientName', 'doctor', 'doctorName', 'department',
-                  'scheduledAt', 'status', 'createdAt', 'note'])
+                  'scheduledAt', 'status', 'createdAt', 'note',
+                  'paymentMethod', 'paymentStatus'])
+            && paymentFieldsOk()
             && hasActiveCareRelation(request.resource.data.patient)
            )
       );
@@ -1278,7 +1341,8 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(
              ['patient', 'patientName', 'doctor', 'doctorName', 'department',
               'scheduledAt', 'status', 'createdAt', 'note',
-              'dateKey', 'session', 'seq'])
+              'dateKey', 'session', 'seq',
+              'paymentMethod', 'paymentStatus'])
         && sessionIsOpen(request.resource.data.doctor, request.resource.data.dateKey,
              request.resource.data.session)
         && request.resource.data.seq <= sessionCapacity(request.resource.data.doctor,
@@ -1286,6 +1350,64 @@ service cloud.firestore {
         && withinBookingWindow(request.resource.data.doctor, request.resource.data.dateKey)
         && getAfter(counterPath(request.resource.data.doctor, request.resource.data.dateKey,
              request.resource.data.session)).data.taken == request.resource.data.seq;
+    }
+
+    // ── 掛號鎖：一個病患同時只能有一筆進行中的掛號 ──────────────────────
+    //
+    // 【為什麼需要一份獨立文件】
+    // 「這位病患是否已有進行中的掛號」需要查詢 appointments 集合，而規則不能查詢。
+    // 與 appointment_counters 同一種解法：另立一份以病患 username 為 ID 的文件，
+    // 記下「目前佔用名額的是哪一筆掛號」，讓規則能 O(1) 定位。
+    //
+    // 【兩份文件互相指認】
+    // 病患建立掛號（路徑 A／B）時，同一批次必須把鎖指向這筆新掛號（lockMovesTo）；
+    // 鎖這一側則要求：指向的掛號是這次批次才新建的、屬於本人，且鎖原本指向的舊掛號
+    // 已經結束。因此：不寫鎖的掛號會被拒絕、把鎖指向既有文件的寫入會被拒絕、
+    // 舊掛號仍進行中時第二筆掛號會被拒絕——兩人同時搶也一樣，後到的寫入會落在
+    // 已存在的鎖上變成 update，而舊掛號仍在進行中。
+    //
+    // 【「結束」的定義】已取消、已完診，或看診日已過（沒報到也沒被取消的掛號
+    // 不能永遠卡住病患）。取消掛號不需要動鎖——下一次掛號時規則自己去讀舊掛號的狀態。
+    // 與 js/db-service.js 的 DbService.appointments.holdsSlot() 是同一套判斷，
+    // 改一邊必須同步改另一邊，否則會出現「畫面讓你掛、規則卻拒絕」的按鈕。
+    //
+    // 【看診日已過的時區換算】dateKeyToTs() 產生的是 UTC 午夜＝台灣時間當天 08:00，
+    // 加 16 小時才是台灣時間的隔天 00:00。舊制掛號的 scheduledAt 由前端以
+    // new Date('YYYY-MM-DD') 寫入，同樣是 UTC 午夜，換算相同。
+    //
+    // 【範圍與誠實的限制】
+    //   ・只限制病患自己掛號（路徑 A／B）。醫師櫃檯報到（路徑 C）與管理員不受限——
+    //     現場報到是已經發生的就診事實，不應被一筆預約擋下。
+    //   ・本規則上線前就已經有進行中掛號、卻還沒有鎖文件的病患，第一次掛號時
+    //     規則看不到那筆舊掛號（無法查詢），會放行一次；之後即受限制。
+    //     前端的 holdsSlot() 檢查會先擋住正常操作。
+    function apptDayOver(a) {
+      return (('dateKey' in a) && dateKeyWellFormed(a.dateKey)
+              && dateKeyToTs(a.dateKey) + duration.value(16, 'h') < request.time)
+        || (!('dateKey' in a) && a.scheduledAt is timestamp
+            && a.scheduledAt + duration.value(16, 'h') < request.time);
+    }
+    function apptNoLongerHolds(aid) {
+      return !exists(apptDocPath(aid))
+        || get(apptDocPath(aid)).data.status in ['cancelled', 'finished']
+        || apptDayOver(get(apptDocPath(aid)).data);
+    }
+    match /appointment_locks/{p} {
+      allow read: if isAdmin() || isOwnUsername(p);
+      allow create, update: if isAdmin()
+        || (isOwnUsername(p)
+            && request.resource.data.keys().hasOnly(['patient', 'appointment', 'updatedAt'])
+            && request.resource.data.patient == p
+            && request.resource.data.appointment is string
+            && request.resource.data.appointment.size() > 0
+            && request.resource.data.updatedAt == request.time
+            // 只能指向「這一批次才新建」的本人掛號——否則可以把鎖指向一筆
+            // 早已取消的舊掛號，讓鎖永遠處於「已釋放」狀態
+            && !exists(apptDocPath(request.resource.data.appointment))
+            && existsAfter(apptDocPath(request.resource.data.appointment))
+            && getAfter(apptDocPath(request.resource.data.appointment)).data.patient == p
+            && (resource == null || apptNoLongerHolds(resource.data.appointment)));
+      allow delete: if isAdmin();
     }
 
     match /insurance_data/{doc} {

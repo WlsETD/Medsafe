@@ -43,23 +43,116 @@ const CODE_RE = new RegExp('^[' + bindings.ALPHABET + ']{' + bindings.CODE_LEN +
 // 查詢是明確的指令式說法，回報是敘述句，因此改為錨定整句。
 const CABINET_RE = /^(藥箱|我的藥|我的用藥|用藥清單|查藥|查用藥|吃什麼藥?|有哪些藥)[？?。!！]*$/;
 
+// 「查服藥時間表」的意圖。與 CABINET_RE 同樣錨定整句，理由相同——
+// 這是按鈕會送出的固定文字，不是自由文字，不需要也不該交給 NLU 判斷。
+//
+// 【這格原本是 uri，直接開免登入的 schedule.html】使用者反映按下去
+// 「不要跳出網頁」，改成跟「查藥箱」同一種形狀：Rich Menu／選單按鈕送出
+// 固定文字，Bot 用 Reply 回一段純文字時間表，不開瀏覽器。schedule.html
+// 本身（免登入、可列印）繼續保留給網頁版使用，這裡只是 LINE 內的路徑改了。
+const SCHEDULE_RE = /^(服藥時間表|用藥時間表|時間表|提醒時間|吃藥時間)[？?。!！]*$/;
+
 // 呼叫選單的意圖。與 CABINET_RE 同樣錨定整句，理由相同。
 const MENU_RE = /^(選單|menu|說明|help|功能|你會什麼)[？?。!！]*$/i;
 
-// 「回報不適」目前只是 Rich Menu 上的預告格（見 richmenu.js），功能尚未
-// 實作（Phase 4）。按下去要有誠實的「開發中」回覆，不能悄悄無反應或被
-// NLU 自由文字誤收——對長輩來說「按了沒反應」比「還沒做完」更容易
-// 讓人以為系統壞了。Phase 4 做完後，把這個分支從 COMING_SOON 移除、
-// 換成真正的處理邏輯即可。
+// 「回報不適」意圖（Phase 4）：按鈕觸發，兩步式——先請病患描述，
+// 下一則自由文字才是真正要轉達給醫師的內容。與 CABINET_RE 同樣錨定整句。
 //
-// 「預約」原本也在這裡，Phase 3（LIFF 掛號）做完後移到下面獨立的
-// BOOKING_RE 分支——理由是它現在視 LIFF_ID 有沒有設定而有兩種可能的
-// 回應，不再是單純的固定文字，不適合再跟一句話對一句話的 COMING_SOON
-// 表放在一起。
-const COMING_SOON = {
-  回報不適: '「回報不適」還在開發中，若有不適請直接聯繫醫師或藥師，敬請期待。'
-};
-const COMING_SOON_RE = new RegExp('^(' + Object.keys(COMING_SOON).join('|') + ')[？?。!！]*$');
+// 【為什麼要兩步，不能像藥箱／時間表一樣一步到位】
+// 藥箱／時間表回覆的是系統已經有的資料；回報不適要傳的是病患這次想說的話，
+// 而 LINE 的 message action 只能送出固定文字（按鈕本身寫的那句），沒辦法
+// 讓使用者在點擊的同一動作中夾帶自訂內容。因此設計成：按下「回報不適」→
+// Bot 回覆請描述 → 下一則自由文字才是內容，寫進 conversations（與網頁版
+// 留言板同一份資料、同一種形狀，見 forwardSymptomReport() 的說明），
+// 讓醫師在既有的留言板介面看得到，不必另外開一個「不適回報」的獨立系統。
+//
+// 【為什麼不直接讓自由文字 NLU 判斷「這是不是在講不適」】
+// 那樣任何一句「有點不舒服」都可能被誤判要不要轉發給醫師，不確定性太高。
+// 兩步式讓病患自己明確決定「這句話是要轉給醫師看的」，不是系統用猜的——
+// 與本專案一貫「系統不做醫療判斷」的立場一致。
+const SYMPTOM_RE = /^回報不適[？?。!！]*$/;
+
+// 「等待病患描述不適」的短效旗標，存在 line_users/{lineUserId} 這份文件上
+// （本來就是 Admin SDK 專用、對前端全面關閉的集合，見 firestore.rules 的
+// LINE 一節），不另開新集合。10 分鐘內收到的下一則自由文字視為回報內容，
+// 逾時則正常落回 NLU／其餘分支——避免「按過一次之後，這支 LINE 從此把
+// 所有話都當成回報不適」這種靜默改變行為的地雷。
+const SYMPTOM_WAIT_MS = 10 * 60 * 1000;
+
+function startSymptomReport(token, event, lineUserId) {
+  admin.firestore().collection('line_users').doc(lineUserId)
+    .set({ awaitingSymptomUntil: Date.now() + SYMPTOM_WAIT_MS }, { merge: true })
+    .catch(e => logger.error('回報不適旗標寫入失敗', { lineUserId, error: e.message }));
+  return lineApi.reply(token, event.replyToken, lineApi.withQuickReply(
+    lineApi.textMessage('請直接描述您的不適，我會轉達給您的主治醫師。例如：「頭很暈」、「吃藥後想吐」。'),
+    menuItems()));
+}
+
+// 這位病患目前的主治醫師，跟 patient.html 的 loadAppointments() 用同一套
+// 判斷：優先看「最近一筆進行中的掛號」（新制），查無掛號才退回
+// patient_data.assignedDoctor（既有病患的過渡欄位）——改一邊要同步改另一邊，
+// 否則網頁版顯示的主治醫師跟 LINE 這裡轉發訊息的對象會對不上。
+async function currentDoctorOf(username) {
+  const db = admin.firestore();
+  const snap = await db.collection('appointments').where('patient', '==', username).get();
+  const active = snap.docs.map(d => d.data())
+    .filter(a => a.status === 'booked' || a.status === 'arrived');
+  if (active.length) {
+    const keyOf = (a) => a.dateKey
+      || (a.scheduledAt && a.scheduledAt.toDate ? dayKey(a.scheduledAt.toDate()) : '');
+    active.sort((x, y) => String(keyOf(y)).localeCompare(String(keyOf(x))));
+    if (active[0].doctor) return active[0].doctor;
+  }
+  const pd = await db.collection('patient_data').doc(username).get();
+  return (pd.exists && pd.data().assignedDoctor) || null;
+}
+
+// 把病患剛描述的不適寫進 conversations——與 js/chatStore.js 的 addMessage()
+// 讀寫同一份集合、同一種文件形狀（conversations/{patient} 的
+// patient/doctor/participants，子集合 messages 的 from/text/at）。
+// 兩處若形狀不同步，網頁版留言板會漏顯示這一則、或醫師端的存取規則
+// （靠 participants 判斷）擋下本該看得到的對話。
+//
+// 內容前面加註記，讓事後在網頁版留言板看歷史紀錄的人分得出這則是
+// LINE 自動轉達的、不是病患自己在網頁上打的——與 adherenceLog 標示為
+// 病患自述、db-service.js 各處「標明資料來源」的一貫做法相同。
+const SYMPTOM_PREFIX = '【LINE 回報不適】';
+
+async function forwardSymptomReport(token, event, user, lineUserId, text) {
+  await admin.firestore().collection('line_users').doc(lineUserId)
+    .update({ awaitingSymptomUntil: admin.firestore.FieldValue.delete() }).catch(() => {});
+
+  const doctor = await currentDoctorOf(user.username);
+  const db = admin.firestore();
+  const convRef = db.collection('conversations').doc(user.username);
+  const convSnap = await convRef.get();
+  if (!convSnap.exists) {
+    const participants = [user.username];
+    if (doctor) participants.push(doctor);
+    await convRef.set({
+      patient: user.username, doctor: doctor || null, participants,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  } else if (doctor && !convSnap.data().participants.includes(doctor)) {
+    // 既有對話串換了主治醫師（轉診／換醫師）：把新醫師加進 participants，
+    // 否則這則新轉達的訊息，新醫師的規則權限讀不到自己的病患對話。
+    // 舊醫師仍保留在名單內——歷史對話本來就是他當時參與的紀錄，不可抹除。
+    await convRef.update({
+      participants: admin.firestore.FieldValue.arrayUnion(doctor)
+    });
+  }
+  await convRef.collection('messages').add({
+    from: 'patient',
+    text: SYMPTOM_PREFIX + text,
+    at: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  const msg = doctor
+    ? '已將您的狀況轉達給主治醫師，請留意後續回覆。若情況緊急，請直接撥打 119 或立即就醫。'
+    : '已記錄您的狀況，但目前查無主治醫師可轉達——請先於 MedSafe 網頁完成掛號、建立醫病關係。若情況緊急，請直接撥打 119 或立即就醫。';
+  return lineApi.reply(token, event.replyToken,
+    lineApi.withQuickReply(lineApi.textMessage(msg), menuItems()));
+}
 
 // 「線上預約」——與 CABINET_RE／MENU_RE 同樣錨定整句，理由相同。
 // 掛號本身完全重用 patient.html 既有的 activeView === 'appointments'
@@ -100,7 +193,7 @@ function menuItems() {
     { label: '線上預約', text: '預約' },
     { label: '回報不適', text: '回報不適' },
     { label: '用藥查詢', uri: richmenu.SITE_ORIGIN + '/check.html' },
-    { label: '服藥時間表', uri: richmenu.SITE_ORIGIN + '/schedule.html' }
+    { label: '服藥時間表', text: '服藥時間表' }
   ];
   const liffId = LIFF_ID.value();
   if (liffId) {
@@ -273,16 +366,9 @@ async function handleText(token, event) {
     return lineApi.reply(token, event.replyToken, bookingReply());
   }
 
-  // ── 開發中功能的誠實提示（見 COMING_SOON 註解）──
-  {
-    // 用捕獲群組取關鍵字本身，而不是拿整段 text 去查表——
-    // 允許「回報不適！」這種帶標點的說法，同時不會因為標點對不上表裡的
-    // key 而查表落空，讓這句話悄悄滑到下面的自由文字 NLU 去。
-    const m = text.match(COMING_SOON_RE);
-    if (m) {
-      return lineApi.reply(token, event.replyToken,
-        lineApi.withQuickReply(lineApi.textMessage(COMING_SOON[m[1]]), menuItems()));
-    }
+  // ── 回報不適（見 SYMPTOM_RE／startSymptomReport 註解）──
+  if (SYMPTOM_RE.test(text)) {
+    return startSymptomReport(token, event, lineUserId);
   }
 
   // ── 藥箱查詢 ──
@@ -292,6 +378,25 @@ async function handleText(token, event) {
   // 留給真正需要主動打斷對方的事——每日提醒與交互作用警示。
   if (CABINET_RE.test(text)) {
     return replyCabinet(token, event, user.username);
+  }
+
+  // ── 服藥時間表查詢 ──（同一個理由：Reply 免費，隨時可查）
+  if (SCHEDULE_RE.test(text)) {
+    return replySchedule(token, event, user.username);
+  }
+
+  // ── 回報不適：接續上一步的等待狀態 ──
+  //
+  // 擺在所有固定指令分支之後、LLM 之前：先讓「藥箱」「時間表」這類明確
+  // 指令照舊優先處理（按過回報不適後，若改口查藥箱，不該被誤轉成不適內容）；
+  // 沒有更明確的意圖時，才視為上一步請他描述的那句話。10 分鐘逾時的旗標
+  // 一律當作沒按過，正常落回下面的 NLU，不誤把不相關的閒聊轉給醫師。
+  {
+    const lu = await admin.firestore().collection('line_users').doc(lineUserId).get();
+    const until = lu.exists && lu.data().awaitingSymptomUntil;
+    if (typeof until === 'number' && until > Date.now()) {
+      return forwardSymptomReport(token, event, user, lineUserId, text);
+    }
   }
 
   // ── 自由文字（LLM 理解層）──
@@ -345,6 +450,30 @@ async function replyCabinet(token, event, username, patientData) {
     // 「無法評估」與「沒有交互作用」是兩件事，不可合併成一句「安全」。
     // 這正是稽核報告 P0-3 抓到過的錯誤形狀（見 ddi-engine.js 註解）。
     lines.push('', '另有 ' + result.unevaluable.length + ' 種藥系統無法判讀，不代表沒有交互作用。');
+  }
+  return lineApi.reply(token, event.replyToken,
+    lineApi.withQuickReply(lineApi.textMessage(lines.join('\n')), menuItems()));
+}
+
+// 服藥時間表：純文字版本，與 replyCabinet() 同一種「Reply、免費、隨時可查」設計。
+// reminders[] 的 {time, text} 形狀與 flex.js 的 dailyReminderCard() 讀的是同一份欄位——
+// 每日卡片與這裡的文字列表必須顯示同樣的時段與內容，改一邊要同步改另一邊。
+async function replySchedule(token, event, username) {
+  const snap = await admin.firestore().collection('patient_data').doc(username).get();
+  if (!snap.exists) {
+    return lineApi.reply(token, event.replyToken, lineApi.textMessage('查無您的用藥資料。'));
+  }
+  const data = snap.data();
+  const reminders = Array.isArray(data.reminders) ? data.reminders : [];
+  if (!reminders.length) {
+    // 與 reminder.js 的 lineSendTestReminder 用同一句話，不要各自發明不同的說法
+    return lineApi.reply(token, event.replyToken, lineApi.withQuickReply(
+      lineApi.textMessage('尚未設定用藥提醒。請於 MedSafe 網頁的病患端設定每日提醒時段。'), menuItems()));
+  }
+  const sorted = reminders.slice().sort((x, y) => String(x.time).localeCompare(String(y.time)));
+  const lines = ['您的服藥時間表', ''];
+  for (const r of sorted) {
+    lines.push('・' + r.time + '　' + (r.text || ''));
   }
   return lineApi.reply(token, event.replyToken,
     lineApi.withQuickReply(lineApi.textMessage(lines.join('\n')), menuItems()));
@@ -465,9 +594,14 @@ async function handleFreeText(token, event, user, text) {
       case 'help':
         return lineApi.reply(token, event.replyToken,
           lineApi.withQuickReply(lineApi.textMessage(HELP), menuItems()));
-      case 'discomfort':
-        return lineApi.reply(token, event.replyToken,
-          lineApi.withQuickReply(lineApi.textMessage(COMING_SOON['回報不適']), menuItems()));
+      case 'discomfort': {
+        // 自由文字裡已經包含完整的敘述（例如「我頭很暈」），不必再走
+        // 「按鈕→請描述→下一句」兩步——這裡的 text 本身就是要轉達的內容，
+        // 與 SYMPTOM_RE／forwardSymptomReport() 是同一個轉達邏輯，
+        // 只是省了中間那一步的往返。
+        const lineUserId = event.source && event.source.userId;
+        return forwardSymptomReport(token, event, user, lineUserId, text);
+      }
       default:
         return lineApi.reply(token, event.replyToken,
           lineApi.withQuickReply(lineApi.textMessage(OUT_OF_SCOPE), menuItems()));
@@ -624,8 +758,9 @@ async function claimEvent(event) {
 }
 
 // 供 tests/line-webhook.test.mjs 驗證 LIFF_ID 有無設定時的選單／掛號回覆差異。
-exports._internal = { menuItems, bookingReply, BOOKING_RE, COMING_SOON_RE,
-  CABINET_RE, MENU_RE, OUT_OF_SCOPE, weekdaySuffix, SESSION_LABEL };
+exports._internal = { menuItems, bookingReply, BOOKING_RE,
+  CABINET_RE, MENU_RE, SCHEDULE_RE, SYMPTOM_RE, SYMPTOM_PREFIX, currentDoctorOf,
+  OUT_OF_SCOPE, weekdaySuffix, SESSION_LABEL };
 
 exports.lineWebhook = onRequest(
   {

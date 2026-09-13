@@ -10,11 +10,15 @@
 //      保管密鑰——這正是先前把自架 FHIR 代理整個砍掉的同一條原則。
 //      LINE 整合無法在不新增伺服器端的前提下完成。
 //
-//   2. Admin SDK 的使用範圍刻意收得很窄，只有四件事：
+//   2. Admin SDK 的使用範圍刻意收得很窄，只有這幾件事：
 //      · 核銷綁定碼、寫入 line_bindings / line_users（前端不可自行宣稱綁定）
 //      · 推播時讀取 patient_data 的 reminders 與 medications
 //      · 從 LINE 的 postback 寫入 adherenceLog
 //      · 由已驗證的 LINE ID Token 換發 Firebase Custom Token（P2）
+//      · 回報不適轉發／醫師回覆通知（Phase 4）：把病患在 LINE 描述的不適寫進
+//        conversations（與網頁版留言板同一份資料），並在醫師於留言板回覆時
+//        推播通知——寫入／推播的都是這一則訊息本身，不是撈整份病歷出來顯示，
+//        見 webhook.js 的 forwardSymptomReport() 與 chat-push.js 檔頭說明。
 //
 //   3. 【最重要】凡是「把病歷讀出來顯示給人看」的路徑，一律不走 Admin SDK，
 //      而是由 LIFF 換發 Custom Token 後用前端 SDK 讀取，讓 firestore.rules
@@ -40,6 +44,12 @@ exports.lineCreateLinkCode = callable.lineCreateLinkCode;
 exports.lineUnbind = callable.lineUnbind;
 exports.lineCreateFamilyInviteCode = callable.lineCreateFamilyInviteCode;
 
+// 管理員刪除使用者（連同 LINE 綁定、Auth 帳號與所有以 username 串起的關係文件）。
+// 不屬於上面四件事的任何一件，但同樣是「前端做不到、必須 Admin SDK」的操作：
+// Auth 帳號只有 Admin SDK 刪得掉，LINE 集合對前端全面關閉。範圍與理由見該檔檔頭。
+const adminUsers = require('./src/admin-users');
+exports.adminDeleteUser = adminUsers.adminDeleteUser;
+
 const richmenu = require('./src/richmenu');
 exports.lineSetupRichMenu = richmenu.lineSetupRichMenu;
 
@@ -54,9 +64,17 @@ exports.lineSendTestReminder = reminder.lineSendTestReminder;
 const prescription = require('./src/prescription');
 exports.onPrescriptionAdded = prescription.onPrescriptionAdded;
 
+// 醫師在留言板回覆病患（回報不適轉發，或直接留言）時，推播通知到 LINE。
+const chatPush = require('./src/chat-push');
+exports.onDoctorMessageAdded = chatPush.onDoctorMessageAdded;
+
 // ── P2：LIFF 身分橋接 ─────────────────────────────────────────────────
 // LINE_LOGIN_CHANNEL_ID 用 defineString（非機密，比照 LINE_BASIC_ID），
 // 預設空字串，未設定時 lineExchangeToken 會在呼叫當下自行拒絕
 // （failed-precondition），因此可以隨時安全部署，不需要等設定完成。
 const exchange = require('./src/exchange');
 exports.lineExchangeToken = exchange.lineExchangeToken;
+// 首次用 LINE 登入、尚未有任何帳號時的自助註冊——與 lineExchangeToken
+// 共用同一支 LIFF ID Token 驗證邏輯，差別只在查無綁定時的後續動作
+// （見 exchange.js 檔內說明）。
+exports.lineRegisterPatient = exchange.lineRegisterPatient;

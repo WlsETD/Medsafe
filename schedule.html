@@ -83,7 +83,7 @@
     <main class="max-w-3xl mx-auto px-4 sm:px-6 -mt-8 pb-16 no-print">
         <div class="bg-white rounded-[32px] shadow-premium p-6 sm:p-8 space-y-6">
 
-            <div v-if="importedNotice" class="p-3 bg-mint border border-primary/20 rounded-2xl text-[11px] font-bold text-deep">
+            <div v-if="importedNotice" class="p-3 bg-mint border border-primary/20 rounded-lg text-[11px] font-bold text-deep">
                 ✓ 已帶入 MedSafe 帳號中目前的用藥提醒，可直接調整後列印。
             </div>
 
@@ -91,12 +91,12 @@
                 <div>
                     <label class="block text-[11px] font-black text-lightText uppercase tracking-widest mb-1.5 px-1">姓名（選填）</label>
                     <input v-model="patientName" type="text" placeholder="例如：媽媽、王奶奶"
-                           class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-5 outline-none transition-all font-bold text-title">
+                           class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-lg py-3 px-5 outline-none transition-all font-bold text-title">
                 </div>
                 <div>
                     <label class="block text-[11px] font-black text-lightText uppercase tracking-widest mb-1.5 px-1">日期</label>
                     <input v-model="dateLabel" type="text" placeholder="例如：每日固定服用"
-                           class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-5 outline-none transition-all font-bold text-title">
+                           class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-lg py-3 px-5 outline-none transition-all font-bold text-title">
                 </div>
             </div>
 
@@ -111,18 +111,18 @@
                 </div>
                 <div class="flex flex-wrap gap-3">
                     <input v-model="newItem.time" type="time"
-                           class="w-32 bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-4 outline-none transition-all font-bold text-title">
+                           class="w-32 bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-lg py-3 px-4 outline-none transition-all font-bold text-title">
                     <input v-model="newItem.text" type="text" placeholder="藥品名稱與用法，例如：阿斯匹靈 1 顆（飯後）"
                            @keydown.enter="addItem"
-                           class="flex-1 min-w-[220px] bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 px-5 outline-none transition-all font-bold text-title">
+                           class="flex-1 min-w-[220px] bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-lg py-3 px-5 outline-none transition-all font-bold text-title">
                     <button @click="addItem" :disabled="!newItem.time || !newItem.text.trim()"
-                            class="px-6 py-3 hero-gradient text-white font-black rounded-2xl disabled:opacity-40 transition-all shrink-0">加入</button>
+                            class="px-6 py-3 hero-gradient text-white font-black rounded-lg disabled:opacity-40 transition-all shrink-0">加入</button>
                 </div>
             </div>
 
             <div v-if="items.length" class="border-t border-slate-100 pt-6 space-y-2">
                 <label class="block text-[11px] font-black text-lightText uppercase tracking-widest px-1 mb-2">目前清單（依時間排序）</label>
-                <div v-for="(it, i) in sortedItems" :key="it.id" class="flex items-center gap-4 bg-bgMain rounded-2xl px-5 py-3">
+                <div v-for="(it, i) in sortedItems" :key="it.id" class="flex items-center gap-4 bg-bgMain rounded-lg px-5 py-3">
                     <span class="font-mono font-black text-primary text-sm w-14 shrink-0">{{ it.time }}</span>
                     <span class="flex-1 font-bold text-title text-sm">{{ it.text }}</span>
                     <button @click="removeItem(it.id)" class="text-lightText hover:text-danger transition-colors shrink-0" aria-label="刪除">
@@ -132,7 +132,7 @@
             </div>
 
             <button v-if="items.length" @click="doPrint"
-                    class="w-full hero-gradient text-white font-black py-4 rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.01] transition-all flex items-center justify-center gap-3">
+                    class="w-full hero-gradient text-white font-black py-4 rounded-lg shadow-xl shadow-primary/20 hover:scale-[1.01] transition-all flex items-center justify-center gap-3">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
                 友善列印
             </button>

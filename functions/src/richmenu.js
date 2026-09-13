@@ -34,32 +34,35 @@ const IMAGE_PATH = path.join(__dirname, '../assets/richmenu.jpg');
 // 立刻能用的兩格。
 const SITE_ORIGIN = 'https://medsafe-554b7.web.app';
 
-// 3x2 六宮格。「回報不適」是 Phase 4 完成前的預告格——圖片上標
-// 「即將推出」，文字指令也回覆誠實的開發中訊息（見 webhook.js 的
-// COMING_SOON），不是按了沒反應的死按鈕。「使用說明」是既有文字指令；
-// 「用藥查詢」「服藥時間表」直接連到免登入的公開頁面，不需要任何後端處理。
+// 3x2 六宮格。「使用說明」「服藥時間表」是文字指令（見 webhook.js 的
+// MENU_RE／SCHEDULE_RE）；「用藥查詢」是免登入公開頁面，不需要任何後端處理。
 //
-// 【「藥箱」「線上預約」為什麼是動態決定 message 或 uri】
-// 有了 LIFF_ID 之後，這兩格可以直接 uri 到 https://liff.line.me/{id}，
-// 一次點擊就進 App（原本是 message → bot 回 Quick Reply → 再點一次的
-// 兩次點擊）。已確認可以安全這樣做：即使使用者尚未綁定 LINE，
-// patient.html 的 bootLiff() 失敗處理（renderLiffError，見該檔案）
-// 會顯示正確的「尚未綁定 LINE」引導畫面，不會裸露錯誤或空白頁。
-// 但 LIFF_ID 未設定時（尚未走完 Phase 0）不能硬編一個空字串當 uri——
+// 【「藥箱」「服藥時間表」為什麼是文字指令，不是直接開網頁】
+// 「藥箱」原本在 LIFF_ID 設定後改成直接 uri 開 patient.html；「服藥時間表」
+// 原本就是 uri 開 schedule.html。使用者反映這兩格按下去不該跳出瀏覽器——
+// 改回文字指令的形狀：按下去等同送出那句話，Bot 用 Reply（免費）回一段
+// 純文字摘要，留在聊天室裡，不開新分頁。「完整藥箱」仍保留在 menuItems()
+// 的快速回覆選單中，是額外的、明確標示「完整」的可選項，給想看完整用藥
+// 時間軸與所有 DDI 細節的人另外點——與這裡的變更沒有衝突。
+//
+// 【「線上預約」為什麼還是動態決定 message 或 uri，沒有一併改掉】
+// 掛號需要選日期、診次、填寫結帳資訊，文字指令做不到（同一個理由，
+// linebot.md §4.2 論證過對話式重刻掛號流程不會更安全，只會多一份要跟
+// firestore.rules 保持一致的邏輯）。有了 LIFF_ID 之後直接 uri 到
+// https://liff.line.me/{id}?view=appointments，一次點擊就進 App。
+// LIFF_ID 未設定時（尚未走完 Phase 0）不能硬編一個空字串當 uri——
 // LINE 建立選單時會直接拒絕沒有合法網址的 uri action，因此保留舊的
-// message 分支（借用 webhook.js 既有的文字指令，走 BOOKING_RE／
-// CABINET_RE），與 webhook.js 的 menuItems()「LIFF_ID 未設定不顯示
-// 完整藥箱按鈕」是同一種「功能未就緒時優雅降級」設計。
+// message 分支（借用 webhook.js 既有的 BOOKING_RE 文字指令），與
+// webhook.js 的 menuItems()「LIFF_ID 未設定不顯示完整藥箱按鈕」是同一種
+// 「功能未就緒時優雅降級」設計。
 function buildAreas() {
   const liffId = LIFF_ID.value();
-  const cabinetAction = liffId
-    ? { type: 'uri', label: '藥箱', uri: 'https://liff.line.me/' + liffId }
-    : { type: 'message', label: '藥箱', text: '藥箱' };
   const bookingAction = liffId
     ? { type: 'uri', label: '線上預約', uri: 'https://liff.line.me/' + liffId + '?view=appointments' }
     : { type: 'message', label: '線上預約', text: '預約' };
   return [
-    { bounds: { x: 0, y: 0, width: 834, height: 843 }, action: cabinetAction },
+    { bounds: { x: 0, y: 0, width: 834, height: 843 },
+      action: { type: 'message', label: '藥箱', text: '藥箱' } },
     { bounds: { x: 834, y: 0, width: 833, height: 843 }, action: bookingAction },
     { bounds: { x: 1667, y: 0, width: 833, height: 843 },
       action: { type: 'message', label: '回報不適', text: '回報不適' } },
@@ -68,7 +71,7 @@ function buildAreas() {
     { bounds: { x: 834, y: 843, width: 833, height: 843 },
       action: { type: 'uri', label: '用藥查詢', uri: SITE_ORIGIN + '/check.html' } },
     { bounds: { x: 1667, y: 843, width: 833, height: 843 },
-      action: { type: 'uri', label: '服藥時間表', uri: SITE_ORIGIN + '/schedule.html' } }
+      action: { type: 'message', label: '服藥時間表', text: '服藥時間表' } }
   ];
 }
 

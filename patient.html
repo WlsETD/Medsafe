@@ -94,7 +94,7 @@
         </div>
         <div v-if="maintenanceMode" class="fixed inset-0 z-[999] bg-slate-950 flex items-center justify-center p-8 text-center">
             <div class="max-w-md">
-                <div class="w-16 h-16 mx-auto mb-6 rounded-2xl bg-danger/10 flex items-center justify-center text-danger">
+                <div class="w-16 h-16 mx-auto mb-6 rounded-lg bg-danger/10 flex items-center justify-center text-danger">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                 </div>
                 <h1 class="text-2xl font-black text-white mb-3">系統維護中</h1>
@@ -108,19 +108,74 @@
                 <div class="bg-white rounded-[32px] w-full max-w-md shadow-2xl relative z-10 overflow-hidden text-left">
                     <div class="p-8 border-b border-slate-100">
                         <h3 class="text-xl font-black text-title">變更密碼</h3>
-                        <p class="text-[11px] font-bold text-lightText mt-1">帳號：{{ user.username }}</p>
+                        <p class="text-[11px] font-bold text-lightText mt-1">帳號：{{ $data._username }}</p>
                     </div>
                     <div class="p-8 space-y-4">
                         <div v-if="passwordError" class="bg-red-50 text-danger text-xs font-bold p-3 rounded-xl border border-red-100">{{ passwordError }}</div>
-                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">目前密碼</label><input v-model="passwordForm.current" type="password" autocomplete="current-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
-                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">新密碼（至少 8 碼）</label><input v-model="passwordForm.next" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
-                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">確認新密碼</label><input v-model="passwordForm.confirm" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">目前密碼</label><input v-model="passwordForm.current" type="password" autocomplete="current-password" class="w-full bg-slate-50 border-2 border-transparent rounded-lg py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">新密碼（至少 8 碼）</label><input v-model="passwordForm.next" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-lg py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">確認新密碼</label><input v-model="passwordForm.confirm" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-lg py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
                         <p class="text-[10px] font-bold text-slate-400 leading-relaxed">變更後其他已登入的裝置不會立即失效，其既有工作階段會持續到自然過期為止。</p>
                     </div>
                     <div class="p-6 bg-slate-50 flex gap-3 border-t border-slate-100">
                         <button @click="closePasswordModal()" class="flex-1 py-3 font-black text-slate-400 uppercase text-[10px]">取消</button>
-                        <button @click="submitPasswordChange" :disabled="changingPassword" class="flex-[2] bg-primary text-white font-black rounded-2xl py-3 text-xs uppercase tracking-widest disabled:opacity-50">{{ changingPassword ? '變更中...' : '更新密碼' }}</button>
+                        <button @click="submitPasswordChange" :disabled="changingPassword" class="flex-[2] bg-primary text-white font-black rounded-lg py-3 text-xs uppercase tracking-widest disabled:opacity-50">{{ changingPassword ? '變更中...' : '更新密碼' }}</button>
                     </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- ── 結帳（純示範）─────────────────────────────────────────────
+             掛號送出前的確認畫面：顯示掛號費、選付款方式。取代原本兩條送出
+             路徑各自的 confirm()（見 firestore.rules paymentFieldsOk() 與
+             DbService.appointments._paymentFields() 的同一段說明——這不是
+             真的金流，兩個欄位是純顯示用標記，不對外呼叫任何金流服務）。 -->
+        <transition name="fade">
+            <div v-if="showCheckoutModal" role="dialog" aria-modal="true" class="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-md" @click="!checkoutPaying && closeCheckout()"></div>
+                <div class="bg-white rounded-[32px] w-full max-w-md shadow-2xl relative z-10 overflow-hidden text-left">
+                    <!-- 付款中／付款成功：純視覺動畫，不影響掛號本身是否成立——
+                         不管有沒有選線上付款，掛號都會在這段畫面結束後照常送出。 -->
+                    <div v-if="checkoutPaying || checkoutPaid" class="p-14 flex flex-col items-center gap-5 text-center">
+                        <div v-if="checkoutPaying" class="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin"></div>
+                        <div v-else class="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center text-3xl">
+                            <i class="fa-solid fa-check" aria-hidden="true"></i>
+                        </div>
+                        <p class="text-sm font-black text-title">{{ checkoutPaying ? '模擬付款中…' : '付款成功' }}</p>
+                        <p v-if="checkoutPaying" class="text-[10px] font-bold text-lightText">僅供展示，未串接任何金流服務</p>
+                    </div>
+                    <template v-else>
+                        <div class="p-8 border-b border-slate-100">
+                            <h3 class="text-xl font-black text-title">確認掛號與付款</h3>
+                            <p class="text-[11px] font-bold text-lightText mt-1">{{ checkoutSummary }}</p>
+                        </div>
+                        <div class="p-8 space-y-5">
+                            <div class="bg-bgMain rounded-lg px-5 py-4 flex items-center justify-between">
+                                <span class="text-xs font-bold text-content">掛號費</span>
+                                <span class="text-lg font-black text-title">NT$ {{ checkoutFee }}</span>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">付款方式</label>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <button type="button" @click="checkoutPaymentMethod = 'online'"
+                                            :class="['rounded-lg py-4 px-3 text-center border-2 transition-all', checkoutPaymentMethod === 'online' ? 'border-primary bg-mint' : 'border-transparent bg-bgMain']">
+                                        <div class="text-sm font-black text-title"><i class="fa-brands fa-line mr-1" aria-hidden="true"></i>線上付款</div>
+                                        <div class="text-[10px] font-bold text-lightText mt-0.5">LINE Pay（展示模擬）</div>
+                                    </button>
+                                    <button type="button" @click="checkoutPaymentMethod = 'onsite'"
+                                            :class="['rounded-lg py-4 px-3 text-center border-2 transition-all', checkoutPaymentMethod === 'onsite' ? 'border-primary bg-mint' : 'border-transparent bg-bgMain']">
+                                        <div class="text-sm font-black text-title">到場付款</div>
+                                        <div class="text-[10px] font-bold text-lightText mt-0.5">看診當天於櫃檯繳費</div>
+                                    </button>
+                                </div>
+                            </div>
+                            <p class="text-[10px] font-bold text-lightText leading-relaxed">本頁僅為展示原型，「線上付款」不會實際扣款，也不會呼叫 LINE Pay 或任何金流服務。</p>
+                        </div>
+                        <div class="p-6 bg-slate-50 flex gap-3 border-t border-slate-100">
+                            <button @click="closeCheckout()" :disabled="apptBusy" class="flex-1 py-3 font-black text-slate-400 uppercase text-[10px] disabled:opacity-40">取消</button>
+                            <button @click="confirmCheckout()" :disabled="apptBusy" class="flex-[2] bg-primary text-white font-black rounded-lg py-3 text-xs uppercase tracking-widest disabled:opacity-50">{{ apptBusy ? '處理中...' : (checkoutPaymentMethod === 'online' ? '確認付款並掛號' : '確認掛號') }}</button>
+                        </div>
+                    </template>
                 </div>
             </div>
         </transition>
@@ -147,18 +202,18 @@
                      前提是使用者找得到它。 -->
                 <nav class="flex-1 space-y-2">
                     <button @click="activeView = 'home'; showMobileMenu = false"
-                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all text-left', activeView === 'home' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
+                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-lg font-bold transition-all text-left', activeView === 'home' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
                         <span>健康首頁</span>
                     </button>
                     <button @click="activeView = 'appointments'; showMobileMenu = false"
-                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all text-left', activeView === 'appointments' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
+                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-lg font-bold transition-all text-left', activeView === 'appointments' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         <span class="flex-1">我的掛號</span>
                         <span v-if="upcomingAppointments.length" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary text-white shrink-0">{{ upcomingAppointments.length }}</span>
                     </button>
-                    <button @click="activeView = 'consent'; showMobileMenu = false"
-                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all text-left', activeView === 'consent' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
+                    <button v-if="insurancePortalEnabled" @click="activeView = 'consent'; showMobileMenu = false"
+                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-lg font-bold transition-all text-left', activeView === 'consent' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                         <span class="flex-1">資料授權</span>
                         <!-- 目前有幾份有效授權。這個數字要在側欄就看得到——
@@ -166,13 +221,13 @@
                         <span v-if="activeConsents.length" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary text-white shrink-0">{{ activeConsents.length }}</span>
                     </button>
                     <button @click="activeView = 'line'; showMobileMenu = false"
-                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all text-left', activeView === 'line' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
+                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-lg font-bold transition-all text-left', activeView === 'line' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" /></svg>
                         <span class="flex-1">LINE 提醒</span>
                         <span v-if="lineBinding && lineBinding.active" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary text-white shrink-0">已綁定</span>
                     </button>
                     <button @click="activeView = 'family'; showMobileMenu = false"
-                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all text-left', activeView === 'family' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
+                            :class="['sidebar-item w-full flex items-center gap-3 px-4 py-3.5 rounded-lg font-bold transition-all text-left', activeView === 'family' ? 'bg-primary/10 text-primary' : 'text-content hover:bg-slate-100']">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-2.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-4-4" /></svg>
                         <span class="flex-1">家屬檢視</span>
                         <span v-if="familyConsents.filter(c => !c.revokedAt).length" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary text-white shrink-0">{{ familyConsents.filter(c => !c.revokedAt).length }}</span>
@@ -180,8 +235,8 @@
                 </nav>
 
                 <div class="mt-auto pt-6 border-t border-slate-100">
-                    <button @click="openPasswordModal()" class="flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-content hover:bg-slate-100 w-full transition-all text-left"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg><span>變更密碼</span></button>
-                    <button @click="logout" class="flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-danger hover:bg-red-50 w-full transition-all text-left">
+                    <button @click="openPasswordModal()" :disabled="isPasswordlessAccount" :title="isPasswordlessAccount ? '此帳號透過 LINE 註冊，沒有密碼可變更' : null" :class="['flex items-center gap-3 px-4 py-3.5 rounded-lg font-bold text-content w-full transition-all text-left', isPasswordlessAccount ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100']"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg><span>變更密碼</span></button>
+                    <button @click="logout" class="flex items-center gap-3 px-4 py-3.5 rounded-lg font-bold text-danger hover:bg-red-50 w-full transition-all text-left">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> {{ isLiffMode ? '關閉' : '退出登入' }}
                     </button>
                 </div>
@@ -196,7 +251,7 @@
                     <button @click="showMobileMenu = true" aria-label="開啟選單" class="lg:hidden p-2 bg-white rounded-xl shadow-sm border border-slate-100 text-slate-600 hover:text-primary transition-all"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg></button>
                     <div class="text-left"><h2 class="text-2xl md:text-4xl font-black text-title italic tracking-tighter uppercase">My Health Hub</h2><p class="text-xs md:text-sm font-bold text-lightText uppercase tracking-widest pl-1">FHIR Personal Health Record</p></div>
                 </div>
-                <div class="flex items-center gap-3 md:gap-6 bg-white p-2 md:p-2.5 rounded-3xl shadow-premium border border-white">
+                <div class="flex items-center gap-3 md:gap-6 bg-white p-2 md:p-2.5 rounded-xl shadow-premium border border-white">
                     <button @click="openChat" :disabled="!hasDoctor"
                             :aria-label="hasDoctor ? ('與' + doctorLabel + '對話') : '尚無主治醫師，無法對話'"
                             :title="hasDoctor ? '' : '尚無主治醫師。掛號後即可與該名醫師對話。'"
@@ -211,7 +266,7 @@
                         </button>
                         <!-- Notification Dropdown -->
                         <transition name="fade">
-                            <div v-if="showNotifDropdown" class="absolute right-0 top-full mt-2 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 overflow-hidden">
+                            <div v-if="showNotifDropdown" class="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 z-50 overflow-hidden">
                                 <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                                     <span class="font-black text-title text-sm">通知中心</span>
                                     <button @click="notifications = []; showNotifDropdown = false; triggerToast('已全部已讀', '所有通知已標記為已讀')" class="text-[10px] font-black text-primary hover:underline uppercase tracking-widest">全部已讀</button>
@@ -254,11 +309,11 @@
                         <h1 class="text-3xl sm:text-5xl font-black mb-6">早安，{{ profile.name }}</h1>
                         <p class="text-base sm:text-lg text-white/80 leading-relaxed mb-8">{{ healthSummaryText }}</p>
                         <div class="flex flex-wrap gap-4">
-                            <div class="glass px-6 py-3 rounded-2xl flex items-center gap-3">
+                            <div class="glass px-6 py-3 rounded-lg flex items-center gap-3">
                                 <div class="w-3 h-3 bg-white rounded-full animate-pulse"></div>
                                 <span class="text-sm font-bold">AI 安全監測中</span>
                             </div>
-                            <div class="glass px-6 py-3 rounded-2xl flex items-center gap-3 text-left">
+                            <div class="glass px-6 py-3 rounded-lg flex items-center gap-3 text-left">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                 </svg>
@@ -295,7 +350,7 @@
                             {{ showScoreDetail ? '▾' : '▸' }} 這個分數怎麼來的
                         </button>
                         <div v-if="showScoreDetail && scoreBreakdown.lines.length"
-                             class="w-full max-w-[260px] bg-white/10 rounded-2xl px-4 py-3 space-y-1.5">
+                             class="w-full max-w-[260px] bg-white/10 rounded-lg px-4 py-3 space-y-1.5">
                             <div v-for="(l, i) in scoreBreakdown.lines" :key="i" class="flex items-start justify-between gap-3 text-[11px] font-bold">
                                 <span class="opacity-80 leading-snug">{{ l.label }}</span>
                                 <span v-if="l.delta !== null" class="shrink-0 tabular-nums">{{ l.delta > 0 ? l.delta : l.delta }}</span>
@@ -342,7 +397,7 @@
 
                         <div class="space-y-4 text-left">
                             <div v-for="(reminder, i) in reminders" :key="i" 
-                                 class="flex items-center gap-6 p-5 rounded-2xl border-2 transition-all cursor-pointer group text-left"
+                                 class="flex items-center gap-6 p-5 rounded-lg border-2 transition-all cursor-pointer group text-left"
                                  @click="toggleReminder(reminder)"
                                  :class="isReminderDone(reminder) ? 'bg-mint/30 border-primary/10 shadow-sm' : 'bg-bgMain border-transparent hover:bg-white hover:border-slate-100 hover:shadow-md'">
                                 <div class="custom-checkbox flex-shrink-0 flex items-center justify-center transition-transform group-active:scale-90"
@@ -377,8 +432,8 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
                             <div v-for="(med, i) in medications.slice(0, 4)" :key="i"
                                  @click="openMedDetail(med)"
-                                 class="card-hover p-6 rounded-3xl bg-white border border-gray-100 flex gap-5 text-left cursor-pointer">
-                                <div :class="['w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0', safetyOf(i).tone === 'danger' ? 'bg-red-50 text-danger' : (safetyOf(i).tone === 'warn' ? 'bg-amber-50 text-amber-600' : 'bg-mint text-primary')]">
+                                 class="card-hover p-6 rounded-xl bg-white border border-gray-100 flex gap-5 text-left cursor-pointer">
+                                <div :class="['w-14 h-14 rounded-lg flex items-center justify-center flex-shrink-0', safetyOf(i).tone === 'danger' ? 'bg-red-50 text-danger' : (safetyOf(i).tone === 'warn' ? 'bg-amber-50 text-amber-600' : 'bg-mint text-primary')]">
                                     <svg v-if="safetyOf(i).tone !== 'ok'" xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                     </svg>
@@ -424,7 +479,7 @@
                                 <p class="text-sm font-medium leading-relaxed opacity-90 text-left">{{ insight.text }}</p>
                             </div>
                         </div>
-                        <button @click="showInsightsModal = true" class="w-full bg-white text-primary font-black py-4 rounded-2xl mt-8 shadow-lg hover:scale-105 active:scale-95 transition-all text-xs uppercase tracking-widest text-left flex justify-center">
+                        <button @click="showInsightsModal = true" class="w-full bg-white text-primary font-black py-4 rounded-lg mt-8 shadow-lg hover:scale-105 active:scale-95 transition-all text-xs uppercase tracking-widest text-left flex justify-center">
                             完整智能建議
                         </button>
                     </div>
@@ -434,7 +489,7 @@
                         <h3 class="text-xl font-black text-title mb-6 flex items-center gap-2 text-left">
                             <span class="w-1.5 h-5 bg-slate-300 rounded-full shrink-0"></span> 安全評分趨勢
                         </h3>
-                        <div class="h-[200px] flex flex-col items-center justify-center text-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200 px-6">
+                        <div class="h-[200px] flex flex-col items-center justify-center text-center gap-3 bg-slate-50 rounded-lg border border-dashed border-slate-200 px-6">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>
                             <p class="text-sm font-black text-slate-500">尚未累積評分歷史</p>
                             <p class="text-[11px] font-bold text-slate-400 leading-relaxed">本系統目前不保存每日安全評分紀錄，故無趨勢可呈現。待用藥安全評估機制上線後，此處將顯示您的實際歷史變化。</p>
@@ -462,7 +517,7 @@
             <section v-if="ddiAlerts.length > 0" v-show="activeView === 'home'" class="animate-fade-in text-left">
                 <div class="bg-red-50 border-2 border-danger/10 rounded-[32px] p-8 text-left">
                     <div class="flex items-center gap-4 mb-6 text-left">
-                        <div class="w-12 h-12 bg-danger text-white rounded-2xl flex items-center justify-center animate-pulse shadow-lg shrink-0">
+                        <div class="w-12 h-12 bg-danger text-white rounded-lg flex items-center justify-center animate-pulse shadow-lg shrink-0">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                             </svg>
@@ -472,11 +527,11 @@
                     <div v-for="alert in ddiAlerts" :key="alert.id" class="bg-white p-8 rounded-[40px] shadow-sm border border-red-100 flex flex-col lg:flex-row gap-10 items-start text-left text-left text-left">
                         <div class="flex-1 space-y-6 text-left text-left">
                             <div class="flex items-center gap-3 flex-wrap">
-                                <span v-for="drug in alert.drugs" :key="drug" class="px-5 py-2 bg-red-50 text-danger font-black rounded-2xl text-xs border border-red-100 shadow-sm">{{ drug }}</span>
+                                <span v-for="drug in alert.drugs" :key="drug" class="px-5 py-2 bg-red-50 text-danger font-black rounded-lg text-xs border border-red-100 shadow-sm">{{ drug }}</span>
                                 <span class="mx-2 text-danger font-black text-xl">×</span>
                             </div>
                             <h4 class="text-2xl font-black text-title leading-tight text-left">{{ alert.message }}</h4>
-                            <div class="p-5 bg-slate-50 rounded-3xl border-l-4 border-danger text-left">
+                            <div class="p-5 bg-slate-50 rounded-xl border-l-4 border-danger text-left">
                                 <p class="text-sm font-bold text-slate-600 leading-relaxed text-left text-left">{{ alert.recommendation }}</p>
                             </div>
                         </div>
@@ -484,12 +539,12 @@
                             <!-- 沒有主治醫師時停用而非隱藏：隱藏會讓病患以為系統沒有這個功能，
                                  停用並說明原因才知道下一步該做什麼（去掛號）。 -->
                             <button @click="hasDoctor ? openChat() : (activeView = 'appointments')"
-                                    :class="['font-black py-5 rounded-3xl transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-3 text-left',
+                                    :class="['font-black py-5 rounded-xl transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-3 text-left',
                                              hasDoctor ? 'bg-danger text-white shadow-xl shadow-danger/30 hover:scale-[1.03] active:scale-[0.97]' : 'bg-slate-200 text-slate-500']">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8-1.06 0-2.077-.16-3.02-.457L3 21l1.457-4.98A7.96 7.96 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                                 {{ hasDoctor ? '傳訊息給' + doctorName : '尚無主治醫師，前往掛號' }}
                             </button>
-                            <button @click="showDdiDetailModal = true" class="bg-bgMain text-title font-black py-5 rounded-3xl hover:bg-slate-100 transition-all text-xs uppercase tracking-widest border border-slate-200 shadow-sm text-left flex justify-center">
+                            <button @click="showDdiDetailModal = true" class="bg-bgMain text-title font-black py-5 rounded-xl hover:bg-slate-100 transition-all text-xs uppercase tracking-widest border border-slate-200 shadow-sm text-left flex justify-center">
                                 了解臨床機轉
                             </button>
                         </div>
@@ -518,7 +573,7 @@
                         </span>
                     </div>
 
-                    <div v-if="profile && profile.nationalId" class="bg-bgMain rounded-2xl px-5 py-4">
+                    <div v-if="profile && profile.nationalId" class="bg-bgMain rounded-lg px-5 py-4">
                         <p class="font-mono text-lg font-black text-title tracking-wider">{{ profile.nationalId }}</p>
                         <p class="text-[11px] font-bold text-lightText mt-1.5 leading-relaxed">
                             已填寫的證號無法自行更改。若有誤，請於就診時洽櫃檯處理。
@@ -527,22 +582,22 @@
                     </div>
 
                     <div v-else class="space-y-3">
-                        <div class="p-3 bg-amber-50 border border-amber-200 rounded-2xl">
+                        <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                             <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 請勿填寫真實身分證字號</p>
                             <p class="text-[10px] text-amber-600 mt-1 leading-relaxed">本系統為公開競賽展示原型，非真實醫療院所系統。此欄位僅供操作流程示範，<strong>請填寫格式正確的虛構號碼</strong>（第 2 碼須為 1／2／8／9 開頭並符合檢查碼規則）。</p>
                         </div>
                         <p class="text-xs font-bold text-lightText leading-relaxed">
                             掛號需要身分證字號以供院方核對健保資料。<strong>填寫後將無法自行更改</strong>，請確認無誤再送出。
                         </p>
-                        <div v-if="nidError" class="text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-2xl px-4 py-3">{{ nidError }}</div>
+                        <div v-if="nidError" class="text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-lg px-4 py-3">{{ nidError }}</div>
                         <div class="flex flex-wrap items-end gap-3">
                             <div class="flex-1 min-w-[200px] space-y-2">
                                 <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">身分證字號</label>
                                 <input v-model="nidInput" type="text" maxlength="10" placeholder="如 A123456789"
-                                       class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-5 font-mono font-black text-title tracking-wider focus:border-primary/20 focus:bg-white outline-none transition-all uppercase">
+                                       class="w-full bg-bgMain border-2 border-transparent rounded-lg py-3.5 px-5 font-mono font-black text-title tracking-wider focus:border-primary/20 focus:bg-white outline-none transition-all uppercase">
                             </div>
                             <button @click="saveNationalId" :disabled="nidBusy || !nidInput.trim()"
-                                    class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">送出</button>
+                                    class="px-8 py-3.5 rounded-lg bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">送出</button>
                         </div>
                     </div>
                 </div>
@@ -556,7 +611,7 @@
                         </p>
                     </div>
 
-                    <div v-if="apptError" class="text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-2xl px-4 py-3">{{ apptError }}</div>
+                    <div v-if="apptError" class="text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-lg px-4 py-3">{{ apptError }}</div>
 
                     <!-- 新增掛號 ──────────────────────────────────────
                          時間不是由病患挑的，是算出來的：選好日期與診次後，
@@ -565,7 +620,17 @@
                     <div class="border-t border-slate-100 pt-6 space-y-4">
                         <p class="text-[10px] font-black text-lightText uppercase tracking-widest">新增掛號</p>
 
-                        <p v-if="scheduleError" class="text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-2xl px-4 py-3">{{ scheduleError }}</p>
+                        <!-- 一個帳號同時只能有一筆進行中的掛號（firestore.rules 的 appointment_locks
+                             在資料層強制；這裡只是讓病患不必按了才知道）。 -->
+                        <div v-if="currentBooking" class="bg-bgMain rounded-lg px-5 py-6 space-y-1">
+                            <p class="text-sm font-black text-title">您已有一筆進行中的掛號</p>
+                            <p class="text-[11px] font-bold text-lightText leading-relaxed">
+                                {{ apptDateText(currentBooking) }}　{{ currentBooking.doctorName || currentBooking.doctor }}<span v-if="apptQueueText(currentBooking)">　{{ apptQueueText(currentBooking) }}</span>。
+                                每個帳號同時只能有一筆掛號；看診完成、取消該筆掛號，或看診日過後，才能再掛下一筆。
+                            </p>
+                        </div>
+                        <template v-else>
+                        <p v-if="scheduleError" class="text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-lg px-4 py-3">{{ scheduleError }}</p>
 
                         <div class="flex flex-wrap items-end gap-4">
                             <!-- 醫師不由病患挑選：主治醫師是既有的醫病關係決定的
@@ -573,7 +638,7 @@
                                  讓病患自由指定等於讓他自己決定誰讀得到自己的病歷。 -->
                             <div class="flex-1 min-w-[220px] space-y-2">
                                 <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">主治醫師</label>
-                                <div class="w-full bg-bgMain rounded-2xl py-3.5 px-4 font-black text-title text-sm">
+                                <div class="w-full bg-bgMain rounded-lg py-3.5 px-4 font-black text-title text-sm">
                                     <template v-if="hasDoctor">{{ bookingDoctorName }}<span v-if="selectedSchedule" class="font-bold text-content">　{{ selectedSchedule.department }}</span></template>
                                     <span v-else class="text-lightText">尚無主治醫師</span>
                                 </div>
@@ -582,27 +647,27 @@
                                 <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">就診日期</label>
                                 <input v-model="newAppt.date" type="date" :min="todayKey" :max="maxBookingDate"
                                        :disabled="!selectedSchedule" @change="refreshDay"
-                                       class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-4 font-bold text-title text-sm outline-none disabled:opacity-40">
+                                       class="w-full bg-bgMain border-2 border-transparent rounded-lg py-3.5 px-4 font-bold text-title text-sm outline-none disabled:opacity-40">
                             </div>
                         </div>
 
                         <!-- 三種「還不能選時段」的狀態，各自的下一步完全不同，
                              因此分開講，不共用一句籠統的錯誤訊息。 -->
-                        <p v-if="!hasDoctor" class="text-[11px] font-bold text-lightText bg-bgMain rounded-2xl px-5 py-6 leading-relaxed">
+                        <p v-if="!hasDoctor" class="text-[11px] font-bold text-lightText bg-bgMain rounded-lg px-5 py-6 leading-relaxed">
                             您目前尚無主治醫師。第一次掛號請用下方的「以醫師帳號掛號」——
                             在本系統中，掛號這個動作本身就是建立醫病關係、讓該名醫師看得到您用藥資料的授權。
                         </p>
-                        <p v-else-if="!selectedSchedule && !scheduleError" class="text-[11px] font-bold text-lightText bg-bgMain rounded-2xl px-5 py-6 leading-relaxed">
+                        <p v-else-if="!selectedSchedule && !scheduleError" class="text-[11px] font-bold text-lightText bg-bgMain rounded-lg px-5 py-6 leading-relaxed">
                             {{ bookingDoctorName }}尚未公告看診時間，因此無法選擇診次與看診號碼。
                             請用下方的「以醫師帳號掛號」指定就診日期（帳號已為您填好）。
                         </p>
 
                         <!-- 該日的三個診次 -->
                         <div v-if="selectedSchedule && newAppt.date" class="space-y-3">
-                            <p v-if="dayLoading" class="text-xs font-bold text-lightText bg-bgMain rounded-2xl px-5 py-6 text-center">查詢可預約時段中…</p>
+                            <p v-if="dayLoading" class="text-xs font-bold text-lightText bg-bgMain rounded-lg px-5 py-6 text-center">查詢可預約時段中…</p>
                             <template v-else>
                                 <div v-for="s in daySessions" :key="s.id"
-                                     class="flex flex-wrap items-center justify-between gap-4 rounded-2xl px-5 py-4"
+                                     class="flex flex-wrap items-center justify-between gap-4 rounded-lg px-5 py-4"
                                      :class="s.bookable ? 'bg-mint border-2 border-primary/20' : 'bg-bgMain'">
                                     <div>
                                         <p class="text-sm font-black text-title">
@@ -613,7 +678,7 @@
                                         <p class="text-[11px] font-bold mt-0.5" :class="s.bookable ? 'text-primary' : 'text-lightText'">{{ s.statusText }}</p>
                                     </div>
                                     <button v-if="s.bookable" @click="bookQueued(s)" :disabled="apptBusy"
-                                            class="px-7 py-3 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">掛號</button>
+                                            class="px-7 py-3 rounded-lg bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">掛號</button>
                                 </div>
                             </template>
                             <p class="text-[10px] font-bold text-lightText leading-relaxed px-1">
@@ -634,7 +699,7 @@
                                 <div class="flex flex-wrap items-end gap-4">
                                     <div class="flex-1 min-w-[160px] space-y-2">
                                         <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">科別</label>
-                                        <select v-model="legacyAppt.department" class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-4 font-black text-title text-sm outline-none">
+                                        <select v-model="legacyAppt.department" class="w-full bg-bgMain border-2 border-transparent rounded-lg py-3.5 px-4 font-black text-title text-sm outline-none">
                                             <option>一般內科</option><option>心臟內科</option><option>新陳代謝科</option>
                                             <option>神經內科</option><option>家庭醫學科</option>
                                         </select>
@@ -642,15 +707,15 @@
                                     <div class="flex-1 min-w-[160px] space-y-2">
                                         <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">醫師帳號</label>
                                         <input v-model="legacyAppt.doctor" type="text" placeholder="如 doctor"
-                                               class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-5 font-bold text-title text-sm focus:border-primary/20 focus:bg-white outline-none transition-all">
+                                               class="w-full bg-bgMain border-2 border-transparent rounded-lg py-3.5 px-5 font-bold text-title text-sm focus:border-primary/20 focus:bg-white outline-none transition-all">
                                     </div>
                                     <div class="flex-1 min-w-[160px] space-y-2">
                                         <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">就診日期</label>
                                         <input v-model="legacyAppt.date" type="date" :min="todayKey"
-                                               class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-4 font-bold text-title text-sm outline-none">
+                                               class="w-full bg-bgMain border-2 border-transparent rounded-lg py-3.5 px-4 font-bold text-title text-sm outline-none">
                                     </div>
                                     <button @click="bookAppointment" :disabled="apptBusy || !legacyAppt.doctor.trim() || !legacyAppt.date"
-                                            class="px-8 py-3.5 rounded-2xl bg-deep text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">掛號</button>
+                                            class="px-8 py-3.5 rounded-lg bg-deep text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">掛號</button>
                                 </div>
                                 <p class="text-[10px] font-bold text-lightText leading-relaxed px-1">
                                     這種掛號方式只有日期、沒有看診號碼與預估時間。系統也無法驗證所填帳號是否為執業醫師；
@@ -658,27 +723,32 @@
                                 </p>
                             </div>
                         </div>
+                        </template>
                     </div>
 
                     <!-- 掛號清單 -->
                     <div class="border-t border-slate-100 pt-6 space-y-3">
                         <p class="text-[10px] font-black text-lightText uppercase tracking-widest">掛號紀錄</p>
-                        <div v-if="!myAppointments.length" class="text-xs font-bold text-lightText bg-bgMain rounded-2xl px-5 py-6 text-center">
+                        <div v-if="!myAppointments.length" class="text-xs font-bold text-lightText bg-bgMain rounded-lg px-5 py-6 text-center">
                             尚無掛號紀錄。掛號後，該名醫師才會在其病患清單中看到您。
                         </div>
-                        <div v-for="a in myAppointments" :key="a.id" class="flex flex-wrap items-center justify-between gap-4 bg-bgMain rounded-2xl px-5 py-4">
+                        <div v-for="a in myAppointments" :key="a.id" class="flex flex-wrap items-center justify-between gap-4 bg-bgMain rounded-lg px-5 py-4">
                             <div>
                                 <p class="text-sm font-black text-title">{{ a.department }}　{{ a.doctorName || a.doctor }}</p>
                                 <p class="text-[11px] font-bold" :class="apptIsActive(a) ? 'text-primary' : 'text-lightText'">
                                     {{ apptStatusText(a.status) }}<span v-if="apptDateText(a)"> · {{ apptDateText(a) }}</span><span v-if="apptQueueText(a)"> · {{ apptQueueText(a) }}</span>
                                 </p>
+                                <!-- 結帳（純示範）狀態標籤，純顯示。本功能上線前建立的掛號沒有這兩個
+                                     欄位，此時不顯示——不可杜撰一個看起來像真的付款狀態的推測值。 -->
+                                <span v-if="paymentTagText(a)" class="inline-block mt-1.5 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full"
+                                      :class="a.paymentMethod === 'online' ? 'bg-primary/10 text-primary' : 'bg-amber-50 text-amber-600'">{{ paymentTagText(a) }}</span>
                             </div>
                             <button v-if="apptIsActive(a)" @click="cancelAppointment(a)" :disabled="apptBusy"
                                     class="px-6 py-2.5 rounded-xl bg-danger text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40">取消掛號</button>
                         </div>
                     </div>
 
-                    <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 leading-relaxed">
+                    <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 leading-relaxed">
                         取消掛號後，該名醫師即無法再從掛號紀錄看到您的資料。掛號與取消的紀錄會保存，不會被刪除。
                     </p>
                 </div>
@@ -701,7 +771,7 @@
                     <h2 class="text-2xl font-black text-title tracking-tight">LINE 提醒</h2>
                 </div>
 
-                <div v-if="lineError" class="mb-6 text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-2xl px-4 py-3">{{ lineError }}</div>
+                <div v-if="lineError" class="mb-6 text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-lg px-4 py-3">{{ lineError }}</div>
 
                 <!-- 已綁定 -->
                 <div v-if="lineBinding && lineBinding.active" class="bg-white rounded-[40px] p-8 sm:p-10 shadow-sm space-y-6">
@@ -713,19 +783,26 @@
                         每天早上 07:30 會傳一張當日用藥卡到您的 LINE，吃完按一下卡片上的時段就完成回報。
                         若醫師新開的藥與您目前的用藥有重大交互作用，也會立刻通知您。
                     </p>
-                    <div class="bg-bgMain rounded-2xl px-5 py-4 space-y-1">
+                    <div class="bg-bgMain rounded-lg px-5 py-4 space-y-1">
                         <p class="text-[10px] font-black text-lightText uppercase tracking-widest">綁定時間</p>
                         <p class="text-sm font-black text-title">{{ formatLineLinkedAt }}</p>
                     </div>
                     <div class="flex flex-wrap gap-3">
                         <button @click="sendLineTest" :disabled="lineBusy"
-                                class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">
+                                class="px-8 py-3.5 rounded-lg bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">
                             {{ lineBusy ? '傳送中…' : '傳送測試提醒' }}
                         </button>
-                        <button @click="unbindLine" :disabled="lineBusy"
-                                class="px-8 py-3.5 rounded-2xl bg-white border-2 border-danger/20 text-danger text-[11px] font-black uppercase tracking-widest disabled:opacity-40">解除綁定</button>
+                        <!-- LINE 自助註冊的帳號沒有密碼，這支 LINE 是唯一的登入方式——
+                             解除綁定等於自己把自己鎖在帳號外面，且沒有密碼可重設。
+                             伺服器端（functions/src/callable.js 的 lineUnbind）同樣擋下，
+                             這裡只是不留一個按了必失敗的按鈕。 -->
+                        <button v-if="!isPasswordlessAccount" @click="unbindLine" :disabled="lineBusy"
+                                class="px-8 py-3.5 rounded-lg bg-white border-2 border-danger/20 text-danger text-[11px] font-black uppercase tracking-widest disabled:opacity-40">解除綁定</button>
                     </div>
-                    <p class="text-[11px] font-bold text-lightText leading-relaxed">
+                    <p v-if="isPasswordlessAccount" class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 leading-relaxed">
+                        此帳號透過 LINE 註冊、沒有設定密碼，這支 LINE 是唯一的登入方式，因此不開放解除綁定。
+                    </p>
+                    <p v-else class="text-[11px] font-bold text-lightText leading-relaxed">
                         解除後將立即停止推播。過去的用藥回報紀錄會保留，不會一併刪除。
                     </p>
                 </div>
@@ -741,14 +818,14 @@
                     <!-- 尚未產生綁定碼 -->
                     <div v-if="!lineCode">
                         <button @click="createLineCode" :disabled="lineBusy"
-                                class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">
+                                class="px-8 py-3.5 rounded-lg bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">
                             {{ lineBusy ? '產生中…' : '產生綁定碼' }}
                         </button>
                     </div>
 
                     <!-- 已產生綁定碼 -->
                     <div v-else class="space-y-5">
-                        <div class="bg-bgMain rounded-2xl px-5 py-6 text-center space-y-2">
+                        <div class="bg-bgMain rounded-lg px-5 py-6 text-center space-y-2">
                             <p class="text-[10px] font-black text-lightText uppercase tracking-widest">您的綁定碼</p>
                             <p class="font-mono text-3xl font-black text-title tracking-[0.3em]">{{ lineCode }}</p>
                             <p class="text-[11px] font-bold" :class="lineCodeSecondsLeft > 60 ? 'text-lightText' : 'text-danger'">
@@ -767,20 +844,20 @@
                              改走上面的手動輸入流程，功能不會壞。 -->
                         <div v-if="lineAddFriendUrl || lineSendUrl" class="flex flex-wrap gap-3">
                             <a v-if="lineAddFriendUrl" :href="lineAddFriendUrl" target="_blank" rel="noopener"
-                               class="px-8 py-3.5 rounded-2xl bg-white border-2 border-primary/20 text-primary text-[11px] font-black uppercase tracking-widest">加入好友</a>
+                               class="px-8 py-3.5 rounded-lg bg-white border-2 border-primary/20 text-primary text-[11px] font-black uppercase tracking-widest">加入好友</a>
                             <a v-if="lineSendUrl" :href="lineSendUrl" target="_blank" rel="noopener"
-                               class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest">用 LINE 傳送這組碼</a>
+                               class="px-8 py-3.5 rounded-lg bg-primary text-white text-[11px] font-black uppercase tracking-widest">用 LINE 傳送這組碼</a>
                         </div>
 
                         <div class="flex flex-wrap gap-3">
                             <button @click="createLineCode" :disabled="lineBusy"
-                                    class="px-8 py-3.5 rounded-2xl bg-white border-2 border-slate-200 text-content text-[11px] font-black uppercase tracking-widest disabled:opacity-40">重新產生</button>
+                                    class="px-8 py-3.5 rounded-lg bg-white border-2 border-slate-200 text-content text-[11px] font-black uppercase tracking-widest disabled:opacity-40">重新產生</button>
                             <button @click="refreshLineBinding" :disabled="lineBusy"
-                                    class="px-8 py-3.5 rounded-2xl bg-white border-2 border-slate-200 text-content text-[11px] font-black uppercase tracking-widest disabled:opacity-40">我已傳送，檢查狀態</button>
+                                    class="px-8 py-3.5 rounded-lg bg-white border-2 border-slate-200 text-content text-[11px] font-black uppercase tracking-widest disabled:opacity-40">我已傳送，檢查狀態</button>
                         </div>
                     </div>
 
-                    <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                    <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg">
                         <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">關於隱私</p>
                         <p class="text-[10px] text-amber-600 mt-1 leading-relaxed">
                             提醒訊息中會包含您的<strong>藥品名稱</strong>，並且會留在您的 LINE 聊天室裡。
@@ -805,7 +882,7 @@
                     <h2 class="text-2xl font-black text-title tracking-tight">家屬檢視</h2>
                 </div>
 
-                <div v-if="familyError" class="mb-6 text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-2xl px-4 py-3">{{ familyError }}</div>
+                <div v-if="familyError" class="mb-6 text-[11px] font-bold text-danger bg-red-50 border border-red-100 rounded-lg px-4 py-3">{{ familyError }}</div>
 
                 <!-- 已邀請的家屬清單 -->
                 <div class="bg-white rounded-[40px] p-8 sm:p-10 shadow-sm space-y-6 mb-6">
@@ -814,10 +891,10 @@
                         家屬可以透過 LINE 查看您目前的用藥、交互作用警示、掛號時間與服藥回報，
                         看不到身分證字號、對話紀錄或其他病歷內容。您可以隨時撤回。
                     </p>
-                    <div v-if="!familyConsents.length" class="text-xs font-bold text-lightText bg-bgMain rounded-2xl px-5 py-6 text-center">
+                    <div v-if="!familyConsents.length" class="text-xs font-bold text-lightText bg-bgMain rounded-lg px-5 py-6 text-center">
                         尚未邀請任何家屬
                     </div>
-                    <div v-for="c in familyConsents" :key="c.id" class="flex flex-wrap items-center justify-between gap-4 bg-bgMain rounded-2xl px-5 py-4">
+                    <div v-for="c in familyConsents" :key="c.id" class="flex flex-wrap items-center justify-between gap-4 bg-bgMain rounded-lg px-5 py-4">
                         <div>
                             <p class="text-sm font-black text-title">{{ c.relationshipLabel || '家屬' }}</p>
                             <p class="text-[11px] font-bold" :class="familyConsentStatus(c).tone">{{ familyConsentStatus(c).text }}</p>
@@ -834,15 +911,15 @@
                     <div v-if="!familyCode">
                         <label class="block text-[10px] font-black text-lightText uppercase mb-2">關係備註（選填，例如「女兒」）</label>
                         <input v-model="familyRelationshipLabel" type="text" maxlength="20"
-                               class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3 px-5 font-bold text-title text-sm focus:border-primary/20 focus:bg-white outline-none transition-all mb-4">
+                               class="w-full bg-bgMain border-2 border-transparent rounded-lg py-3 px-5 font-bold text-title text-sm focus:border-primary/20 focus:bg-white outline-none transition-all mb-4">
                         <button @click="createFamilyInvite" :disabled="familyBusy"
-                                class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">
+                                class="px-8 py-3.5 rounded-lg bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed">
                             {{ familyBusy ? '產生中…' : '產生邀請' }}
                         </button>
                     </div>
 
                     <div v-else class="space-y-5">
-                        <div class="bg-bgMain rounded-2xl px-5 py-6 text-center space-y-3">
+                        <div class="bg-bgMain rounded-lg px-5 py-6 text-center space-y-3">
                             <p class="text-[10px] font-black text-lightText uppercase tracking-widest">邀請 QR code</p>
                             <!-- QR 畫在 canvas 上，family.qrError 為 true 時（QRCode 庫載入失敗）
                                  退回純文字代碼，功能不因外部 CDN 一時打不開而整個壞掉。 -->
@@ -859,22 +936,24 @@
                             <li><span class="text-primary font-black">3.</span> 家人收到「已連結」的回覆就完成了</li>
                         </ol>
 
-                        <div v-if="familyAddFriendUrl || familySendUrl" class="flex flex-wrap gap-3">
+                        <div v-if="familyAddFriendUrl || familySendUrl || canShareInvite" class="flex flex-wrap gap-3">
                             <a v-if="familyAddFriendUrl" :href="familyAddFriendUrl" target="_blank" rel="noopener"
-                               class="px-8 py-3.5 rounded-2xl bg-white border-2 border-primary/20 text-primary text-[11px] font-black uppercase tracking-widest">加入好友</a>
+                               class="px-8 py-3.5 rounded-lg bg-white border-2 border-primary/20 text-primary text-[11px] font-black uppercase tracking-widest">加入好友</a>
                             <a v-if="familySendUrl" :href="familySendUrl" target="_blank" rel="noopener"
-                               class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest">用 LINE 傳送這組碼</a>
+                               class="px-8 py-3.5 rounded-lg bg-primary text-white text-[11px] font-black uppercase tracking-widest">用 LINE 傳送這組碼</a>
+                            <button v-if="canShareInvite" @click="shareFamilyInvite" :disabled="familyBusy"
+                                    class="px-8 py-3.5 rounded-lg bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40">分享給家人</button>
                         </div>
 
                         <div class="flex flex-wrap gap-3">
                             <button @click="createFamilyInvite" :disabled="familyBusy"
-                                    class="px-8 py-3.5 rounded-2xl bg-white border-2 border-slate-200 text-content text-[11px] font-black uppercase tracking-widest disabled:opacity-40">重新產生</button>
+                                    class="px-8 py-3.5 rounded-lg bg-white border-2 border-slate-200 text-content text-[11px] font-black uppercase tracking-widest disabled:opacity-40">重新產生</button>
                             <button @click="loadFamilyConsents" :disabled="familyBusy"
-                                    class="px-8 py-3.5 rounded-2xl bg-white border-2 border-slate-200 text-content text-[11px] font-black uppercase tracking-widest disabled:opacity-40">已邀請，檢查狀態</button>
+                                    class="px-8 py-3.5 rounded-lg bg-white border-2 border-slate-200 text-content text-[11px] font-black uppercase tracking-widest disabled:opacity-40">已邀請，檢查狀態</button>
                         </div>
                     </div>
 
-                    <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                    <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg">
                         <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">關於隱私</p>
                         <p class="text-[10px] text-amber-600 mt-1 leading-relaxed">
                             這組邀請碼／QR code 核銷後即可查看您的用藥與掛號資訊，請只交給您信任的家人，
@@ -897,20 +976,20 @@
                             不會看到藥品名稱、劑量、開立醫院或就診紀錄：
                         </p>
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-                            <div class="bg-white rounded-2xl px-4 py-3"><p class="text-[10px] font-black text-lightText uppercase tracking-widest">用藥筆數</p><p class="text-xl font-black text-title">{{ medications.length }}</p></div>
-                            <div class="bg-white rounded-2xl px-4 py-3"><p class="text-[10px] font-black text-lightText uppercase tracking-widest">警示筆數</p><p class="text-xl font-black text-title">{{ ddiForMe ? ddiForMe.findings.length : ddiAlerts.length }}</p></div>
-                            <div class="bg-white rounded-2xl px-4 py-3"><p class="text-[10px] font-black text-lightText uppercase tracking-widest">安全評分</p><p class="text-xl font-black text-title">{{ safetyScore === null ? '—' : safetyScore }}</p></div>
-                            <div class="bg-white rounded-2xl px-4 py-3"><p class="text-[10px] font-black text-lightText uppercase tracking-widest">年齡級距</p><p class="text-sm font-black text-title pt-1">{{ myAgeBand || '—' }}</p></div>
+                            <div class="bg-white rounded-lg px-4 py-3"><p class="text-[10px] font-black text-lightText uppercase tracking-widest">用藥筆數</p><p class="text-xl font-black text-title">{{ medications.length }}</p></div>
+                            <div class="bg-white rounded-lg px-4 py-3"><p class="text-[10px] font-black text-lightText uppercase tracking-widest">警示筆數</p><p class="text-xl font-black text-title">{{ ddiForMe ? ddiForMe.findings.length : ddiAlerts.length }}</p></div>
+                            <div class="bg-white rounded-lg px-4 py-3"><p class="text-[10px] font-black text-lightText uppercase tracking-widest">安全評分</p><p class="text-xl font-black text-title">{{ safetyScore === null ? '—' : safetyScore }}</p></div>
+                            <div class="bg-white rounded-lg px-4 py-3"><p class="text-[10px] font-black text-lightText uppercase tracking-widest">年齡級距</p><p class="text-sm font-black text-title pt-1">{{ myAgeBand || '—' }}</p></div>
                         </div>
                     </div>
 
-                    <div v-if="consentError" class="bg-red-50 border-2 border-red-200 rounded-2xl px-5 py-4">
+                    <div v-if="consentError" class="bg-red-50 border-2 border-red-200 rounded-lg px-5 py-4">
                         <p class="text-xs font-black text-red-700">{{ consentError }}</p>
                     </div>
 
                     <div v-if="myConsents.length" class="space-y-3">
                         <p class="text-[10px] font-black text-lightText uppercase tracking-widest">目前的授權</p>
-                        <div v-for="c in myConsents" :key="c.id" class="flex flex-wrap items-center justify-between gap-4 bg-bgMain rounded-2xl px-5 py-4">
+                        <div v-for="c in myConsents" :key="c.id" class="flex flex-wrap items-center justify-between gap-4 bg-bgMain rounded-lg px-5 py-4">
                             <div>
                                 <p class="text-sm font-black text-title">{{ c.insurer }}</p>
                                 <p class="text-[11px] font-bold" :class="consentState(c) === '有效' ? 'text-primary' : 'text-lightText'">
@@ -927,20 +1006,20 @@
                     <div class="border-t border-slate-100 pt-6 flex flex-wrap items-end gap-4">
                         <div class="flex-1 min-w-[180px] space-y-2">
                             <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">授權對象</label>
-                            <input v-model="consentInsurer" type="text" placeholder="保險端帳號，如 insurance01" class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-5 font-bold text-title text-sm focus:border-primary/20 focus:bg-white outline-none transition-all">
+                            <input v-model="consentInsurer" type="text" placeholder="保險端帳號，如 insurance01" class="w-full bg-bgMain border-2 border-transparent rounded-lg py-3.5 px-5 font-bold text-title text-sm focus:border-primary/20 focus:bg-white outline-none transition-all">
                         </div>
                         <div class="w-32 space-y-2">
                             <label class="text-[10px] font-black text-lightText uppercase tracking-widest px-1">有效天數</label>
-                            <select v-model.number="consentDays" class="w-full bg-bgMain border-2 border-transparent rounded-2xl py-3.5 px-4 font-black text-title text-sm outline-none">
+                            <select v-model.number="consentDays" class="w-full bg-bgMain border-2 border-transparent rounded-lg py-3.5 px-4 font-black text-title text-sm outline-none">
                                 <option :value="30">30 天</option><option :value="90">90 天</option><option :value="180">180 天</option>
                             </select>
                         </div>
                         <button @click="grantConsent" :disabled="consentBusy || !consentInsurer.trim()"
-                                class="px-8 py-3.5 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40">
+                                class="px-8 py-3.5 rounded-lg bg-primary text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-40">
                             {{ consentBusy ? '處理中…' : '授權' }}
                         </button>
                     </div>
-                    <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 leading-relaxed">
+                    <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 leading-relaxed">
                         授權有期限，到期自動失效，您也可以隨時撤回。撤回後保險公司立即無法再讀取。
                         授權與撤回的紀錄會保存，不會被刪除。
                     </p>
@@ -969,7 +1048,7 @@
                     </div>
                     <div class="p-10 space-y-8 overflow-y-auto max-h-[60vh] text-left">
                         <div v-for="(detail, i) in detailedInsights" :key="i" class="flex gap-8 items-start group text-left">
-                            <div :class="['w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-sm transition-all group-hover:scale-110 group-hover:shadow-glow', detail.bg]">
+                            <div :class="['w-14 h-14 rounded-lg flex items-center justify-center shrink-0 shadow-sm transition-all group-hover:scale-110 group-hover:shadow-glow', detail.bg]">
                                 <component :is="detail.icon" class="h-7 w-7"></component>
                             </div>
                             <div class="space-y-3 text-left">
@@ -980,13 +1059,13 @@
                         </div>
                     </div>
                     <div class="p-8 bg-slate-50 border-t border-slate-100 space-y-4 shrink-0">
-                        <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left">
+                        <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg text-left">
                             <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 資料上傳警告</p>
                             <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">上傳目標（<span class="font-mono">{{ fhirHost }}</span>）<strong>目前沒有存取控制</strong>，任何人皆可讀取上面的資料。因此本系統<strong>不會送出您的姓名</strong>：改以固定化名代表您，出生日期模糊為 5 年級距的年份，僅用藥品項與劑量會被上傳，用於展示跨院資料交換格式。</p>
                             <p class="text-[11px] font-bold text-red-600 mt-1.5 leading-relaxed">但這<strong>不等於去識別化</strong>：化名由帳號名稱以公開演算法推導，任何人讀了本站原始碼都能還原對應關係；藥品組合本身也可能足以指認個人。<strong>請勿以真實個人資料操作本功能。</strong></p>
                         </div>
                         <div class="flex justify-end">
-                        <button @click="syncToCloud()" :disabled="syncing" class="hero-gradient text-white font-black px-12 py-4 rounded-2xl shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all text-sm uppercase tracking-widest disabled:opacity-60 disabled:scale-100 disabled:cursor-not-allowed flex items-center gap-3">
+                        <button @click="syncToCloud()" :disabled="syncing" class="hero-gradient text-white font-black px-12 py-4 rounded-lg shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all text-sm uppercase tracking-widest disabled:opacity-60 disabled:scale-100 disabled:cursor-not-allowed flex items-center gap-3">
                             <svg v-if="syncing" class="animate-spin h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
@@ -1006,7 +1085,7 @@
                 <div class="bg-white rounded-[40px] w-full max-w-4xl max-h-[90vh] shadow-2xl relative z-10 overflow-hidden animate-fade-in flex flex-col text-left text-left">
                     <div class="bg-mint p-8 md:p-12 flex justify-between items-center shrink-0 text-left">
                         <div class="flex items-center gap-6 text-left">
-                            <div class="w-16 h-16 bg-primary rounded-3xl flex items-center justify-center text-white shadow-xl shadow-primary/20 shrink-0">
+                            <div class="w-16 h-16 bg-primary rounded-xl flex items-center justify-center text-white shadow-xl shadow-primary/20 shrink-0">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.642.321a6 6 0 01-3.86.517l-2.388-.477a2 2 0 00-1.022.547l-1.168 1.168a2 2 0 00-.556 1.403V19a2 2 0 002 2h14a2 2 0 002-2v-1.403a2 2 0 00-.556-1.403l-1.168-1.168zM12 11a4 4 0 100-8 4 4 0 000 8z" /></svg>
                             </div>
                             <div class="text-left text-left">
@@ -1046,7 +1125,7 @@
                                             {{ med.hospital }}
                                         </td>
                                         <td class="py-8 rounded-r-[32px] pr-10 text-right">
-                                            <span :class="['px-5 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-sm shrink-0', safetyOf(i).tone === 'danger' ? 'bg-red-50 text-danger border border-red-100' : (safetyOf(i).tone === 'warn' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-mint text-primary border border-primary/10')]">
+                                            <span :class="['px-5 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-sm shrink-0', safetyOf(i).tone === 'danger' ? 'bg-red-50 text-danger border border-red-100' : (safetyOf(i).tone === 'warn' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-mint text-primary border border-primary/10')]">
                                                 {{ safetyOf(i).label }}
                                             </span>
                                         </td>
@@ -1059,7 +1138,7 @@
                         <div v-if="discontinuedMedications.length" class="pt-4 text-left">
                             <p class="text-[10px] font-black text-lightText uppercase tracking-widest mb-3 px-1">已停用</p>
                             <div class="space-y-3">
-                                <div v-for="med in discontinuedMedications" :key="med.id" class="bg-slate-50 rounded-2xl px-6 py-4 text-left opacity-80">
+                                <div v-for="med in discontinuedMedications" :key="med.id" class="bg-slate-50 rounded-lg px-6 py-4 text-left opacity-80">
                                     <div class="flex justify-between items-start gap-4">
                                         <div class="font-black text-title text-left">{{ medName(med).zh }}</div>
                                         <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 bg-slate-200 rounded-full px-3 py-1 shrink-0">已停用</span>
@@ -1081,7 +1160,7 @@
                     <div class="p-8 md:p-12 flex flex-col space-y-6 min-h-[500px] text-left">
                         <div class="flex items-center gap-4 shrink-0">
                             <div class="relative w-14 h-14 shrink-0">
-                                <div class="relative w-full h-full rounded-2xl hero-gradient p-1 shadow-xl border-2 border-white/20">
+                                <div class="relative w-full h-full rounded-lg hero-gradient p-1 shadow-xl border-2 border-white/20">
                                     <img alt="" src="images/doctor.jpg" class="w-full h-full rounded-xl object-cover">
                                 </div>
                                 <div class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-primary rounded-full border-2 border-slate-900"></div>
@@ -1094,7 +1173,7 @@
                         <div id="chat-scroll" class="flex-1 space-y-4 max-h-72 overflow-y-auto pr-1">
                                                         <!-- 對話載入失敗必須與「沒有訊息」分開呈現：兩者長得一樣，意義卻完全相反——
                                  後者是沒人說話，前者是說了但你看不到。 -->
-                            <div v-if="!chatReady" class="text-center text-xs font-black text-danger bg-red-50 border border-red-200 rounded-2xl py-4 px-5 leading-relaxed">
+                            <div v-if="!chatReady" class="text-center text-xs font-black text-danger bg-red-50 border border-red-200 rounded-lg py-4 px-5 leading-relaxed">
                                 無法連線至對話伺服器，目前顯示的內容可能不完整。<br>這不代表沒有訊息，請確認網路後重新整理。
                             </div>
                             <div v-else-if="chatMessages.length === 0" class="text-center text-xs font-bold text-slate-500 py-10">尚無對話紀錄，開始留言給{{ doctorLabel }}吧</div>
@@ -1104,12 +1183,12 @@
                                 </div>
                                 <div v-else :class="['flex gap-3 items-end', msg.from === 'patient' ? 'flex-row-reverse' : '']">
                                     <div v-if="msg.from === 'doctor'" class="w-8 h-8 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 font-black text-[10px] shadow-lg">DR</div>
-                                    <p :class="['text-sm leading-relaxed font-bold px-4 py-3 rounded-2xl max-w-[75%]', msg.from === 'doctor' ? 'text-slate-300 bg-white/5 border border-white/10 rounded-tl-sm' : 'text-white bg-primary rounded-tr-sm']">{{ msg.text }}</p>
+                                    <p :class="['text-sm leading-relaxed font-bold px-4 py-3 rounded-lg max-w-[75%]', msg.from === 'doctor' ? 'text-slate-300 bg-white/5 border border-white/10 rounded-tl-sm' : 'text-white bg-primary rounded-tr-sm']">{{ msg.text }}</p>
                                 </div>
                             </template>
                             <div v-if="awaitingReply" class="flex gap-3 items-end">
                                 <div class="w-8 h-8 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 font-black text-[10px] shadow-lg">DR</div>
-                                <div class="flex items-center gap-2 px-4 py-3 bg-white/5 rounded-2xl border border-white/10 rounded-tl-sm">
+                                <div class="flex items-center gap-2 px-4 py-3 bg-white/5 rounded-lg border border-white/10 rounded-tl-sm">
                                     <div class="flex gap-1">
                                         <div class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay:0s"></div>
                                         <div class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay:0.15s"></div>
@@ -1122,8 +1201,8 @@
                     </div>
                     <div class="p-4 md:p-6 bg-black/50 border-t border-white/5 flex gap-3 shrink-0 items-center text-left">
                         <button @click="closeChat" aria-label="關閉對話" class="py-4 px-4 font-black text-slate-500 hover:text-danger transition-colors uppercase tracking-[0.2em] text-[10px] shrink-0">✕</button>
-                        <input v-model="chatInput" @keyup.enter="sendResponse()" type="text" placeholder="輸入訊息給醫師..." class="flex-1 bg-white/10 border border-white/15 rounded-2xl px-5 py-3 text-white text-sm placeholder-slate-500 outline-none focus:border-primary/60 transition-colors" />
-                        <button @click="sendResponse()" :disabled="!chatInput.trim()" class="bg-primary text-white font-black px-7 py-3 rounded-2xl shadow-xl shadow-primary/30 hover:scale-[1.03] active:scale-[0.97] transition-all text-xs uppercase tracking-widest disabled:opacity-40 disabled:scale-100 disabled:cursor-not-allowed shrink-0">Send</button>
+                        <input v-model="chatInput" @keyup.enter="sendResponse()" type="text" placeholder="輸入訊息給醫師..." class="flex-1 bg-white/10 border border-white/15 rounded-lg px-5 py-3 text-white text-sm placeholder-slate-500 outline-none focus:border-primary/60 transition-colors" />
+                        <button @click="sendResponse()" :disabled="!chatInput.trim()" class="bg-primary text-white font-black px-7 py-3 rounded-lg shadow-xl shadow-primary/30 hover:scale-[1.03] active:scale-[0.97] transition-all text-xs uppercase tracking-widest disabled:opacity-40 disabled:scale-100 disabled:cursor-not-allowed shrink-0">Send</button>
                     </div>
                 </div>
             </div>
@@ -1140,10 +1219,10 @@
                         <p class="text-white/80 font-black mt-3 relative z-10 uppercase tracking-widest text-[10px] md:text-[11px] text-left">Pharmacological Deep-Dive Report</p>
                     </div>
                     <div class="p-8 md:p-12 space-y-10 text-left overflow-y-auto max-h-[60vh]">
-                        <div class="flex items-center gap-6 justify-center bg-slate-50 p-6 rounded-3xl border border-slate-100 text-left">
-                            <span class="px-6 py-2.5 bg-white text-danger font-black rounded-2xl shadow-sm border border-danger/10 text-sm italic shrink-0">Warfarin</span>
+                        <div class="flex items-center gap-6 justify-center bg-slate-50 p-6 rounded-xl border border-slate-100 text-left">
+                            <span class="px-6 py-2.5 bg-white text-danger font-black rounded-lg shadow-sm border border-danger/10 text-sm italic shrink-0">Warfarin</span>
                             <div class="w-10 h-10 bg-danger text-white rounded-full flex items-center justify-center font-black animate-pulse shrink-0">×</div>
-                            <span class="px-6 py-2.5 bg-white text-danger font-black rounded-2xl shadow-sm border border-danger/10 text-sm italic shrink-0">Aspirin</span>
+                            <span class="px-6 py-2.5 bg-white text-danger font-black rounded-lg shadow-sm border border-danger/10 text-sm italic shrink-0">Aspirin</span>
                         </div>
                         <div class="space-y-8 text-left">
                             <div class="space-y-4 text-left">
@@ -1161,12 +1240,12 @@
                                     <div class="flex justify-between border-b border-white pb-2 mb-2 text-left text-left"><span>比對方式:</span> <span class="text-slate-600 font-black">規則庫藥名字串比對</span></div>
                                     <div class="flex justify-between text-left text-left"><span>證據等級:</span> <span class="text-slate-600 font-black">規則庫收錄，未經統計驗證</span></div>
                                 </div>
-                                <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 leading-relaxed"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 本警示來自系統內建的交互作用規則庫，以藥品名稱比對產生，非機器學習模型推論，亦未附帶統計顯著性。請以醫師與藥師的專業判斷為準。</p>
+                                <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 leading-relaxed"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 本警示來自系統內建的交互作用規則庫，以藥品名稱比對產生，非機器學習模型推論，亦未附帶統計顯著性。請以醫師與藥師的專業判斷為準。</p>
                             </div>
                         </div>
                     </div>
                     <div class="p-8 md:p-10 bg-slate-50 border-t border-slate-100 space-y-4 shrink-0 text-left">
-                        <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                        <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg">
                             <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 資料上傳警告</p>
                             <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">按下確認會以 FHIR Flag 資源，將本次交互作用的藥品名稱上傳至 <span class="font-mono">{{ fhirHost }}</span>。該伺服器<strong>目前沒有存取控制</strong>，任何人皆可讀取。您的身分以固定化名代表，<strong>不會送出姓名或系統帳號</strong>；但化名由公開演算法推導、可被還原，故此非去識別化，請勿以真實資料操作。</p>
                         </div>
@@ -1195,7 +1274,7 @@
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                         </button>
                         <div class="flex items-center gap-5">
-                            <div :class="['w-16 h-16 rounded-3xl flex items-center justify-center shadow-lg', selectedMed.color === 'danger' ? 'bg-danger text-white' : 'bg-primary text-white']">
+                            <div :class="['w-16 h-16 rounded-xl flex items-center justify-center shadow-lg', selectedMed.color === 'danger' ? 'bg-danger text-white' : 'bg-primary text-white']">
                                 <svg v-if="selectedMed.icon === 'shield-exclamation'" xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
                                 <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                             </div>
@@ -1215,28 +1294,28 @@
                         </div>
                         <div class="h-px bg-slate-100"></div>
                         <div class="grid grid-cols-2 gap-4">
-                            <div class="bg-slate-50 rounded-2xl p-5">
+                            <div class="bg-slate-50 rounded-lg p-5">
                                 <p class="text-[10px] font-black text-lightText uppercase tracking-widest mb-2">劑量</p>
                                 <p class="text-lg font-black text-title">{{ selectedMed.dosage }}</p>
                             </div>
-                            <div class="bg-slate-50 rounded-2xl p-5">
+                            <div class="bg-slate-50 rounded-lg p-5">
                                 <p class="text-[10px] font-black text-lightText uppercase tracking-widest mb-2">分類</p>
                                 <p class="text-sm font-black text-title">{{ selectedMed.category }}</p>
                             </div>
                         </div>
-                        <div class="bg-slate-50 rounded-2xl p-5">
+                        <div class="bg-slate-50 rounded-lg p-5">
                             <p class="text-[10px] font-black text-lightText uppercase tracking-widest mb-2">服用頻率</p>
                             <p class="text-sm font-bold text-title">{{ selectedMed.freq }}</p>
                         </div>
                         <!-- Risk Warning -->
-                        <div v-if="selectedMed.status === '風險'" class="bg-red-50 border-l-4 border-danger rounded-2xl p-5 flex gap-4 items-start">
+                        <div v-if="selectedMed.status === '風險'" class="bg-red-50 border-l-4 border-danger rounded-lg p-5 flex gap-4 items-start">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-danger shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
                             <p class="text-sm font-bold text-danger leading-relaxed">此藥品與其他處方存在交互風險，請諮詢{{ doctorLabel }}</p>
                         </div>
                     </div>
                     <!-- Footer -->
                     <div class="px-10 pb-10">
-                        <button @click="showMedDetailModal = false" class="w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest border-2 border-slate-100 text-slate-500 hover:bg-slate-50 transition-all">關閉</button>
+                        <button @click="showMedDetailModal = false" class="w-full py-4 rounded-lg font-black text-sm uppercase tracking-widest border-2 border-slate-100 text-slate-500 hover:bg-slate-50 transition-all">關閉</button>
                     </div>
                 </div>
             </div>
@@ -1244,7 +1323,7 @@
 
         <!-- Toast -->
         <transition name="fade">
-            <div v-if="showToast" class="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-[200] bg-slate-900 text-white px-8 py-5 rounded-3xl shadow-2xl border border-white/10 flex items-center gap-4 animate-fade-in text-left">
+            <div v-if="showToast" class="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-[200] bg-slate-900 text-white px-8 py-5 rounded-xl shadow-2xl border border-white/10 flex items-center gap-4 animate-fade-in text-left">
                 <div class="w-10 h-10 bg-success rounded-full flex items-center justify-center text-white shrink-0 text-left"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-left" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg></div>
                 <div class="overflow-hidden text-left"><div class="font-black text-sm uppercase tracking-widest truncate text-left">{{ toastTitle }}</div><div class="text-[10px] text-slate-500 font-bold truncate text-left">{{ toastMessage }}</div></div>
             </div>
@@ -1293,12 +1372,23 @@
                     _username: user.username || 'patient01',
                     // 資料授權（P1-6）
                     myConsents: [],
+                    // 目前沒有保險端在使用，側欄的「資料授權」入口與 ?view=consent 深連結先隱藏。
+                    // 只是隱藏入口：同意書的規則、資料與頁面本身都保留，保險端上線時改回 true 即可。
+                    insurancePortalEnabled: false,
                     // 側欄的檢視切換。資料授權與掛號各自獨立成一個檢視。
                     activeView: 'home',
                     // 是否透過 LINE LIFF 開啟（見檔尾 IIFE）。這種情境下
                     // 使用者是被 LINE 帶進來的，沒有「登入表單」可以回去，
                     // 側欄的「退出登入」因此改為關閉 LIFF 視窗而非登出重導。
                     isLiffMode: false,
+                    // 是否為「透過 LINE 註冊、沒有密碼」的帳號。變更密碼需要先以
+                    // 目前密碼重新驗證，這種帳號根本沒有密碼，因此停用「變更密碼」。
+                    // 帳密帳號（即使這次是用 LINE 登入）不受影響。判斷見檔尾 IIFE。
+                    isPasswordlessAccount: false,
+                    // 是否可用 LIFF shareTargetPicker 直接分享邀請碼給好友——
+                    // 需要 isInClient 之外，還要 LIFF App 有開「Share target
+                    // picker」權限且 SDK 版本支援，見檔尾 IIFE 的判斷式。
+                    canShareInvite: false,
                     showScoreDetail: false,
                     // 掛號（醫病關係的來源）
                     myAppointments: [],
@@ -1314,6 +1404,16 @@
                     legacyAppt: { department: '一般內科', doctor: '', date: '' },
                     apptBusy: false,
                     apptError: '',
+                    // ── 結帳（純示範）：見頁首 modal 與 DbService.appointments._paymentFields() ──
+                    // checkoutPending 記著「這次結帳完成後要送出哪一筆掛號」：
+                    // { type: 'queued', sessionInfo } 對應 bookQueued()、
+                    // { type: 'legacy' } 對應 bookAppointment()（走 legacyAppt 目前的值）。
+                    showCheckoutModal: false,
+                    checkoutPending: null,
+                    checkoutPaymentMethod: 'online',
+                    checkoutPaying: false,
+                    checkoutPaid: false,
+                    checkoutFee: 150,
                     // LINE 提醒綁定。lineBinding 讀自 line_bindings/{username}——
                     // 那份文件病患只讀得到、寫不了（見 firestore.rules 的 LINE 一節）。
                     lineBinding: null,
@@ -1762,6 +1862,22 @@
                 upcomingAppointments() {
                     return (this.myAppointments || []).filter(a => this.apptIsActive(a));
                 },
+                // 目前佔用「掛號名額」的那一筆（一個帳號同時只能有一筆）。
+                // 判斷邏輯在 DbService.appointments.holdsSlot()，與 firestore.rules 同步。
+                currentBooking() {
+                    return (this.myAppointments || []).find(a => DbService.appointments.holdsSlot(a)) || null;
+                },
+                // 結帳確認畫面上方那行摘要——讓病患在選付款方式前，仍看得到
+                // 「要掛的是哪一診」，取代原本 confirm() 裡的那句話。
+                checkoutSummary() {
+                    const p = this.checkoutPending;
+                    if (!p) return '';
+                    if (p.type === 'queued') {
+                        return `${this.bookingDoctorName}　${p.sessionInfo.label}　${p.sessionInfo.statusText}`;
+                    }
+                    const doctor = (this.legacyAppt.doctor || '').trim();
+                    return `${doctor} 醫師　${this.legacyAppt.date}`;
+                },
                 // 目前仍然有效的授權（未撤回、未到期）。側欄的數字用它，
                 // 讓「現在有幾個人讀得到我的資料」不必點進去才知道。
                 activeConsents() {
@@ -1923,16 +2039,28 @@
                 this._chatUnsub = window.chatStore.onChange(() => {
                     const msgs = window.chatStore.getMessages(this.profile.id);
                     if (msgs.length <= this.chatMessages.length) return;
-                    const newOnes = msgs.slice(this.chatMessages.length).filter(m => m.from === 'doctor');
-                    if (!newOnes.length) return;
-                    newOnes.forEach(m => this.chatMessages.push({ from: 'doctor', text: m.text }));
-                    this.awaitingReply = false;
+                    // 【原本這裡只收 from==='doctor' 的新訊息，是個潛藏的錯誤】
+                    // sendResponse() 的註解宣稱病患自己送出的訊息「由 Firestore 監聽
+                    // 回填到 chatMessages」，但當時的過濾條件其實會把 from==='patient'
+                    // 的新訊息整批丟掉——只要聊天視窗開著沒重新打開過，病患自己剛送出
+                    // 的話、或從 LINE 回報不適轉進來的話（見 functions/src/webhook.js
+                    // 的 forwardSymptomReport()，同樣是 from:'patient'）都不會即時出現，
+                    // 要關掉再打開聊天視窗（openChat() 重新從 getMessages() 整批讀取）
+                    // 才看得到。改為整批取代而非逐則附加，與 dashboard.html 的 onChange
+                    // 處理同一種做法：Firestore 的快照本身就是完整狀態，逐則附加在
+                    // 重連或補送時會把同一則訊息加進去兩次。
+                    const newOnes = msgs.slice(this.chatMessages.length);
+                    this.chatMessages = msgs.map(m => ({ from: m.from, text: m.text }));
+                    // 通知／未讀提示仍只認醫師的回覆——病患自己在別的裝置或 LINE
+                    // 送出的話，不需要對自己彈一次「你有新訊息」。
+                    const newDoctorOnes = newOnes.filter(m => m.from === 'doctor');
+                    if (newDoctorOnes.length) this.awaitingReply = false;
                     if (this.showChatModal) {
                         window.chatStore.markChatRead('patient', this.profile.id);
                         this.$nextTick(() => this.scrollChat());
-                    } else {
-                        const latest = newOnes[newOnes.length - 1].text;
-                        this.unreadChatCount += newOnes.length;
+                    } else if (newDoctorOnes.length) {
+                        const latest = newDoctorOnes[newDoctorOnes.length - 1].text;
+                        this.unreadChatCount += newDoctorOnes.length;
                         window.medNotify.setUnread(this.unreadChatCount);
                         this.notifications.unshift({ title: `${this.doctorName}回覆`, content: latest, time: '剛剛', icon: Icons.AI, bg: 'bg-primary', action: 'chat' });
                         this.triggerToast(`${this.doctorName}回覆`, `您有一則來自${this.doctorName}的新訊息`);
@@ -2065,6 +2193,7 @@
                 },
 
                 async unbindLine() {
+                    if (this.isPasswordlessAccount) return;
                     if (!confirm('解除 LINE 綁定？\n\n解除後將立即停止所有推播提醒（包含交互作用警示）。過去的用藥回報紀錄會保留。')) return;
                     this.lineBusy = true;
                     this.lineError = '';
@@ -2117,6 +2246,29 @@
                         this.familyError = e.message || '產生邀請碼失敗，請稍後再試。';
                     } finally {
                         this.familyBusy = false;
+                    }
+                },
+                // 用 LIFF shareTargetPicker 把邀請碼直接送進家屬的 LINE 聊天室，
+                // 不需要對方掃 QR、也不需要病患把手機遞出去。取消分享時 SDK
+                // resolve(undefined)（不是 reject），這不是錯誤，不顯示訊息——
+                // 只有真的 reject（權限未開、SDK 內部錯誤）才算失敗。
+                async shareFamilyInvite() {
+                    this.familyError = '';
+                    let text = (this.familyRelationshipLabel || '我')
+                        + ' 邀請你在 MedSafe 查看用藥狀況。\n'
+                        + '請加 MedSafe 官方帳號好友，並把這組代碼傳給它完成連結：' + this.familyCode + '\n'
+                        + '（剩餘 ' + this.familyCodeCountdown + ' 內有效，逾期請回來我這裡重新產生）';
+                    if (this.familyAddFriendUrl) {
+                        text += '\n加好友連結：' + this.familyAddFriendUrl;
+                    }
+                    try {
+                        const result = await liff.shareTargetPicker([{ type: 'text', text }]);
+                        if (result) {
+                            this.triggerToast('已分享', '邀請訊息已送出，等家人依指示完成連結。');
+                        }
+                    } catch (e) {
+                        console.error('分享邀請碼失敗：', e);
+                        this.familyError = e.message || '分享失敗，請改用下方的連結或 QR code。';
                     }
                 },
                 // 用 QRCode 庫把邀請連結畫成掃描用的圖。刻意容錯：
@@ -2600,12 +2752,61 @@
                     }
                 },
 
-                async bookQueued(sessionInfo) {
-                    if (this.apptBusy || !sessionInfo.bookable) return;
-                    // 號碼一經發出即固定、取消也不會遞補（見下方說明文字），
-                    // 誤按一次就是真的多一筆掛號，因此跟取消掛號一樣先確認一次，
-                    // 而不是點下去就立刻送出。
-                    if (!confirm(`確定要掛「${sessionInfo.label}」嗎？\n\n${sessionInfo.statusText}`)) return;
+                // ── 結帳（純示範）────────────────────────────────────────
+                openCheckout(pending) {
+                    this.checkoutPending = pending;
+                    this.checkoutPaymentMethod = 'online';
+                    this.checkoutPaying = false;
+                    this.checkoutPaid = false;
+                    this.showCheckoutModal = true;
+                },
+                closeCheckout() {
+                    if (this.apptBusy) return;
+                    this.showCheckoutModal = false;
+                    this.checkoutPending = null;
+                },
+                async confirmCheckout() {
+                    if (this.apptBusy || !this.checkoutPending) return;
+                    const pending = this.checkoutPending;
+                    const method = this.checkoutPaymentMethod;
+                    // 純視覺的模擬付款動畫：不呼叫任何外部服務、不影響掛號是否成立，
+                    // 純粹是為了展示影片好看（見 firestore.rules paymentFieldsOk() 的說明）。
+                    if (method === 'online') {
+                        this.checkoutPaying = true;
+                        await new Promise(r => setTimeout(r, 2000));
+                        this.checkoutPaying = false;
+                        this.checkoutPaid = true;
+                        await new Promise(r => setTimeout(r, 700)); // 讓打勾畫面有時間被看到
+                    }
+                    this.showCheckoutModal = false;
+                    this.checkoutPending = null;
+                    if (pending.type === 'queued') {
+                        await this._submitQueuedBooking(pending.sessionInfo, method);
+                    } else {
+                        await this._submitLegacyBooking(method);
+                    }
+                },
+
+                // 被規則以「已有進行中的掛號」拒絕時的共用處理。畫面上的清單可能是舊的
+                // （例如在另一台裝置或 LINE 裡剛掛了號），因此先重讀再判斷，
+                // 讀到確實有一筆才這樣說——不把其他原因的拒絕誤報成這一個。
+                async explainExistingBooking() {
+                    await this.loadAppointments();
+                    if (!this.currentBooking) return false;
+                    this.apptError = '您已有一筆進行中的掛號，每個帳號同時只能有一筆。請先取消該筆掛號，或待看診完成後再掛號。';
+                    return true;
+                },
+                // 【原本這裡直接送出，現在改為先開結帳畫面】號碼一經發出即固定、
+                // 取消也不會遞補（見下方說明文字），誤按一次就是真的多一筆掛號，
+                // 因此原本用 confirm() 先確認一次；現在結帳畫面（顯示掛號費＋選付款
+                // 方式）本身就是同一種「按下去之前再看一眼」的確認步驟，不需要再疊一層
+                // confirm()。真正送出的邏輯搬到 _submitQueuedBooking()，
+                // 由結帳畫面的 confirmCheckout() 呼叫。
+                bookQueued(sessionInfo) {
+                    if (this.apptBusy || !sessionInfo.bookable || this.currentBooking) return;
+                    this.openCheckout({ type: 'queued', sessionInfo });
+                },
+                async _submitQueuedBooking(sessionInfo, payment) {
                     const sch = this.selectedSchedule;
                     this.apptBusy = true;
                     this.apptError = '';
@@ -2618,7 +2819,8 @@
                             department: sch.department,
                             dateKey: this.newAppt.date,
                             session: sessionInfo.id,
-                            schedule: sch
+                            schedule: sch,
+                            payment
                         });
                         const at = DbService.schedules.timeText(r.estimatedAt);
                         await this.loadAppointments();
@@ -2645,6 +2847,8 @@
                         } else if (e && e.stage === 'closed') {
                             await this.refreshDay();
                             this.apptError = '該診次目前不開放預約，請重新選擇。';
+                        } else if (e && e.code === 'permission-denied' && await this.explainExistingBooking()) {
+                            // 已由 explainExistingBooking() 說明
                         } else {
                             await this.refreshDay();
                             this.apptError = '掛號失敗，未取得號碼。請確認網路後再試。';
@@ -2659,6 +2863,13 @@
                 },
                 apptStatusText(s) {
                     return ({ booked: '已預約', arrived: '已報到', finished: '已完診', cancelled: '已取消' })[s] || s || '—';
+                },
+                // 結帳（純示範）狀態標籤——見 firestore.rules 的 paymentFieldsOk()。
+                // 純顯示用途，不是真的收款狀態；本功能上線前建立的掛號沒有這兩個
+                // 欄位時回傳空字串，模板據此不顯示標籤，而不是猜一個值出來。
+                paymentTagText(a) {
+                    if (!a || !a.paymentMethod) return '';
+                    return a.paymentMethod === 'online' ? '已線上付款' : '到場付款';
                 },
                 // scheduledAt 是 Firestore Timestamp；剛寫入時本地物件可能還是字串或 Date，
                 // 三種形狀都要處理，否則新掛的那一筆會顯示成空白
@@ -2719,13 +2930,18 @@
                 // 舊制掛號：只有日期、沒有號碼。僅適用於尚未公告看診時間的醫師——
                 // 規則會以 !hasSchedule() 擋掉對已公告醫師的這條路徑，
                 // 否則病患可以繞過名額限制。
-                async bookAppointment() {
-                    if (this.apptBusy) return;
+                // 【原本這裡直接送出，現在改為先開結帳畫面】這條路徑系統驗不了帳號是不是
+                // 真的醫師（見上方的說明文字），誤按、打錯帳號都不會有任何提示；原本用
+                // confirm() 先確認一次要掛的對象，現在結帳畫面上方的摘要（checkoutSummary）
+                // 已經顯示同樣的資訊，不需要再疊一層 confirm()。真正送出的邏輯搬到
+                // _submitLegacyBooking()，由結帳畫面的 confirmCheckout() 呼叫。
+                bookAppointment() {
                     const doctor = (this.legacyAppt.doctor || '').trim();
-                    if (!doctor || !this.legacyAppt.date) return;
-                    // 這條路徑系統驗不了帳號是不是真的醫師（見上方的說明文字），
-                    // 誤按、打錯帳號都不會有任何提示，先跟病患確認一次要掛的對象。
-                    if (!confirm(`確定要用「${doctor}」這個帳號掛 ${this.legacyAppt.date} 的門診嗎？`)) return;
+                    if (this.apptBusy || !doctor || !this.legacyAppt.date || this.currentBooking) return;
+                    this.openCheckout({ type: 'legacy' });
+                },
+                async _submitLegacyBooking(payment) {
+                    const doctor = (this.legacyAppt.doctor || '').trim();
                     this.apptBusy = true;
                     this.apptError = '';
                     try {
@@ -2735,7 +2951,8 @@
                             doctor,
                             doctorName: doctor,
                             department: this.legacyAppt.department,
-                            scheduledAt: this.legacyAppt.date
+                            scheduledAt: this.legacyAppt.date,
+                            payment
                         });
                         this.legacyAppt = { department: '一般內科', doctor: '', date: '' };
                         await this.loadAppointments();
@@ -2759,6 +2976,8 @@
                             this.apptError = '掛號已建立（見下方清單），但未能授予該醫師存取權，'
                                 + '他目前看不到您的用藥資料。請重新整理後再試一次，'
                                 + '或於報到時洽櫃檯以證件建立。不需重複掛號。';
+                        } else if (e && e.code === 'permission-denied' && await this.explainExistingBooking()) {
+                            // 已由 explainExistingBooking() 說明
                         } else if (e && e.code === 'permission-denied') {
                             // 最可能的原因：這位醫師已經公告了看診時間，
                             // 規則因此關閉了舊制路徑。要引導回正確的掛號方式，
@@ -2860,6 +3079,7 @@
                     window.open('schedule.html', '_blank');
                 },
                 openPasswordModal() {
+                    if (this.isPasswordlessAccount) return;
                     this.passwordForm = { current: '', next: '', confirm: '' };
                     this.passwordError = '';
                     this.showPasswordModal = true;
@@ -3027,30 +3247,97 @@
         // ?liff=1 進入時，先透過 LIFF 換發 Custom Token 登入（見 js/liff-bridge.js），
         // 再走原本的 mountWhenAuthorized——換發成功後這裡與一般帳密登入無異。
         //
-        // 失敗原因不可一律當成「尚未綁定」：liffResult.reason 只有
+        // 失敗原因不可一律當成同一種畫面：liffResult.reason 為
         // 'failed-precondition'（exchange.js 明確查不到綁定時丟的 HttpsError code）
-        // 才是真的沒綁定；其餘（LIFF SDK 載入失敗、ID Token 驗證失敗、
-        // createCustomToken 內部錯誤……）是別的問題，把它們也說成「尚未綁定」
-        // 會讓使用者去重綁一次也解決不了，還蓋掉真正的錯誤原因，實測就踩過這個坑。
+        // 時，代表這支 LINE 真的還沒有任何帳號，該做的是就地註冊
+        // （renderLiffRegister），不是叫使用者去網頁版「綁定」一個不存在的帳號；
+        // 其餘原因（LIFF SDK 載入失敗、ID Token 驗證失敗、createCustomToken
+        // 內部錯誤……）才是 renderLiffError 要處理的一般性錯誤——把它們也說成
+        // 「尚未綁定」會讓使用者重新註冊也解決不了，還蓋掉真正的錯誤原因，
+        // 實測就踩過這個坑。
         function renderLiffError(reason, message) {
-            const isNotBound = reason === 'failed-precondition';
-            const title = isNotBound ? '尚未綁定 LINE' : '登入時發生錯誤';
-            const body = isNotBound
-                ? '請先用電腦或手機瀏覽器登入 MedSafe 網頁版，在側欄「LINE 提醒」頁面產生綁定碼並完成綁定，之後才能直接用 LINE 開啟這個頁面。'
-                : '暫時無法透過 LINE 登入，請稍後再試一次；若持續發生，請改用電腦或手機瀏覽器登入網頁版，並將下方代碼提供給管理員排查。';
-            document.title = title + ' | MedSafe';
+            document.title = '登入時發生錯誤 | MedSafe';
             document.body.innerHTML =
                 '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;'
                 + 'font-family:system-ui,-apple-system,Segoe UI,Noto Sans TC,sans-serif;background:#F7F8FA;padding:24px">'
                 + '<div style="max-width:420px;text-align:center;background:#fff;border-radius:24px;padding:40px 32px;'
                 + 'box-shadow:0 8px 32px rgba(15,23,42,.08)">'
-                + '<div style="font-size:40px;line-height:1;margin-bottom:16px">' + (isNotBound ? '<i class="fa-solid fa-link" aria-hidden="true"></i>' : '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>') + '</div>'
-                + '<h1 style="font-size:20px;font-weight:800;color:#0F172A;margin:0 0 8px">' + title + '</h1>'
-                + '<p style="font-size:13px;color:#64748B;line-height:1.7;margin:0 0 24px">' + body + '</p>'
+                + '<div style="font-size:40px;line-height:1;margin-bottom:16px"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></div>'
+                + '<h1 style="font-size:20px;font-weight:800;color:#0F172A;margin:0 0 8px">登入時發生錯誤</h1>'
+                + '<p style="font-size:13px;color:#64748B;line-height:1.7;margin:0 0 24px">暫時無法透過 LINE 登入，請稍後再試一次；若持續發生，請改用電腦或手機瀏覽器登入網頁版，並將下方代碼提供給管理員排查。</p>'
                 + '<a href="login.html" style="display:inline-block;background:#24A15D;color:#fff;'
                 + 'border-radius:16px;padding:14px 32px;font-size:13px;font-weight:800;text-decoration:none">前往網頁版登入</a>'
-                + (isNotBound ? '' : '<p style="font-size:10px;color:#94A3B8;margin-top:16px">代碼：' + reason + '</p>')
+                + '<p style="font-size:10px;color:#94A3B8;margin-top:16px">代碼：' + reason + '</p>'
                 + '</div></div>';
+        }
+
+        // 首次用 LINE 登入、尚未有任何帳號時就地完成註冊——不用 Vue（app 這時
+        // 還沒 mount），純字串拼 innerHTML＋原生 DOM 事件，跟 renderLiffError
+        // 是同一種寫法。表單本身只收姓名／帳號兩個欄位，跟 login.html 目前的
+        // 自助註冊維持一致（其餘資料沿用「之後在頁面內補填」的既有設計，
+        // 見 js/db-service.js registerPatient() 的說明），驗證規則也直接
+        // 照抄 login.html 的 register()，避免兩邊文案或規則不小心分岔。
+        function renderLiffRegister() {
+            document.title = '完成註冊 | MedSafe';
+            document.body.innerHTML =
+                '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;'
+                + 'font-family:system-ui,-apple-system,Segoe UI,Noto Sans TC,sans-serif;background:#F7F8FA;padding:24px">'
+                + '<div style="max-width:420px;width:100%;background:#fff;border-radius:24px;padding:40px 32px;'
+                + 'box-shadow:0 8px 32px rgba(15,23,42,.08)">'
+                + '<div style="font-size:40px;margin-bottom:16px;text-align:center"><i class="fa-solid fa-user-plus" aria-hidden="true"></i></div>'
+                + '<h1 style="font-size:20px;font-weight:800;color:#0F172A;margin:0 0 8px;text-align:center">完成註冊</h1>'
+                + '<p style="font-size:13px;color:#64748B;line-height:1.7;margin:0 0 24px;text-align:center">第一次用 LINE 登入 MedSafe，請填寫基本資料建立帳號。</p>'
+                + '<form id="liffRegForm">'
+                + '<label style="display:block;font-size:13px;font-weight:700;color:#0F172A;margin-bottom:4px">姓名</label>'
+                + '<input id="liffRegName" type="text" autocomplete="name" placeholder="請輸入姓名" '
+                + 'style="width:100%;box-sizing:border-box;border:2px solid #E2E8F0;border-radius:16px;padding:10px 16px;margin-bottom:16px;font-size:14px">'
+                + '<label style="display:block;font-size:13px;font-weight:700;color:#0F172A;margin-bottom:4px">帳號</label>'
+                + '<input id="liffRegUsername" type="text" autocomplete="username" placeholder="英數字、底線與句點，3-20 字元" '
+                + 'style="width:100%;box-sizing:border-box;border:2px solid #E2E8F0;border-radius:16px;padding:10px 16px;margin-bottom:4px;font-size:14px">'
+                + '<p style="font-size:11px;color:#94A3B8;margin:0 0 16px">之後也可以用這組帳號在網頁版登入。</p>'
+                + '<p id="liffRegError" style="font-size:12px;color:#DC2626;margin:0 0 12px;display:none"></p>'
+                + '<button type="submit" id="liffRegSubmit" style="width:100%;background:#24A15D;color:#fff;border:none;'
+                + 'border-radius:16px;padding:14px;font-size:14px;font-weight:800;cursor:pointer">完成註冊並登入</button>'
+                + '</form>'
+                + '<p style="font-size:11px;color:#94A3B8;margin-top:20px;text-align:center">已有帳號？'
+                + '<a href="login.html" style="color:#24A15D;font-weight:700;text-decoration:none">改用網頁版綁定</a></p>'
+                + '</div></div>';
+
+            const errEl = document.getElementById('liffRegError');
+            const submitBtn = document.getElementById('liffRegSubmit');
+            const showError = (msg) => { errEl.textContent = msg; errEl.style.display = 'block'; };
+
+            document.getElementById('liffRegForm').addEventListener('submit', async (ev) => {
+                ev.preventDefault();
+                errEl.style.display = 'none';
+                const name = document.getElementById('liffRegName').value.trim();
+                const username = document.getElementById('liffRegUsername').value.trim().toLowerCase();
+
+                if (!name || !username) { showError('請完整填寫姓名與帳號'); return; }
+                if (!/^[a-z0-9_.]{3,20}$/.test(username)) { showError('帳號限英數字、底線與句點，長度 3-20'); return; }
+                // 與 login.html register() 同一個理由：帳號不可為身分證字號格式。
+                if (/^[a-z][1289][0-9]{8}$/.test(username)) { showError('帳號不可使用身分證字號格式，請另外設定帳號'); return; }
+
+                submitBtn.disabled = true;
+                submitBtn.textContent = '處理中...';
+                const r = await window.liffRegisterPatient(name, username);
+                if (r.ok) {
+                    // 重新整理讓整個 IIFE 重跑一次：這次 bootLiff() 會走
+                    // lineExchangeToken（綁定已存在）直接成功登入，不必在這裡
+                    // 另外重刻一份「註冊成功後掛載 app」的邏輯。
+                    location.reload();
+                    return;
+                }
+                submitBtn.disabled = false;
+                submitBtn.textContent = '完成註冊並登入';
+                if (r.reason === 'already-exists') {
+                    showError('這個帳號已經有人使用，請換一個');
+                } else if (r.reason === 'token-expired') {
+                    showError('登入已逾時，請重新整理頁面再試一次（您填寫的內容需要重新輸入）');
+                } else {
+                    showError('註冊失敗：' + (r.message || r.reason));
+                }
+            });
         }
 
         (async () => {
@@ -3060,7 +3347,11 @@
             }
             if (liffResult.attempted && !liffResult.ok && liffResult.reason !== 'redirecting') {
                 console.error('LIFF 登入未完成：', liffResult.reason, liffResult.message || '');
-                renderLiffError(liffResult.reason, liffResult.message);
+                if (liffResult.reason === 'failed-precondition') {
+                    renderLiffRegister();
+                } else {
+                    renderLiffError(liffResult.reason, liffResult.message);
+                }
                 return;
             }
             if (liffResult.reason === 'redirecting') return;
@@ -3075,9 +3366,26 @@
                 // 開啟做開發除錯，那種情境下沒有 LINE 原生容器，側欄應維持
                 // 一般的「退出登入」行為（見 methods.logout() 的說明）。
                 mounted.isLiffMode = liffResult.ok && typeof liff !== 'undefined' && !!(liff.isInClient && liff.isInClient());
+                mounted.canShareInvite = mounted.isLiffMode
+                    && typeof liff.isApiAvailable === 'function' && liff.isApiAvailable('shareTargetPicker');
+                // 判斷的是「帳號有沒有密碼」，不是「這次用什麼方式登入」：
+                // 帳密註冊的帳號即使這次是用已綁定的 LINE 登入，仍然有密碼、仍可變更；
+                // 只有透過 LINE 自助註冊（bindings.js 的 registerPatientViaLine，
+                // createUser 只帶 email 不帶密碼）的帳號沒有密碼可驗證，才停用。
+                // providerData 裡有 'password' ⇔ 帳號設定過密碼（已用 Auth 模擬器確認）。
+                const authUser = window.auth.currentUser;
+                mounted.isPasswordlessAccount = !!authUser
+                    && !(authUser.providerData || []).some(p => p && p.providerId === 'password');
                 const view = new URLSearchParams(location.search).get('view');
-                if (['home', 'appointments', 'consent', 'line'].includes(view)) {
+                if (['home', 'appointments', 'line'].includes(view)
+                    || (view === 'consent' && mounted.insurancePortalEnabled)) {
                     mounted.activeView = view;
+                } else if (view === 'chat') {
+                    // 醫師在網頁端回覆留言時，LINE 端會收到一則純文字通知
+                    // （見 functions/src/chat-push.js），帶這個深連結直接開留言板——
+                    // 不是切換 activeView（留言板是彈窗，不是分頁），因此另外分支。
+                    // openChat() 自己已處理「尚無主治醫師」的例外情況，這裡不必重複判斷。
+                    mounted.openChat();
                 }
             }
         })();

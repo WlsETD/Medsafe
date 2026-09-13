@@ -68,9 +68,9 @@ const definitionNoLiff = richmenu.buildDefinition();
   check('每格 label 存在且不超過 LINE 的 20 字上限', bad.length === 0);
 }
 {
-  // 兩種合法型別：message（借用既有文字指令分支）與 uri（直接開免登入
-  // 公開頁面，例如 check.html／schedule.html，或已設定 LIFF_ID 時的
-  // 藥箱／線上預約，不需要任何額外的後端處理）。
+  // 兩種合法型別：message（借用既有文字指令分支，按下去等同送出那句話，
+  // Bot 用 Reply 回文字）與 uri（直接開免登入公開頁面，例如 check.html，
+  // 或已設定 LIFF_ID 時的線上預約，需要選日期／診次，文字指令做不到）。
   const checkTypes = (areas) => areas.filter(a => {
     if (a.action.type === 'message') return !a.action.text;
     if (a.action.type === 'uri') return !a.action.uri || !a.action.uri.startsWith('https://');
@@ -82,8 +82,11 @@ const definitionNoLiff = richmenu.buildDefinition();
 {
   const messageCount = areasNoLiff.filter(a => a.action.type === 'message').length;
   const uriCount = areasNoLiff.filter(a => a.action.type === 'uri').length;
-  check('LIFF_ID 未設定時，六宮格共 6 格：4 格文字指令 + 2 格免登入公開頁面連結',
-    areasNoLiff.length === 6 && messageCount === 4 && uriCount === 2);
+  // 藥箱／服藥時間表原本在 LIFF_ID 設定後（或本來就）會開網頁，
+  // 使用者反映按下去不該跳出瀏覽器，改成文字指令，只剩「用藥查詢」
+  // （需要互動式輸入藥名比對，文字指令做不到）仍是 uri。
+  check('LIFF_ID 未設定時，六宮格共 6 格：5 格文字指令 + 1 格免登入公開頁面連結',
+    areasNoLiff.length === 6 && messageCount === 5 && uriCount === 1);
 }
 {
   const w = definitionNoLiff.size.width, h = definitionNoLiff.size.height;
@@ -91,20 +94,21 @@ const definitionNoLiff = richmenu.buildDefinition();
     w === 2500 && (h === 843 || h === 1686));
 }
 
-// 狀態二：LIFF_ID 已設定（Phase 0 完成）——「藥箱」「線上預約」改成
-// 一次點擊直接開 LIFF 的 uri action，其餘四格不受影響。
+// 狀態二：LIFF_ID 已設定（Phase 0 完成）——只有「線上預約」改成一次點擊
+// 直接開 LIFF 的 uri action（需要選日期／診次，文字指令做不到）；「藥箱」
+// 維持 message，不因 LIFF_ID 而改變（見 buildAreas() 上方的說明）。
 process.env.LIFF_ID = 'test-liff-id-0003';
 const areasWithLiff = richmenu.buildAreas();
 {
   const cabinet = areasWithLiff[0], booking = areasWithLiff[1];
-  check('LIFF_ID 已設定時，「藥箱」格是直接開 LIFF 的 uri（不再是 message）',
-    cabinet.action.type === 'uri' && cabinet.action.uri === 'https://liff.line.me/test-liff-id-0003');
+  check('LIFF_ID 已設定時，「藥箱」格仍是 message（按下去回文字，不開網頁）',
+    cabinet.action.type === 'message' && cabinet.action.text === '藥箱');
   check('LIFF_ID 已設定時，「線上預約」格帶 ?view=appointments 深連結',
     booking.action.type === 'uri' && booking.action.uri === 'https://liff.line.me/test-liff-id-0003?view=appointments');
   const messageCount = areasWithLiff.filter(a => a.action.type === 'message').length;
   const uriCount = areasWithLiff.filter(a => a.action.type === 'uri').length;
-  check('LIFF_ID 已設定時，六宮格變成 2 格文字指令 + 4 格連結（含 2 格 LIFF）',
-    areasWithLiff.length === 6 && messageCount === 2 && uriCount === 4);
+  check('LIFF_ID 已設定時，六宮格變成 4 格文字指令 + 2 格連結（線上預約與用藥查詢）',
+    areasWithLiff.length === 6 && messageCount === 4 && uriCount === 2);
 }
 
 if (originalLiffIdForAreas === undefined) delete process.env.LIFF_ID;
