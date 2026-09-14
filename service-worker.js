@@ -44,7 +44,12 @@
 //      配上舊的 firebase-config.js，window.functions 為 null，
 //      畫面上的症狀是「產生綁定碼失敗：未載入 Cloud Functions SDK」——
 //      而網路分頁看起來一切正常，因為那支舊檔是 Service Worker 給的，不是伺服器。
-const CACHE_VERSION = 'medsafe-static-v26';
+// v27：index.html 首次訪客導向改為 login.html（原 check.html）。此版**必須**升號——
+//      HTML 走 network-first，理論上不需升號也會拿到新版；但已安裝 SW 的回訪使用者
+//      若其 Cache Storage 仍是舊 './index.html'，一旦網路 fetch 未如預期完成，
+//      fetch 處理常式就會 fallback 回快取，回訪者會被永久導回 check.html。
+//      升號才能保證 activate 清掉舊 cache，強制拿新檔。
+const CACHE_VERSION = 'medsafe-static-v27';
 
 const PRECACHE_URLS = [
   './index.html',
