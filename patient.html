@@ -249,7 +249,7 @@
             <header class="flex items-center justify-between">
                 <div class="flex items-center gap-4">
                     <button @click="showMobileMenu = true" aria-label="開啟選單" class="lg:hidden p-2 bg-white rounded-xl shadow-sm border border-slate-100 text-slate-600 hover:text-primary transition-all"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg></button>
-                    <div class="text-left"><h2 class="text-2xl md:text-4xl font-black text-title italic tracking-tighter uppercase">My Health Hub</h2><p class="text-xs md:text-sm font-bold text-lightText uppercase tracking-widest pl-1">FHIR Personal Health Record</p></div>
+                    <div class="text-left"><h2 class="text-2xl md:text-4xl font-black text-title italic tracking-tighter uppercase">My Health Hub</h2><p class="text-xs md:text-sm font-bold text-lightText uppercase tracking-widest pl-1">Personal Health Record</p></div>
                 </div>
                 <div class="flex items-center gap-3 md:gap-6 bg-white p-2 md:p-2.5 rounded-xl shadow-premium border border-white">
                     <button @click="openChat" :disabled="!hasDoctor"
@@ -1102,7 +1102,7 @@
                             <table class="w-full text-left border-separate border-spacing-y-4 min-w-[600px]">
                                 <thead>
                                     <tr class="text-[10px] font-black uppercase tracking-[0.25em] text-lightText px-6 text-left">
-                                        <th class="pb-4 pl-10">成分名稱 / FHIR Resource</th>
+                                        <th class="pb-4 pl-10">成分名稱</th>
                                         <th class="pb-4">劑量頻率</th>
                                         <th class="pb-4">醫療機構</th>
                                         <th class="pb-4 pr-10 text-right">狀態</th>
@@ -1233,10 +1233,10 @@
                             </div>
                             <div class="space-y-4 text-left text-left">
                                 <h4 class="text-[11px] font-black text-primary uppercase tracking-[0.3em] flex items-center gap-3 text-left text-left">
-                                    <div class="w-2 h-2 bg-primary rounded-full shrink-0"></div> FHIR 校驗元數據
+                                    <div class="w-2 h-2 bg-primary rounded-full shrink-0"></div> 校驗元數據
                                 </h4>
                                 <div class="bg-bgMain p-6 rounded-[32px] font-mono text-[10px] text-lightText border border-slate-100/50 leading-loose text-left text-left">
-                                    <div class="flex justify-between border-b border-white pb-2 mb-2 text-left"><span>Resource-Type:</span> <span class="text-slate-600 font-black">Flag (FHIR R4)</span></div>
+                                    <div class="flex justify-between border-b border-white pb-2 mb-2 text-left"><span>Resource-Type:</span> <span class="text-slate-600 font-black">Flag</span></div>
                                     <div class="flex justify-between border-b border-white pb-2 mb-2 text-left text-left"><span>比對方式:</span> <span class="text-slate-600 font-black">規則庫藥名字串比對</span></div>
                                     <div class="flex justify-between text-left text-left"><span>證據等級:</span> <span class="text-slate-600 font-black">規則庫收錄，未經統計驗證</span></div>
                                 </div>
@@ -1247,7 +1247,7 @@
                     <div class="p-8 md:p-10 bg-slate-50 border-t border-slate-100 space-y-4 shrink-0 text-left">
                         <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg">
                             <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 資料上傳警告</p>
-                            <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">按下確認會以 FHIR Flag 資源，將本次交互作用的藥品名稱上傳至 <span class="font-mono">{{ fhirHost }}</span>。該伺服器<strong>目前沒有存取控制</strong>，任何人皆可讀取。您的身分以固定化名代表，<strong>不會送出姓名或系統帳號</strong>；但化名由公開演算法推導、可被還原，故此非去識別化，請勿以真實資料操作。</p>
+                            <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">按下確認會將本次交互作用的藥品名稱以健康資料紀錄上傳至 <span class="font-mono">{{ fhirHost }}</span>。該伺服器<strong>目前沒有存取控制</strong>，任何人皆可讀取。您的身分以固定化名代表，<strong>不會送出姓名或系統帳號</strong>；但化名由公開演算法推導、可被還原，故此非去識別化，請勿以真實資料操作。</p>
                         </div>
                         <div class="flex justify-end">
                         <button @click="confirmDdiAwareness()" :disabled="confirmingAwareness" class="bg-danger text-white font-black px-12 py-5 rounded-[24px] shadow-2xl shadow-danger/20 hover:scale-[1.03] active:scale-[0.97] transition-all uppercase tracking-widest text-xs flex justify-center items-center gap-3 disabled:opacity-60 disabled:scale-100 disabled:cursor-not-allowed">
@@ -2500,13 +2500,13 @@
                                 const bundleBack = readBack.data || {};
                                 const found = bundleBack.entry && bundleBack.entry[0] && bundleBack.entry[0].resource;
                                 if (found) {
-                                    setTimeout(() => this.triggerToast('雲端讀回驗證成功', `已確認化名個案 ${ident.value} 存在於 FHIR 伺服器（Patient/${found.id}）`), 3200);
+                                    setTimeout(() => this.triggerToast('雲端讀回驗證成功', `已確認化名個案 ${ident.value} 存在於資料交換伺服器（Patient/${found.id}）`), 3200);
                                 }
                             }
                         } catch (e) { /* 讀回驗證失敗不影響主流程 */ }
                     } catch (e) {
                         console.error('雲端同步失敗：', e);
-                        this.triggerToast('同步失敗', (e && e.message) || '無法連線至 FHIR 伺服器，請稍後再試');
+                        this.triggerToast('同步失敗', (e && e.message) || '無法連線至資料交換伺服器，請稍後再試');
                     } finally {
                         this.syncing = false;
                     }

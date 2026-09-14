@@ -684,12 +684,12 @@
                             <div class="space-y-2"><h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">病患自述健康摘要（未經醫師審核）</h4><div class="p-5 md:p-6 bg-red-50 text-danger text-sm font-bold rounded-lg border border-red-100 italic">" {{ selectedRiskPatient.reason }} "</div></div>
                             <div class="space-y-2"><h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">核保精算建議</h4><div class="p-5 md:p-6 bg-navy text-turquoise text-sm font-bold rounded-lg italic leading-relaxed text-white">{{ selectedRiskPatient.recommendation }}</div></div>
                             <div class="space-y-2">
-                                <h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">FHIR Patient 資源查核</h4>
+                                <h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">跨院資料查核</h4>
                                 <div class="p-5 md:p-6 bg-slate-50 rounded-lg border border-slate-100 flex flex-col gap-3">
-                                    <p class="text-[11px] font-bold text-slate-500 leading-relaxed">向 FHIR 伺服器（<span class="font-mono">{{ fhirHost }}</span>）即時查詢是否有對應的 Patient 資源，用於驗證跨院資料交換介接是否暢通。</p>
+                                    <p class="text-[11px] font-bold text-slate-500 leading-relaxed">向資料交換伺服器（<span class="font-mono">{{ fhirHost }}</span>）即時查詢是否有對應的 Patient 資源，用於驗證跨院資料交換介接是否暢通。</p>
                                     <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 該伺服器<strong>目前沒有存取控制</strong>，上面的資料任何人皆可讀取。</p>
                                     <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2 leading-relaxed"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 查詢以化名代號進行，<strong>不會將保戶姓名送出</strong>；查得到即代表該個案的跨院資料通道已打通。</p>
-                                    <p v-if="fhirCheckStatus === 'not-synced'" class="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 mt-2 leading-relaxed">該保戶尚未同步任何資料至 FHIR 伺服器，因此查無紀錄。這不是查詢失敗，也不代表其用藥有異常。</p>
+                                    <p v-if="fhirCheckStatus === 'not-synced'" class="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 mt-2 leading-relaxed">該保戶尚未同步任何資料至資料交換伺服器，因此查無紀錄。這不是查詢失敗，也不代表其用藥有異常。</p>
                                     <div class="flex items-center justify-between gap-4">
                                         <div class="flex items-center gap-2">
                                             <div :class="['w-2.5 h-2.5 rounded-full', fhirCheckStatus === 'checking' ? 'bg-golden animate-ping' : (fhirCheckStatus === 'error' ? 'bg-danger' : (fhirCheckStatus === 'done' ? 'bg-turquoise' : 'bg-slate-300'))]"></div>
@@ -697,7 +697,7 @@
                                                 {{ fhirCheckStatus === 'checking' ? '查詢中...' : (fhirCheckStatus === 'done' ? `Bundle 命中 ${fhirCheckResult.total} 筆（${fhirCheckResult.checkedAt}）` : (fhirCheckStatus === 'error' ? '查詢失敗' : '尚未查核')) }}
                                             </span>
                                         </div>
-                                        <button @click="verifyFhirRecord" :disabled="fhirCheckStatus === 'checking'" class="px-5 py-2.5 bg-white border-2 border-navy/10 rounded-xl text-[10px] font-black text-navy hover:bg-navy hover:text-white transition-all disabled:opacity-50">{{ fhirCheckStatus === 'checking' ? '查詢中...' : '查核 FHIR 紀錄' }}</button>
+                                        <button @click="verifyFhirRecord" :disabled="fhirCheckStatus === 'checking'" class="px-5 py-2.5 bg-white border-2 border-navy/10 rounded-xl text-[10px] font-black text-navy hover:bg-navy hover:text-white transition-all disabled:opacity-50">{{ fhirCheckStatus === 'checking' ? '查詢中...' : '查核跨院紀錄' }}</button>
                                     </div>
                                 </div>
                             </div>

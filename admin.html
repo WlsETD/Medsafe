@@ -698,7 +698,7 @@
                             <h3 class="text-xl font-black text-title italic">AI ANALYSIS GUARD</h3>
                         </div>
                         <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                            <p class="text-[10px] font-black text-primary uppercase tracking-widest">FHIR Base URL 已生效</p>
+                            <p class="text-[10px] font-black text-primary uppercase tracking-widest">AI 敏感度門檻尚未生效</p>
                             <p class="text-[10px] font-bold text-amber-600 mt-1">本卡片的設定值目前僅儲存於資料庫，尚未接入處方開立流程。實際的交互作用比對使用固定的規則庫，不受敏感度門檻影響；系統目前<strong>不會</strong>阻擋任何處方提交。</p>
                         </div>
                         <div class="space-y-6">
@@ -1140,7 +1140,7 @@
                         sessionTimeout: 30
                     },
                     notifications: [
-                        { id: 1, title: '系統安全警告', content: '偵測到異常的 FHIR 資源存取。', time: '5 分鐘前', read: false },
+                        { id: 1, title: '系統安全警告', content: '偵測到異常的跨院資料存取。', time: '5 分鐘前', read: false },
                         { id: 2, title: '系統資料同步完成', content: '全院處方存證已與區域節點同步。', time: '12 分鐘前', read: false },
                     ],
                     // 報表中心：競賽展示用模擬金流數據（保費收入／理賠支出／保費折扣皆非真實 Firestore 紀錄）

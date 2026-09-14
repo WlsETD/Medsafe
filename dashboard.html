@@ -497,7 +497,7 @@
                             <div class="flex justify-between items-center mb-8">
                                 <h3 class="text-xl font-black text-slate-800 flex items-center gap-3"><span class="w-1.5 h-6 bg-accent rounded-full"></span> 跨院雲端處方清單 (MedicationRequest)</h3>
                                 <div class="flex gap-2">
-                                    <span class="px-3 py-1 bg-success/10 text-success text-[10px] font-black rounded-full border border-success/20">FHIR SYNCED</span>
+                                    <span class="px-3 py-1 bg-success/10 text-success text-[10px] font-black rounded-full border border-success/20">SYNCED</span>
                                 </div>
                             </div>
                             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -590,8 +590,8 @@
                                          而且是 2025 年；Verified 同樣沒有主詞。這一區是示範用的
                                          時間軸，改為明確標示，不假裝成真實紀錄。 -->
                                     <div class="text-[10px] font-black text-slate-400 uppercase mb-1 tracking-tighter">示範項目 {{ n }}</div>
-                                    <div class="text-sm font-bold text-slate-800 group-hover:text-primary transition-colors leading-snug">FHIR MedicationRequest 同步完成</div>
-                                    <p class="text-[10px] text-slate-500 mt-2 font-mono truncate">ID: fhir-req-{{ n }}c7a</p>
+                                    <div class="text-sm font-bold text-slate-800 group-hover:text-primary transition-colors leading-snug">跨院用藥紀錄同步完成</div>
+                                    <p class="text-[10px] text-slate-500 mt-2 font-mono truncate">ID: sync-req-{{ n }}c7a</p>
                                 </div>
                             </div>
                             <div class="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between opacity-50 text-[9px] font-black text-slate-400 uppercase">
@@ -1023,11 +1023,11 @@
                                      放進一筆系統永遠檢查不到的用藥，而後續每一次檢測
                                      都會在不涵蓋它的情況下回報「未發現」。 -->
                                 <button @click="startAiCheck" :disabled="!newRx.drugName.trim() || !rxResolved" class="px-10 py-3 bg-primary text-white font-black rounded-xl hover:scale-105 transition-all text-xs shadow-lg shadow-primary/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100">啟動 AI 安全檢測</button>
-                                <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">{{ !newRx.drugName.trim() ? '請先輸入藥品名稱' : (rxResolved ? '比對跨院 FHIR 處方紀錄' : '此藥不在目錄中，無法開立') }}</p>
+                                <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">{{ !newRx.drugName.trim() ? '請先輸入藥品名稱' : (rxResolved ? '比對跨院處方紀錄' : '此藥不在目錄中，無法開立') }}</p>
                             </div>
                             <div v-else-if="aiCheckStatus === 'checking'" class="flex flex-col items-center gap-3 py-4">
                                 <div class="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                                <p class="text-[10px] font-black text-primary animate-pulse uppercase tracking-widest">Scanning FHIR Records...</p>
+                                <p class="text-[10px] font-black text-primary animate-pulse uppercase tracking-widest">Scanning Records...</p>
                             </div>
                             <!-- 檢測結果。三種結論分別呈現，其中 unevaluable 是 Phase 3 新增的「第三種答案」：
                                  系統無從得知，既不是有風險、也不是沒風險。原本的二元呈現會把它併入
@@ -1144,7 +1144,7 @@
                                 {{ submitting ? '處理中…'
                                    : (isBlockedByPolicy ? '系統政策已攔截，不得開立'
                                    : (aiCheckStatus === 'idle' ? '請先執行安全檢查'
-                                   : (aiCheckStatus === 'risk' ? '填寫理由後開立' : '確認開立並同步 FHIR'))) }}
+                                   : (aiCheckStatus === 'risk' ? '填寫理由後開立' : '確認開立並同步跨院紀錄'))) }}
                             </button>
                         </div>
                     </div>
@@ -2814,9 +2814,9 @@
                         if (!res.ok) throw new Error(res.reason);
                     } catch (e) {
                         console.error('FHIR 同步失敗：', e);
-                        this.triggerToast('FHIR 同步失敗',
-                            persisted ? '處方已寫入本院病歷，但未能同步至 FHIR 伺服器。'
-                                      : '處方既未寫入病歷，也未能同步至 FHIR 伺服器。');
+                        this.triggerToast('跨院同步失敗',
+                            persisted ? '處方已寫入本院病歷，但未能同步至資料交換伺服器。'
+                                      : '處方既未寫入病歷，也未能同步至資料交換伺服器。');
                     }
                     this.resetAiCheck();
                 },
