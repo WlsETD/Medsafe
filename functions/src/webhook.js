@@ -43,6 +43,13 @@ const CODE_RE = new RegExp('^[' + bindings.ALPHABET + ']{' + bindings.CODE_LEN +
 // 查詢是明確的指令式說法，回報是敘述句，因此改為錨定整句。
 const CABINET_RE = /^(藥箱|我的藥|我的用藥|用藥清單|查藥|查用藥|吃什麼藥?|有哪些藥)[？?。!！]*$/;
 
+// 「服藥時間表」的意圖。與 CABINET_RE 同樣錨定整句，理由相同——
+// 這個按鈕原本是 uri 直接開免登入的 schedule.html（列印用工具），
+// 但那是給沒有帳號的訪客用的空白表單；已綁定的病患點下去期待看到的是
+// 「今天實際要吃的藥」，所以改回跟每日提醒卡（reminder.js）同一張卡片，
+// 隨時查詢、隨時可以直接按按鈕回報，不必等到隔天早上 07:30。
+const SCHEDULE_RE = /^(服藥時間表|今日服藥時間表|今日用藥時間表|用藥時間表)[？?。!！]*$/;
+
 // 呼叫選單的意圖。與 CABINET_RE 同樣錨定整句，理由相同。
 const MENU_RE = /^(選單|menu|說明|help|功能|你會什麼)[？?。!！]*$/i;
 
@@ -100,7 +107,7 @@ function menuItems() {
     { label: '線上預約', text: '預約' },
     { label: '回報不適', text: '回報不適' },
     { label: '用藥查詢', uri: richmenu.SITE_ORIGIN + '/check.html' },
-    { label: '服藥時間表', uri: richmenu.SITE_ORIGIN + '/schedule.html' }
+    { label: '服藥時間表', text: '服藥時間表' }
   ];
   const liffId = LIFF_ID.value();
   if (liffId) {
@@ -294,6 +301,11 @@ async function handleText(token, event) {
     return replyCabinet(token, event, user.username);
   }
 
+  // ── 服藥時間表（見 replyTodaySchedule 註解）──
+  if (SCHEDULE_RE.test(text)) {
+    return replyTodaySchedule(token, event, user.username);
+  }
+
   // ── 自由文字（LLM 理解層）──
   //
   // 【擺在最後一個分支，而不是最前面】
@@ -348,6 +360,24 @@ async function replyCabinet(token, event, username, patientData) {
   }
   return lineApi.reply(token, event.replyToken,
     lineApi.withQuickReply(lineApi.textMessage(lines.join('\n')), menuItems()));
+}
+
+// 服藥時間表：跟每日提醒卡（reminder.js 的排程推播）用同一份卡片版型，
+// 但這裡是使用者自己按出來的，走 reply（免費），且刻意不去碰
+// dailyLockKey 那把冪等鎖——那把鎖是用來擋「同一天重複推播」，查詢
+// 跟排程推播是兩件事，搶同一把鎖只會讓當天 07:30 該送的提醒被跳過。
+async function replyTodaySchedule(token, event, username) {
+  const snap = await admin.firestore().collection('patient_data').doc(username).get();
+  const reminders = snap.exists && Array.isArray(snap.data().reminders) ? snap.data().reminders : [];
+  if (!reminders.length) {
+    return lineApi.reply(token, event.replyToken,
+      lineApi.withQuickReply(lineApi.textMessage('您目前沒有設定用藥提醒。'), menuItems()));
+  }
+  const name = (snap.data().profile && snap.data().profile.name) || username;
+  const day = dayKey();
+  const sorted = reminders.slice().sort((a, b) => String(a.time).localeCompare(String(b.time)));
+  return lineApi.reply(token, event.replyToken,
+    lineApi.withQuickReply(flex.dailyReminderCard(name, day, sorted), menuItems()));
 }
 
 // 下次回診。掛號紀錄本身就是病患自己的資料，查詢條件也只有
@@ -625,7 +655,7 @@ async function claimEvent(event) {
 
 // 供 tests/line-webhook.test.mjs 驗證 LIFF_ID 有無設定時的選單／掛號回覆差異。
 exports._internal = { menuItems, bookingReply, BOOKING_RE, COMING_SOON_RE,
-  CABINET_RE, MENU_RE, OUT_OF_SCOPE, weekdaySuffix, SESSION_LABEL };
+  CABINET_RE, SCHEDULE_RE, MENU_RE, OUT_OF_SCOPE, weekdaySuffix, SESSION_LABEL };
 
 exports.lineWebhook = onRequest(
   {

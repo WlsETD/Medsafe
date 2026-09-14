@@ -69,7 +69,7 @@ const definitionNoLiff = richmenu.buildDefinition();
 }
 {
   // 兩種合法型別：message（借用既有文字指令分支）與 uri（直接開免登入
-  // 公開頁面，例如 check.html／schedule.html，或已設定 LIFF_ID 時的
+  // 公開頁面，例如 check.html，或已設定 LIFF_ID 時的
   // 藥箱／線上預約，不需要任何額外的後端處理）。
   const checkTypes = (areas) => areas.filter(a => {
     if (a.action.type === 'message') return !a.action.text;
@@ -82,8 +82,8 @@ const definitionNoLiff = richmenu.buildDefinition();
 {
   const messageCount = areasNoLiff.filter(a => a.action.type === 'message').length;
   const uriCount = areasNoLiff.filter(a => a.action.type === 'uri').length;
-  check('LIFF_ID 未設定時，六宮格共 6 格：4 格文字指令 + 2 格免登入公開頁面連結',
-    areasNoLiff.length === 6 && messageCount === 4 && uriCount === 2);
+  check('LIFF_ID 未設定時，六宮格共 6 格：5 格文字指令 + 1 格免登入公開頁面連結',
+    areasNoLiff.length === 6 && messageCount === 5 && uriCount === 1);
 }
 {
   const w = definitionNoLiff.size.width, h = definitionNoLiff.size.height;
@@ -103,8 +103,8 @@ const areasWithLiff = richmenu.buildAreas();
     booking.action.type === 'uri' && booking.action.uri === 'https://liff.line.me/test-liff-id-0003?view=appointments');
   const messageCount = areasWithLiff.filter(a => a.action.type === 'message').length;
   const uriCount = areasWithLiff.filter(a => a.action.type === 'uri').length;
-  check('LIFF_ID 已設定時，六宮格變成 2 格文字指令 + 4 格連結（含 2 格 LIFF）',
-    areasWithLiff.length === 6 && messageCount === 2 && uriCount === 4);
+  check('LIFF_ID 已設定時，六宮格變成 3 格文字指令 + 3 格連結（含 2 格 LIFF）',
+    areasWithLiff.length === 6 && messageCount === 3 && uriCount === 3);
 }
 
 if (originalLiffIdForAreas === undefined) delete process.env.LIFF_ID;

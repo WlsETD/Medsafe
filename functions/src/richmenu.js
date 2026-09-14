@@ -28,16 +28,20 @@ const RICHMENU_DEFAULT_API = 'https://api.line.me/v2/bot/user/all/richmenu';
 // （見 setup() 呼叫 call() 時的 binary 分支）。
 const IMAGE_PATH = path.join(__dirname, '../assets/richmenu.jpg');
 
-// 正式站台網址。check.html／schedule.html 是免登入的公開工具（見
-// 04_Security_Audit/0908.md），可以直接用 uri action 開，不用等 Phase 0
-// 的 LIFF 橋接——這兩格是「六宮格但只有四格真的能用」之外，額外多出來
-// 立刻能用的兩格。
+// 正式站台網址。check.html 是免登入的公開工具（見 04_Security_Audit/0908.md），
+// 可以直接用 uri action 開，不用等 Phase 0 的 LIFF 橋接——這是「六宮格
+// 但只有四格真的能用」之外，額外多出來立刻能用的一格（schedule.html
+// 這個列印工具仍然存在，只是不再掛在 Rich Menu 上，見下方「服藥時間表」的說明）。
 const SITE_ORIGIN = 'https://medsafe-554b7.web.app';
 
 // 3x2 六宮格。「回報不適」是 Phase 4 完成前的預告格——圖片上標
 // 「即將推出」，文字指令也回覆誠實的開發中訊息（見 webhook.js 的
 // COMING_SOON），不是按了沒反應的死按鈕。「使用說明」是既有文字指令；
-// 「用藥查詢」「服藥時間表」直接連到免登入的公開頁面，不需要任何後端處理。
+// 「用藥查詢」直接連到免登入的公開頁面，不需要任何後端處理。
+// 「服藥時間表」原本也是同一種 uri（開 schedule.html 這個列印工具），
+// 但已綁定的病患點下去期待的是「今天實際要吃的藥」，不是一張空白表單，
+// 因此改成 message action，借用 webhook.js 的 SCHEDULE_RE 分支，
+// 回覆跟每日提醒卡（reminder.js）同一張、可直接按按鈕回報的 Flex 卡片。
 //
 // 【「藥箱」「線上預約」為什麼是動態決定 message 或 uri】
 // 有了 LIFF_ID 之後，這兩格可以直接 uri 到 https://liff.line.me/{id}，
@@ -68,7 +72,7 @@ function buildAreas() {
     { bounds: { x: 834, y: 843, width: 833, height: 843 },
       action: { type: 'uri', label: '用藥查詢', uri: SITE_ORIGIN + '/check.html' } },
     { bounds: { x: 1667, y: 843, width: 833, height: 843 },
-      action: { type: 'uri', label: '服藥時間表', uri: SITE_ORIGIN + '/schedule.html' } }
+      action: { type: 'message', label: '服藥時間表', text: '服藥時間表' } }
   ];
 }
 

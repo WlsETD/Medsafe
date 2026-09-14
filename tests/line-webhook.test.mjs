@@ -89,6 +89,19 @@ for (const s of [
   check('回報敘述不被誤判為查詢：「' + s + '」', CABINET_RE.test(s) === false);
 }
 
+// 「服藥時間表」意圖：與 CABINET_RE 同樣錨定整句。這是 Rich Menu 上的
+// 按鈕文字（見 richmenu.js），改回 message action 後直接借用這條分支，
+// 回覆跟每日提醒卡同一張 Flex 卡片，而不是原本的 uri（開 schedule.html）。
+const SCHEDULE_RE = /^(服藥時間表|今日服藥時間表|今日用藥時間表|用藥時間表)[？?。!！]*$/;
+
+for (const q of ['服藥時間表', '今日服藥時間表', '今日用藥時間表', '用藥時間表', '服藥時間表？', '服藥時間表。']) {
+  check('服藥時間表意圖仍被辨識：「' + q + '」', SCHEDULE_RE.test(q));
+}
+
+for (const s of ['幫我看服藥時間表裡的血壓藥', '今天的服藥時間表跟藥箱有什麼不一樣']) {
+  check('含關鍵字但非整句指令，不被誤判為服藥時間表意圖：「' + s + '」', SCHEDULE_RE.test(s) === false);
+}
+
 // 「選單」意圖：與 CABINET_RE 同樣錨定整句。
 const MENU_RE = /^(選單|menu|說明|help|功能|你會什麼)[？?。!！]*$/i;
 
@@ -305,6 +318,10 @@ function claimEvent(lock, event) {
 
   check('LIFF_ID 未設定時，選單不含「完整藥箱」按鈕',
     !itemsNoLiff.some(i => i.label === '完整藥箱'));
+
+  const scheduleItem = itemsNoLiff.find(i => i.label === '服藥時間表');
+  check('「服藥時間表」是 message 型別（借用 SCHEDULE_RE 分支回覆卡片），不再是 uri（開 schedule.html）',
+    !!scheduleItem && scheduleItem.text === '服藥時間表' && !scheduleItem.uri);
 
   process.env.LIFF_ID = 'test-liff-id-0001';
   delete require.cache[require.resolve('../functions/src/webhook.js')];
