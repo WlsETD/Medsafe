@@ -691,43 +691,6 @@
                         </button>
                     </div>
 
-                    <!-- Card 1: FHIR Infrastructure -->
-                    <div class="bg-white rounded-[40px] shadow-premium border border-white p-10 space-y-8">
-                        <div class="flex items-center gap-4">
-                            <div class="w-12 h-12 bg-indigo-50 rounded-lg flex items-center justify-center text-primary shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg></div>
-                            <h3 class="text-xl font-black text-title italic">FHIR INFRASTRUCTURE</h3>
-                        </div>
-                        <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                            <p class="text-[10px] font-black text-primary uppercase tracking-widest">FHIR Base URL 已生效</p>
-                            <p class="text-[10px] font-bold text-slate-500 mt-1">此處設定的位址會實際套用至病患端、醫師端與核保端的所有 FHIR 呼叫（僅接受 <span class="font-mono">https://</span> 開頭的位址）。留空則沿用預設的 <span class="font-mono">hapi.fhir.org/baseR4</span>。
-                                <br><span class="text-amber-700 font-black">注意：預設值為 HL7 公開測試伺服器，全球任何人皆可讀寫，且資料無法確保刪除。正式使用前應改為自架或具存取控制的 FHIR Server。</span>
-                                <br><span class="text-amber-700 font-black">Access Key 欄位已移除：純前端應用送出的每個請求都由使用者的瀏覽器發出，任何金鑰都必須先送到瀏覽器，因此對該使用者可見；存進 admin_data 更等於發給每一位登入者。要對受保護的伺服器做認證存取，必須由後端代理持有憑證。</span></p>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div class="space-y-2"><label class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">FHIR Base URL</label><input v-model="systemSettings.fhirUrl" type="text" class="w-full bg-slate-50 border-2 border-transparent rounded-lg py-4 px-6 font-bold text-title focus:border-primary/20 outline-none transition-all"></div>
-                        </div>
-
-                        <!-- 存取控制具結。
-                             2026-09-03：遷移到自架 Cloud Run 伺服器後，四端的資料外流警告
-                             全部消失了——因為判斷條件是「網址是不是 hapi.fhir.org」，
-                             而那台伺服器實測未帶憑證即可讀寫。判斷因此改綁這個欄位。 -->
-                        <div class="p-6 rounded-xl border-2" :class="systemSettings.fhirAccessControlled ? 'bg-emerald-50/60 border-emerald-200' : 'bg-amber-50/60 border-amber-200'">
-                            <label class="flex items-start gap-4 cursor-pointer">
-                                <input type="checkbox" v-model="systemSettings.fhirAccessControlled" class="mt-1 w-5 h-5 rounded accent-primary shrink-0">
-                                <span class="space-y-1.5">
-                                    <span class="block text-xs font-black text-title uppercase tracking-widest">我具結此伺服器已設定存取控制</span>
-                                    <span class="block text-[10px] font-bold text-slate-500 leading-relaxed">未勾選時，病患端、醫師端與核保端會顯示「此伺服器沒有存取控制，任何人皆可讀取」的警告。<strong class="text-amber-700">勾選本項不會產生任何保護</strong>——本系統無法自行驗證對方有沒有擋在門口，這只是記錄「誰在何時說它安全了」，變更會寫入稽核記錄。請在確實設定完成後才勾選。</span>
-                                    <span class="block text-[10px] font-bold text-slate-500 leading-relaxed">另請注意：本連線層<strong>不送出任何憑證</strong>。若該伺服器真的要求授權，本系統的同步功能會一併失敗——要對受保護的伺服器存取，需由後端代理持有憑證。</span>
-                                    <span v-if="fhirUrlIsPublicSandbox" class="block text-[10px] font-black text-amber-700 leading-relaxed">目前位址為 HL7 公開沙箱，警告一律顯示，本勾選不生效。</span>
-                                </span>
-                            </label>
-                        </div>
-                        <div class="pt-4 flex items-center justify-between bg-indigo-50/50 p-6 rounded-xl border border-indigo-100">
-                            <div class="flex items-center gap-3"><div :class="['w-3 h-3 rounded-full', isTestingConnection ? 'bg-warning animate-ping' : (fhirConnectionOk === false ? 'bg-danger' : 'bg-success')]"></div><span class="text-sm font-black text-slate-600 uppercase">狀態：{{ fhirConnectionOk === false ? '連線失敗' : (fhirConnectionOk === true ? '連線正常' : '尚未測試') }}</span></div>
-                            <button @click="testFhirConnection" :disabled="isTestingConnection" class="px-6 py-2.5 bg-white border-2 border-indigo-100 rounded-xl text-xs font-black text-primary hover:bg-primary hover:text-white transition-all">{{ isTestingConnection ? '測試中...' : '測試連線' }}</button>
-                        </div>
-                    </div>
-
                     <!-- Card 2: AI Guard -->
                     <div class="bg-white rounded-[40px] shadow-premium border border-white p-10 space-y-8">
                         <div class="flex items-center gap-4">
@@ -1176,8 +1139,6 @@
                         syncInterval: 5,
                         sessionTimeout: 30
                     },
-                    isTestingConnection: false,
-                    fhirConnectionOk: null,
                     notifications: [
                         { id: 1, title: '系統安全警告', content: '偵測到異常的 FHIR 資源存取。', time: '5 分鐘前', read: false },
                         { id: 2, title: '系統資料同步完成', content: '全院處方存證已與區域節點同步。', time: '12 分鐘前', read: false },
@@ -1202,13 +1163,6 @@
                 }
             },
             computed: {
-                // 目前填入的位址是不是 HL7 公開沙箱。對它具結存取控制無效——
-                // 那是 HL7 的公用伺服器，不是任何管理者能宣告安全的對象。
-                // （放在 computed 而非樣板內：樣板表達式裡的正規表示式字面量
-                //   會被 Vue 的表達式解析器處理，不值得為了少一個函式冒這個險。）
-                fhirUrlIsPublicSandbox() {
-                    return /hapi\.fhir\.org/i.test(this.systemSettings.fhirUrl || '');
-                },
                 // DDInter 藥物清單。資料以陣列形式儲存（[id, name, n, atc?]）以節省體積，
                 // 1,971 筆用物件形式會多出約 40%。
                 // 不會生效的規則數。刻意與「規則總數」分開呈現——
@@ -1680,24 +1634,6 @@
                 },
 
                 // 系統設置方法
-                async testFhirConnection() {
-                    this.isTestingConnection = true;
-                    const start = performance.now();
-                    try {
-                        const res = await fetch(this.systemSettings.fhirUrl.replace(/\/$/, '') + '/Patient?_count=1', {
-                            headers: { 'Accept': 'application/fhir+json' }
-                        });
-                        if (!res.ok) throw new Error('HTTP ' + res.status);
-                        const ms = Math.round(performance.now() - start);
-                        this.fhirConnectionOk = true;
-                        this.triggerToast('連線成功', `HAPI FHIR Server 響應正常 (延遲 ${ms}ms)`);
-                    } catch (e) {
-                        this.fhirConnectionOk = false;
-                        this.triggerToast('連線失敗', '無法連線至 FHIR 伺服器，請確認 Base URL 或網路狀態', 'error');
-                    } finally {
-                        this.isTestingConnection = false;
-                    }
-                },
                 async saveSystemSettings() {
                     const { fhirUrl, fhirAccessControlled, aiSensitivity, autoBlock, syncInterval, sessionTimeout } = this.systemSettings;
                     try {
