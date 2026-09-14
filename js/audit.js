@@ -37,6 +37,9 @@ window.Audit = (function () {
     MED_DISCONTINUE: 'med_discontinue',
     USER_CREATE: 'user_create',
     USER_DISABLE: 'user_disable',
+    // 刪除帳號與其所有連結資料。由 functions/src/admin-users.js 在伺服器端寫入，
+    // 前端不呼叫 log()——列在這裡是為了讓動作代碼只有一份詞彙表。
+    USER_DELETE: 'user_delete',
     USER_ROLE_CHANGE: 'user_role_change',
     DDI_RULE_CHANGE: 'ddi_rule_change',
     SETTINGS_CHANGE: 'settings_change',

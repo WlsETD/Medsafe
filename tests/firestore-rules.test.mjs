@@ -706,15 +706,32 @@ await env.withSecurityRulesDisabled(async ctx => {
   });
 });
 
+// paymentMethod／paymentStatus（結帳，純示範）預設帶合法配對，讓既有測試
+// （寫這個 helper 時還沒有這兩個欄位）不必逐一補值也能繼續通過——
+// 見 firestore.rules 的 paymentFieldsOk() 與下方「結帳（純示範）」測試區塊。
 const apptDoc = (extra) => Object.assign({
   patient: 'P001', patientName: '張小泉', doctor: 'doctor', doctorName: '李醫師',
   department: '一般內科', scheduledAt: Timestamp.fromDate(new Date(Date.now() + 86400000)),
-  status: 'booked', createdAt: serverTimestamp(), note: ''
+  status: 'booked', createdAt: serverTimestamp(), note: '',
+  paymentMethod: 'onsite', paymentStatus: 'pending-onsite'
 }, extra || {});
+
+// 病患自己掛號時，掛號與掛號鎖（appointment_locks）必須同一批次寫入——
+// 這個 helper 就是前端 DbService.appointments.create() 的等價物。
+// lock 傳 null 代表不寫鎖；傳物件則覆寫鎖文件的欄位（攻擊測試用）。
+const bookWithLock = (db, aid, appt, lock) => {
+  const b = writeBatch(db);
+  b.set(doc(db, 'appointments/' + aid), appt);
+  if (lock !== null) {
+    b.set(doc(db, 'appointment_locks/' + appt.patient),
+      Object.assign({ patient: appt.patient, appointment: aid, updatedAt: serverTimestamp() }, lock || {}));
+  }
+  return b.commit();
+};
 
 // 合法路徑
 await run('掛號 病患替自己掛號',
-  () => setDoc(doc(P001(), 'appointments/新1'), apptDoc()), 'allow');
+  () => bookWithLock(P001(), '新1', apptDoc()), 'allow');
 await run('掛號 病患讀自己的掛號', () => getDoc(doc(P001(), 'appointments/AP1')), 'allow');
 await run('掛號 醫師讀指向自己的掛號', () => getDoc(doc(DOC(), 'appointments/AP1')), 'allow');
 await run('掛號 醫師以 where(doctor==自己) 列出',
@@ -722,17 +739,60 @@ await run('掛號 醫師以 where(doctor==自己) 列出',
 await run('掛號 病患取消自己的掛號',
   () => updateDoc(doc(P001(), 'appointments/AP1'), { status: 'cancelled' }), 'allow');
 
-// 攻擊路徑
+// ── 一個帳號同時只能有一筆進行中的掛號（appointment_locks）─────────────
+await run('掛號鎖 已有進行中的掛號時再掛第二筆',
+  () => bookWithLock(P001(), '新1b', apptDoc()), 'deny');
+await run('掛號鎖 只寫掛號、不移動掛號鎖',
+  () => bookWithLock(P001(), '新1c', apptDoc(), null), 'deny');
+await run('掛號鎖 本人讀自己的掛號鎖', () => getDoc(doc(P001(), 'appointment_locks/P001')), 'allow');
+await run('掛號鎖 他人讀別人的掛號鎖', () => getDoc(doc(ATK(), 'appointment_locks/P001')), 'deny');
+await run('掛號鎖 他人改寫別人的掛號鎖',
+  () => setDoc(doc(ATK(), 'appointment_locks/P001'), { patient: 'P001', appointment: 'AP2', updatedAt: serverTimestamp() }), 'deny');
+await run('掛號鎖 病患刪除自己的掛號鎖', () => deleteDoc(doc(P001(), 'appointment_locks/P001')), 'deny');
+await run('掛號鎖 取消進行中的掛號',
+  () => updateDoc(doc(P001(), 'appointments/新1'), { status: 'cancelled' }), 'allow');
+// 不可把鎖指向一筆既有（已取消）的掛號而不真的新掛號——那會讓鎖永遠處於「已釋放」
+await run('掛號鎖 把鎖改指向既有的舊掛號',
+  () => setDoc(doc(P001(), 'appointment_locks/P001'), { patient: 'P001', appointment: 'AP1', updatedAt: serverTimestamp() }), 'deny');
+await run('掛號鎖 前一筆取消後可以再掛號',
+  () => bookWithLock(P001(), '新1d', apptDoc()), 'allow');
+await run('掛號鎖 鎖指向別人的掛號',
+  () => bookWithLock(P001(), '新1e', apptDoc(), { appointment: 'AP2' }), 'deny');
+await run('掛號鎖 取消後再次釋放',
+  () => updateDoc(doc(P001(), 'appointments/新1d'), { status: 'cancelled' }), 'allow');
+
+// 看診日已過、仍是 booked（沒報到也沒被取消）的掛號不能永遠卡住病患
+await env.withSecurityRulesDisabled(async ctx => {
+  const db = ctx.firestore();
+  const past = new Date(Date.now() - 3 * 86400000);
+  const pastKey = past.getFullYear() + '-' + String(past.getMonth() + 1).padStart(2, '0')
+    + '-' + String(past.getDate()).padStart(2, '0');
+  await setDoc(doc(db, 'appointments/ATK_OLD'), {
+    patient: 'atk', patientName: 'x', doctor: 'doctor', doctorName: '李醫師', department: '一般內科',
+    dateKey: pastKey, session: 'am', seq: 1, scheduledAt: Timestamp.fromDate(past),
+    status: 'booked', createdAt: new Date(), note: ''
+  });
+  await setDoc(doc(db, 'appointment_locks/atk'), { patient: 'atk', appointment: 'ATK_OLD', updatedAt: new Date() });
+});
+await run('掛號鎖 前一筆的看診日已過（未報到）時可以再掛號',
+  () => bookWithLock(ATK(), 'ATK新1', apptDoc({ patient: 'atk' })), 'allow');
+await run('掛號鎖 atk 取消剛才的掛號（後續測試用）',
+  () => updateDoc(doc(ATK(), 'appointments/ATK新1'), { status: 'cancelled' }), 'allow');
+// 掛在過去日期會立刻被視為「已結束」而釋放鎖，等於用假掛號繞過一次一筆
+await run('掛號鎖 舊制掛號掛在已過去的日期',
+  () => bookWithLock(P001(), '新1f', apptDoc({ scheduledAt: Timestamp.fromDate(new Date(Date.now() - 3 * 86400000)) })), 'deny');
+
+// 攻擊路徑（以下皆附上合法的掛號鎖，確保被拒絕的原因是測試所針對的條件，而不是鎖）
 await run('掛號 病患替他人掛號',
-  () => setDoc(doc(P001(), 'appointments/新2'), apptDoc({ patient: 'atk' })), 'deny');
+  () => bookWithLock(P001(), '新2', apptDoc({ patient: 'atk' })), 'deny');
 // status 若可自訂，病患能直接建立一筆「已完診」——在病歷中捏造不曾發生的診療
 await run('掛號 病患自訂 status 為已完診',
-  () => setDoc(doc(P001(), 'appointments/新3'), apptDoc({ status: 'finished' })), 'deny');
+  () => bookWithLock(P001(), '新3', apptDoc({ status: 'finished' })), 'deny');
 // createdAt 必須等於伺服器時間，不可回填造假時序
 await run('掛號 病患回填 createdAt',
-  () => setDoc(doc(P001(), 'appointments/新4'), apptDoc({ createdAt: Timestamp.fromDate(new Date(0)) })), 'deny');
+  () => bookWithLock(P001(), '新4', apptDoc({ createdAt: Timestamp.fromDate(new Date(0)) })), 'deny');
 await run('掛號 夾帶白名單外欄位',
-  () => setDoc(doc(P001(), 'appointments/新5'), apptDoc({ priority: 'vip' })), 'deny');
+  () => bookWithLock(P001(), '新5', apptDoc({ priority: 'vip' })), 'deny');
 await run('掛號 醫師讀他人掛號（未指向自己）',
   () => getDoc(doc(DOC(), 'appointments/AP2')), 'deny');
 await run('掛號 醫師不受限地列舉全部掛號',
@@ -745,6 +805,31 @@ await run('掛號 核保端讀取掛號', () => getDoc(doc(INS(), 'appointments/
 // 就診紀錄不可刪除：能被單方面抹除的紀錄沒有證據價值
 await run('掛號 病患刪除掛號紀錄', () => deleteDoc(doc(P001(), 'appointments/AP1')), 'deny');
 await run('掛號 管理員刪除掛號紀錄', () => deleteDoc(doc(ADM(), 'appointments/AP1')), 'deny');
+
+// ── 結帳（純示範）：付款欄位驗證 ────────────────────────────────────────
+//
+// 見 firestore.rules 的 paymentFieldsOk()。這裡只測路徑 A（apptDoc()／
+// bookWithLock）；路徑 B（叫號）與路徑 C（醫護報到）的驗證分別在下方
+// 「叫號」測試區塊、與既有的「指派 醫師報到後建立掛號紀錄」測試涵蓋
+// （後者沿用同一個 apptDoc() helper，預設值已包含合法的付款欄位）。
+// P001 此時沒有進行中的掛號（上面已取消 新1d），可以自由測試 create。
+await run('結帳 線上付款＋paid-demo 通過',
+  () => bookWithLock(P001(), 'pay-online', apptDoc({ paymentMethod: 'online', paymentStatus: 'paid-demo' })), 'allow');
+await run('結帳 測試後取消（釋放掛號鎖，不影響後續測試）',
+  () => updateDoc(doc(P001(), 'appointments/pay-online'), { status: 'cancelled' }), 'allow');
+await run('結帳 完全缺少 paymentMethod／paymentStatus 時被拒絕', () => {
+  const d = apptDoc(); delete d.paymentMethod; delete d.paymentStatus;
+  return bookWithLock(P001(), 'pay-missing', d);
+}, 'deny');
+await run('結帳 paymentMethod 為未列舉的值時被拒絕',
+  () => bookWithLock(P001(), 'pay-bad-method', apptDoc({ paymentMethod: 'cash', paymentStatus: 'pending-onsite' })), 'deny');
+await run('結帳 paymentStatus 為未列舉的值時被拒絕',
+  () => bookWithLock(P001(), 'pay-bad-status', apptDoc({ paymentMethod: 'online', paymentStatus: 'confirmed' })), 'deny');
+// 兩個欄位必須精確配對，不允許「線上付款、卻標到場」這種自相矛盾的組合
+await run('結帳 online 配 pending-onsite（配對錯誤）時被拒絕',
+  () => bookWithLock(P001(), 'pay-mismatch1', apptDoc({ paymentMethod: 'online', paymentStatus: 'pending-onsite' })), 'deny');
+await run('結帳 onsite 配 paid-demo（配對錯誤）時被拒絕',
+  () => bookWithLock(P001(), 'pay-mismatch2', apptDoc({ paymentMethod: 'onsite', paymentStatus: 'paid-demo' })), 'deny');
 
 // ── S-1 修復：醫師不再無條件讀得到任何病歷 ──────────────────────────────
 //
@@ -1360,16 +1445,25 @@ const queued = (db, o) => {
   const cid = o.doctor + '__' + o.dateKey + '__' + o.session;
   const aid = cid + '__' + (o.aidSeq === undefined ? o.seq : o.aidSeq);
   const b = writeBatch(db);
-  b.set(doc(db, 'appointments/' + aid), Object.assign({
+  // paymentMethod／paymentStatus（結帳，純示範）預設帶合法配對，同 apptDoc()。
+  // o.stripPayment 整個移除這兩個欄位（測試「缺少欄位」用）——不能用 extra 把值
+  // 設成 undefined，Firestore SDK 在送出前就會直接拋錯，測不到規則層的行為。
+  const apptData = Object.assign({
     patient: o.patient, patientName: 'x', doctor: o.doctor, doctorName: '排班醫師',
     department: '一般內科', dateKey: o.dateKey, session: o.session, seq: o.seq,
     scheduledAt: Timestamp.fromDate(new Date(Date.now() + 2 * 86400000)),
-    status: 'booked', createdAt: serverTimestamp(), note: ''
-  }, o.extra || {}));
+    status: 'booked', createdAt: serverTimestamp(), note: '',
+    paymentMethod: 'onsite', paymentStatus: 'pending-onsite'
+  }, o.extra || {});
+  if (o.stripPayment) { delete apptData.paymentMethod; delete apptData.paymentStatus; }
+  b.set(doc(db, 'appointments/' + aid), apptData);
   b.set(doc(db, 'appointment_counters/' + cid), {
     doctor: o.doctor, dateKey: o.dateKey, session: o.session,
     taken: o.taken === undefined ? o.seq : o.taken
   });
+  // 掛號鎖：與前端 bookQueued() 交易相同，一律一起寫（見 appointment_locks）
+  b.set(doc(db, 'appointment_locks/' + o.patient),
+    { patient: o.patient, appointment: aid, updatedAt: serverTimestamp() });
   return b.commit();
 };
 
@@ -1388,13 +1482,37 @@ await run('班表 醫師列舉全院醫師班表',
 
 await run('叫號 病患取得第 1 號',
   () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK1, session: 'am', seq: 1 }), 'allow');
+// 名額、號碼、計數器都合法，唯一不成立的是「已有進行中的掛號」
+await run('叫號 掛號鎖 已有進行中的掛號時再取另一個診次的號',
+  () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK1, session: 'pm', seq: 1 }), 'deny');
 await run('叫號 第二位病患接著取得第 2 號',
   () => queued(ATK(), { patient: 'atk', doctor: 'docsch', dateKey: DK1, session: 'am', seq: 2 }), 'allow');
 await run('叫號 病患取消自己的叫號掛號',
   () => updateDoc(doc(P001(), 'appointments/docsch__' + DK1 + '__am__1'), { status: 'cancelled' }), 'allow');
 // 迴歸：醫師尚未公告班表時，舊制自由掛號必須原封不動地繼續可用
 await run('叫號 迴歸 未公告班表的醫師仍可舊制掛號',
-  () => setDoc(doc(P001(), 'appointments/舊制1'), apptDoc()), 'allow');
+  () => bookWithLock(P001(), '舊制1', apptDoc()), 'allow');
+await run('叫號 取消舊制掛號（釋放掛號鎖，讓以下攻擊測試只驗各自針對的條件）',
+  () => updateDoc(doc(P001(), 'appointments/舊制1'), { status: 'cancelled' }), 'allow');
+
+// ── 結帳（純示範）：叫號掛號的付款欄位驗證 ─────────────────────────────
+// 用與 D1 同星期但完全沒被其他測試碰過的日期＋pm 診次（容量 30），
+// 避免動到上面已經固定好的 am 診次號碼序列／計數器狀態。
+{
+  const D1b = new Date(D1.getTime() + 7 * 86400000);
+  const DK1b = dk(D1b);
+  await run('叫號 結帳 線上付款＋paid-demo 通過',
+    () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK1b, session: 'pm', seq: 1,
+      extra: { paymentMethod: 'online', paymentStatus: 'paid-demo' } }), 'allow');
+  await run('叫號 結帳 測試後取消（釋放掛號鎖，不影響後續攻擊測試）',
+    () => updateDoc(doc(P001(), 'appointments/docsch__' + DK1b + '__pm__1'), { status: 'cancelled' }), 'allow');
+  await run('叫號 結帳 完全缺少 paymentMethod／paymentStatus 時被拒絕',
+    () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK1b, session: 'pm', seq: 2,
+      stripPayment: true }), 'deny');
+  await run('叫號 結帳 配對錯誤（online 配 pending-onsite）時被拒絕',
+    () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK1b, session: 'pm', seq: 2,
+      extra: { paymentMethod: 'online', paymentStatus: 'pending-onsite' } }), 'deny');
+}
 
 // 攻擊路徑：班表
 await run('班表 醫師寫他人的班表',
@@ -1416,7 +1534,7 @@ await run('班表 病患刪除醫師班表',
 // 攻擊路徑：叫號
 // 醫師一旦公告班表，就不能再繞回沒有名額限制的舊制路徑
 await run('叫號 對已公告班表的醫師走舊制自由掛號',
-  () => setDoc(doc(P001(), 'appointments/繞道1'), apptDoc({ doctor: 'docsch' })), 'deny');
+  () => bookWithLock(P001(), '繞道1', apptDoc({ doctor: 'docsch' })), 'deny');
 await run('叫號 超過該診次名額',
   () => queued(P001(), { patient: 'P001', doctor: 'docsch', dateKey: DK1, session: 'am', seq: 3 }), 'deny');
 await run('叫號 跳號（計數器一次前進多格）',
@@ -1440,7 +1558,7 @@ await run('叫號 只推進計數器而不掛號',
     { doctor: 'docsch', dateKey: DK1, session: 'pm', taken: 1 }), 'deny');
 // 只寫掛號而不推進計數器 == 兩個人可以同時是 1 號
 await run('叫號 只寫掛號而不推進計數器',
-  () => setDoc(doc(P001(), 'appointments/docsch__' + DK1 + '__pm__1'), {
+  () => bookWithLock(P001(), 'docsch__' + DK1 + '__pm__1', {
     patient: 'P001', patientName: '張小泉', doctor: 'docsch', doctorName: '排班醫師',
     department: '一般內科', dateKey: DK1, session: 'pm', seq: 1,
     scheduledAt: Timestamp.fromDate(new Date(Date.now() + 2 * 86400000)),

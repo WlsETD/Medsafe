@@ -215,6 +215,104 @@ async function redeemFamilyInviteCode(code, lineUserId) {
   return { ok: true, patient, familyUsername, relationshipLabel };
 }
 
+// 首次用 LINE 登入、尚未有任何帳號時的自助註冊。
+//
+// 對照 js/db-service.js 的 registerPatient()：一般帳密註冊時使用者已經
+// 用 createUserWithEmailAndPassword 拿到 request.auth，接下來三份文件由
+// 病患自己的 client SDK 寫、firestore.rules 把關（isSelfRegisteringPatient／
+// patientInitialDocIsClean）。這裡使用者在建立 Firebase Auth 帳號之前完全
+// 沒有 request.auth 可以依附，沒有規則能檢查，因此整段改在 Admin SDK 裡
+// 一次做完——也因此本函式寫出的三份文件形狀必須手動保持與
+// registerPatient() 完全一致，否則系統裡會出現兩種長得不一樣的病患初始
+// 資料（例如其中一種意外帶了 assignedDoctor，讓陌生醫師讀得到病歷）。
+//
+// username 唯一性用「建 Auth 帳號前後各檢查一次」而非單一 transaction：
+// Admin Auth 的 createUser() 無法參與 Firestore transaction，因此無法把
+// 「檢查 username 空閒」與「建立 Auth 帳號」做成一個原子操作。建立後才
+// 發現被搶走的機率極低（兩人同時搶同一個 username），一旦發生就刪掉
+// 剛建立的 Auth 帳號回滾，不留孤兒帳號——與 db-service.js registerPatient()
+// 失敗時刪除 Auth 帳號是同一個理由。
+//
+// 【實測踩過的坑，別再改回去】Auth 帳號必須帶 email（username@medsafe.local，
+// 跟 js/auth.js 的 toAuthEmail() 同一個規則），不能像 redeemFamilyInviteCode()
+// 那樣建立完全不帶 email 的帳號。家屬帳號可以不帶 email，是因為家屬從來不需要
+// 通過 firestore.rules 的 isOwnUsername()／ownsUsername()——那兩個函式檢查
+// request.auth.token.email 是否等於 username + '@medsafe.local'。病患帳號
+// 讀寫 patient_data、users、appointments、conversations……幾乎每個集合的規則
+// 都靠 isOwnUsername() 把關，帳號沒有 email 時這些規則一律判定為「不是本人」，
+// 一律拒絕——不會噴明顯的錯誤畫面，而是讓所有讀取默默失敗，UI 停在
+// data() 的預設佔位資料（例如「王大明」）看起來像沒有真正登入成功。
+// 第一版沒帶 email 就是這樣被實測抓到的。
+async function registerPatientViaLine({ lineUserId, name, username }) {
+  const usersRef = db().collection('users').doc(username);
+
+  const pre = await usersRef.get();
+  if (pre.exists) {
+    const err = new Error('帳號已被使用');
+    err.code = 'username-taken';
+    throw err;
+  }
+
+  let authUser;
+  try {
+    authUser = await admin.auth().createUser({ email: username + '@medsafe.local' });
+  } catch (e) {
+    // 理論上不會發生：上面才確認 users/{username} 不存在，但 email 命名空間
+    // 與 username 命名空間本應一一對應。若真的撞上（例如舊資料留下的孤兒
+    // Auth 帳號），視同 username 已被使用，不視為系統錯誤。
+    if (e && e.code === 'auth/email-already-exists') {
+      const err = new Error('帳號已被使用');
+      err.code = 'username-taken';
+      throw err;
+    }
+    throw e;
+  }
+  const uid = authUser.uid;
+
+  try {
+    await db().runTransaction(async (tx) => {
+      const snap = await tx.get(usersRef);
+      if (snap.exists) {
+        const err = new Error('帳號已被使用');
+        err.code = 'username-taken';
+        throw err;
+      }
+
+      tx.set(db().collection('user_roles').doc(uid), {
+        username, name, role: 'patient', status: 'active'
+      });
+      tx.set(usersRef, { uid, name, role: 'patient', status: 'active' });
+      // 形狀與 db-service.js registerPatient() 完全相同，包含刻意不寫
+      // assignedDoctor 的理由（見該處註解）。
+      tx.set(db().collection('patient_data').doc(username), {
+        profile: {
+          id: username, name, age: null, gender: '',
+          healthSummary: '尚無用藥紀錄，請於回診時請醫師建立您的用藥檔案。',
+          nextAppointment: ''
+        },
+        stats: { safetyScore: null, activeMeds: 0, aiChecksToday: 0, lastSync: '尚未同步' },
+        medications: [],
+        ddiAlerts: [],
+        aiInsights: [],
+        reminders: []
+      });
+      tx.set(db().collection('line_bindings').doc(username), {
+        uid,
+        username,
+        lineUserId,
+        active: true,
+        linkedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      tx.set(db().collection('line_users').doc(lineUserId), { username, uid });
+    });
+  } catch (e) {
+    await admin.auth().deleteUser(uid).catch(() => {});
+    throw e;
+  }
+
+  return { uid, username };
+}
+
 async function getBinding(username) {
   const snap = await db().collection('line_bindings').doc(username).get();
   return snap.exists ? snap.data() : null;
@@ -277,6 +375,7 @@ async function listActiveBindings() {
 module.exports = {
   createLinkCode,
   redeemLinkCode,
+  registerPatientViaLine,
   findByLineUserId,
   getBinding,
   unbind,

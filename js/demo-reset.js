@@ -375,14 +375,25 @@ window.DemoReset = (function () {
       });
       const scheduledAt = new Date();
       scheduledAt.setDate(scheduledAt.getDate() + 7);
-      ops.push(b => b.set(window.db.collection('appointments').doc(), {
+      const demoApptRef = window.db.collection('appointments').doc();
+      // 一併把 patient01 的掛號鎖指向這筆新掛號（firestore.rules 的 appointment_locks）：
+      // 否則鎖仍指向剛被取消的舊掛號，訪客可以在示範掛號之外再掛第二筆。
+      ops.push(b => b.set(window.db.collection('appointment_locks').doc('patient01'), {
+        patient: 'patient01', appointment: demoApptRef.id,
+        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+      }));
+      ops.push(b => b.set(demoApptRef, {
         patient: 'patient01', patientName: '王大明',
         doctor: DEMO_DOCTOR, doctorName: '李小美醫師',
         department: '一般內科',
         scheduledAt: window.firebase.firestore.Timestamp.fromDate(scheduledAt),
         status: 'booked',
         createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
-        note: ''
+        note: '',
+        // 結帳（純示範）欄位——這裡走的是 admin 寫入，規則對 admin 不強制要求，
+        // 但仍一併帶上，讓示範資料在醫師端／管理端的付款標籤顯示上與真實掛號一致。
+        // 見 firestore.rules 的 paymentFieldsOk()。
+        paymentMethod: 'onsite', paymentStatus: 'pending-onsite'
       }));
       await commitInChunks(ops, 400);
       summary.appointmentCreated = true;
@@ -457,5 +468,5 @@ window.DemoReset = (function () {
     return Object.assign({ ok: true }, summary);
   }
 
-  return { DEMO_PATIENTS, canRun, run, getState };
+  return { DEMO_PATIENTS, DEMO_DOCTOR, canRun, run, getState };
 })();

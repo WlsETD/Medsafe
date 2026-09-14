@@ -516,6 +516,32 @@ window.DbService = {
     // 只有 booked 與 arrived 算「進行中的就診」，也就是醫師清單要顯示的對象。
     ACTIVE: ['booked', 'arrived'],
 
+    // 這筆掛號是否仍佔用病患的「掛號名額」——一個病患同時只能有一筆。
+    // 【與 firestore.rules 的 apptNoLongerHolds()／apptDayOver() 是同一套判斷，
+    //   改一邊必須同步改另一邊】：已取消、已完診，或看診日（台灣時間）已過，就不再佔用。
+    // 看診日已過卻仍是 booked（沒報到、也沒人取消）的掛號不能永遠卡住病患。
+    holdsSlot(a) {
+      if (!a || this.ACTIVE.indexOf(a.status) === -1) return false;
+      let day = a.dateKey;
+      if (!day && a.scheduledAt) {
+        const v = a.scheduledAt;
+        const d = v.toDate ? v.toDate() : new Date(v);
+        if (!isNaN(d.getTime())) day = window.DbService.adherence.dayKey(d);
+      }
+      if (!day) return true;
+      return day >= window.DbService.adherence.dayKey(new Date());
+    },
+
+    // 掛號鎖文件（firestore.rules 的 appointment_locks）。每一次病患自行掛號
+    // 都必須在同一批次／交易中把它指向新掛號，否則規則會拒絕那筆掛號。
+    _lockPayload(patient, appointmentId) {
+      return {
+        patient,
+        appointment: appointmentId,
+        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+      };
+    },
+
     // 照護關係的有效期。掛號給予的存取權必須有時間上限——
     // 一份永久有效的授權在個資法下與未取得授權無異。
     // 90 天足以涵蓋回診與追蹤，又不至於讓一次就診換來無限期的病歷存取權。
@@ -580,8 +606,29 @@ window.DbService = {
       });
     },
 
-    async create({ patient, patientName, doctor, doctorName, department, scheduledAt, note }) {
-      const ref = await window.db.collection('appointments').add({
+    // ── 結帳（純示範）────────────────────────────────────────────────
+    //
+    // 掛號送出前的「線上付款／到場付款」確認畫面（patient.html）純粹是展示用途，
+    // 不接任何金流——見 firestore.rules 的 paymentFieldsOk() 同一段說明。
+    // 這裡只依選擇的方式組出兩個固定配對的欄位，值本身不是真的收款狀態。
+    PAYMENT_METHODS: ['online', 'onsite'],
+    _paymentFields(method) {
+      return method === 'online'
+        ? { paymentMethod: 'online', paymentStatus: 'paid-demo' }
+        : { paymentMethod: 'onsite', paymentStatus: 'pending-onsite' };
+    },
+
+    // counterCheckIn：醫師櫃檯持證件報到（firestore.rules 的路徑 C）。這不是病患自己的
+    // 預約，不受「一次只能一筆」限制，醫師也沒有權限寫病患的掛號鎖，因此不寫鎖。
+    // 這條路徑沒有結帳畫面（病患不在場操作、是醫護持證件建檔），固定視為到場付款——
+    // 語意上也成立：現場報到當下確實還沒有線上付款這件事。呼叫端不需要、
+    // 也不應該傳 payment 參數進來。
+    async create({ patient, patientName, doctor, doctorName, department, scheduledAt, note, counterCheckIn, payment }) {
+      // 先產生文件 ID 再用 batch 寫入（而非 add()），才能與掛號鎖放在同一批次——
+      // 規則兩側各用 getAfter() 指認對方，分開寫任何一份都不會通過。
+      const ref = window.db.collection('appointments').doc();
+      const batch = window.db.batch();
+      batch.set(ref, Object.assign({
         patient, patientName: patientName || patient,
         doctor, doctorName: doctorName || doctor,
         department: department || '一般內科',
@@ -590,7 +637,11 @@ window.DbService = {
         // 規則要求等於伺服器時間，前端無法回填或造假時序
         createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
         note: note || ''
-      });
+      }, this._paymentFields(counterCheckIn ? 'onsite' : payment)));
+      if (!counterCheckIn) {
+        batch.set(window.db.collection('appointment_locks').doc(patient), this._lockPayload(patient, ref.id));
+      }
+      await batch.commit();
       // 掛號本身不會讓醫師看得到病歷——規則查的是照護關係文件。
       // 順序上先建掛號再授予關係：反過來的話，關係文件寫成功而掛號失敗時，
       // 會出現「醫師讀得到病歷，但系統中沒有任何就診紀錄可以解釋為什麼」。
@@ -630,7 +681,7 @@ window.DbService = {
     // 推導出來的顯示值，規則驗不了這段算術（規則無法解析 '09:00' 做時間加法）。
     // 顯示端要重算，不要盲信這個欄位——見 firestore.rules 同一段註解。
     async bookQueued({ patient, patientName, doctor, doctorName, department,
-                       dateKey, session, schedule, note }) {
+                       dateKey, session, schedule, note, payment }) {
       const S = window.DbService.schedules;
       const info = S.sessionsFor(schedule, dateKey).find(s => s.id === session);
       if (!info || !info.open) {
@@ -660,7 +711,7 @@ window.DbService = {
         if (snap.exists) tx.update(counterRef, { taken: seq });
         else tx.set(counterRef, { doctor, dateKey, session, taken: seq });
 
-        tx.set(apptRef, {
+        tx.set(apptRef, Object.assign({
           patient, patientName: patientName || patient,
           doctor, doctorName: doctorName || doctor,
           department: department || schedule.department || '一般內科',
@@ -669,7 +720,9 @@ window.DbService = {
           status: 'booked',
           createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
           note: note || ''
-        });
+        }, this._paymentFields(payment)));
+        // 掛號鎖（一次只能一筆進行中的掛號），與 create() 同一個理由
+        tx.set(window.db.collection('appointment_locks').doc(patient), this._lockPayload(patient, apptRef.id));
         return { id: apptRef.id, seq, estimatedAt };
       });
 

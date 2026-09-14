@@ -277,13 +277,26 @@ LIFF ID                →  1234567890-AbCdEfGh
 
 ---
 
-## Phase 2/3（依賴 Phase 0，尚未實作）
+## Phase 2/3 — LIFF 藥箱／掛號／選單：✅ 已完成（2026-09-13）
 
-| 項目 | 內容 | 估時 |
+三項當初列在這裡的工作都已完成，**其中「LIFF 掛號」沒有照原計畫新建
+`liff-appointment.html`**——實測發現不需要：
+
+| 項目 | 原計畫 | 實際做法 |
 |---|---|---|
-| LIFF 數位藥箱 | 複用 `patient.html` 既有藥箱區塊，Phase 0 做完後零額外身分工程 | 0.5 天 |
-| LIFF 掛號 | 新頁面 `liff-appointment.html`，複用 `DbService.appointments` | 0.5 天 |
-| 圖文選單擴充 | 六宮格已完成（見 `04_Security_Audit/0910.md`），「線上預約」格從 COMING_SOON 換成真正的 LIFF 連結 | 低 |
+| LIFF 數位藥箱 | 複用 `patient.html` 既有藥箱區塊 | 如原計畫。`https://liff.line.me/{LIFF_ID}`（不帶 query string）直接落在預設首頁（用藥首頁／藥箱），零額外身分工程 |
+| LIFF 掛號 | 新頁面 `liff-appointment.html`，複用 `DbService.appointments` | **不新建頁面**。`patient.html` 本來就有掛號表單（`activeView === 'appointments'`），加上結帳確認畫面後與網頁版共用同一份邏輯。深連結改用 `https://liff.line.me/{LIFF_ID}?view=appointments`——LIFF 短網址會把 query string 原樣接到 LIFF App 的 Endpoint URL（`patient.html?liff=1`）後面，變成 `patient.html?liff=1&view=appointments`；`patient.html` 檔尾的 IIFE 在 `bootLiff()` 成功後讀 `URLSearchParams(location.search).get('view')`，比對白名單（`home`／`appointments`／`line`，`consent` 另外視 `insurancePortalEnabled` 而定）後設定 `activeView`，不在白名單內的值一律維持預設首頁，不會白屏。首次用 LINE 登入、尚未綁定帳號時会先走 `renderLiffRegister()` 的註冊表單；註冊成功後呼叫 `location.reload()`，**沿用瀏覽器目前網址**（含 `?view=appointments`）整個重跑一次 `bootLiff()`，此時已綁定成功、直接進到掛號畫面，不需要另外傳遞這個參數 |
+| 圖文選單擴充 | 六宮格從 COMING_SOON 換成真正的 LIFF 連結 | 如原計畫，`functions/src/richmenu.js` 的 `buildAreas()` 與 `functions/src/webhook.js` 的 `bookingReply()`（LINE 內文字指令「預約」的回覆）都已改成上述帶 `?view=appointments` 的深連結，兩處各自的產生邏輯與 `patient.html` 的還原邏輯之間的對應關係由 `tests/line-richmenu.test.mjs`／`tests/line-webhook.test.mjs` 個別鎖住 |
 
-`linebot.md` §9 的建議是 **9/17 起功能凍結**，全部投入影片與簡報——Phase 0 做完
-已經足夠讓「藥箱」「掛號」用 LIFF 免登入直接開啟，是否再做 Phase 2/3 視進度而定。
+**為什麼不新建頁面**：原計畫假設要另外刻一個掛號頁面，但 `buildAreas()`／`bookingReply()`
+早就已經把連結組成 `?view=appointments` 這個查詢字串（而非另一個路徑），代表這件事
+從一開始就是「LIFF 登入後導到哪個畫面」的前端路由問題，不是「需要一個新頁面」的問題——
+`patient.html` 本身就是要開的那個頁面。新建頁面反而要重新複用一次 `DbService.appointments`、
+重新處理一次「未綁定要顯示註冊表單」，徒增一份要跟既有掛號頁保持同步的程式碼。
+
+**手機 LINE 實測**：Rich Menu「線上預約」→ 已綁定帳號直接落在掛號畫面（含結帳按鈕）、
+未綁定帳號先看到註冊表單、送出後同樣落在掛號畫面；「藥箱」格不受影響——這幾項尚未
+用實體手機、真實 LINE App 完整走過，僅在瀏覽器對正式站台以模擬的 LIFF 回呼網址驗證過
+路由邏輯本身（`patient.html?view=appointments` 能正確切到掛號畫面）與程式碼邏輯（`location.reload()`
+會保留原網址的查詢字串）。找機會用手機實測一次，確認 LINE App 內建瀏覽器的實際行為與
+這裡的推導一致。

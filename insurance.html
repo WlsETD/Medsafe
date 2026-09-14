@@ -121,7 +121,7 @@
         </div>
         <div v-if="maintenanceMode" class="fixed inset-0 z-[999] bg-slate-950 flex items-center justify-center p-8 text-center">
             <div class="max-w-md">
-                <div class="w-16 h-16 mx-auto mb-6 rounded-2xl bg-danger/10 flex items-center justify-center text-danger">
+                <div class="w-16 h-16 mx-auto mb-6 rounded-lg bg-danger/10 flex items-center justify-center text-danger">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                 </div>
                 <h1 class="text-2xl font-black text-white mb-3">系統維護中</h1>
@@ -139,14 +139,14 @@
                     </div>
                     <div class="p-8 space-y-4">
                         <div v-if="passwordError" class="bg-red-50 text-danger text-xs font-bold p-3 rounded-xl border border-red-100">{{ passwordError }}</div>
-                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">目前密碼</label><input v-model="passwordForm.current" type="password" autocomplete="current-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
-                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">新密碼（至少 8 碼）</label><input v-model="passwordForm.next" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
-                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">確認新密碼</label><input v-model="passwordForm.confirm" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">目前密碼</label><input v-model="passwordForm.current" type="password" autocomplete="current-password" class="w-full bg-slate-50 border-2 border-transparent rounded-lg py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">新密碼（至少 8 碼）</label><input v-model="passwordForm.next" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-lg py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
+                        <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-1.5">確認新密碼</label><input v-model="passwordForm.confirm" type="password" autocomplete="new-password" class="w-full bg-slate-50 border-2 border-transparent rounded-lg py-3 px-5 font-bold focus:border-primary/20 outline-none transition-all"></div>
                         <p class="text-[10px] font-bold text-slate-400 leading-relaxed">變更後其他已登入的裝置不會立即失效，其既有工作階段會持續到自然過期為止。</p>
                     </div>
                     <div class="p-6 bg-slate-50 flex gap-3 border-t border-slate-100">
                         <button @click="closePasswordModal()" class="flex-1 py-3 font-black text-slate-400 uppercase text-[10px]">取消</button>
-                        <button @click="submitPasswordChange" :disabled="changingPassword" class="flex-[2] bg-primary text-white font-black rounded-2xl py-3 text-xs uppercase tracking-widest disabled:opacity-50">{{ changingPassword ? '變更中...' : '更新密碼' }}</button>
+                        <button @click="submitPasswordChange" :disabled="changingPassword" class="flex-[2] bg-primary text-white font-black rounded-lg py-3 text-xs uppercase tracking-widest disabled:opacity-50">{{ changingPassword ? '變更中...' : '更新密碼' }}</button>
                     </div>
                 </div>
             </div>
@@ -170,15 +170,15 @@
                 <nav class="flex-1 space-y-1">
                     <a v-for="item in menuItems" :key="item.name" href="#" 
                        @click.prevent="switchMenu(item.name); showMobileMenu = false"
-                       :class="['sidebar-item flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all', activeMenu === item.name ? 'active' : 'text-white/60 hover:bg-white/5 hover:text-white']">
+                       :class="['sidebar-item flex items-center gap-3 px-4 py-3.5 rounded-lg font-bold transition-all', activeMenu === item.name ? 'active' : 'text-white/60 hover:bg-white/5 hover:text-white']">
                         <component :is="item.icon" class="h-5 w-5"></component>
                         {{ item.label }}
                     </a>
                 </nav>
 
                 <div class="mt-auto pt-6 border-t border-white/10">
-                    <button @click="openPasswordModal()" class="flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-slate-300 hover:bg-white/10 w-full transition-all text-left"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg><span>變更密碼</span></button>
-                    <button @click="logout" class="flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold text-danger hover:bg-red-50/10 w-full transition-all text-left">
+                    <button @click="openPasswordModal()" class="flex items-center gap-3 px-4 py-3.5 rounded-lg font-bold text-slate-300 hover:bg-white/10 w-full transition-all text-left"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg><span>變更密碼</span></button>
+                    <button @click="logout" class="flex items-center gap-3 px-4 py-3.5 rounded-lg font-bold text-danger hover:bg-red-50/10 w-full transition-all text-left">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> 退出系統
                     </button>
                 </div>
@@ -193,7 +193,7 @@
                     <button @click="showMobileMenu = true" aria-label="開啟選單" class="lg:hidden p-2 bg-white rounded-xl shadow-sm border border-slate-100 text-navy hover:text-turquoise transition-all"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg></button>
                     <div class="text-left"><h2 class="text-xl md:text-3xl font-black text-navy italic tracking-tighter uppercase">{{ activeMenu }} Module</h2><p class="text-[9px] md:text-[10px] font-black text-turquoise uppercase tracking-[0.2em] pl-1">Clinical Intelligence Center</p></div>
                 </div>
-                <div class="flex items-center gap-3 md:gap-6 bg-white p-2 md:p-2.5 rounded-3xl shadow-premium border border-white">
+                <div class="flex items-center gap-3 md:gap-6 bg-white p-2 md:p-2.5 rounded-xl shadow-premium border border-white">
                     <div class="flex items-center gap-3 border-l-2 border-slate-50 pl-3 md:pl-6 text-left">
                         <div class="text-right hidden md:block"><div class="text-sm font-black text-navy">{{ user.name }}</div><div class="text-[9px] font-black text-turquoise uppercase">Underwriter</div></div>
                         <!-- 頭像為裝飾性：使用者姓名已在緊鄰處以文字呈現，
@@ -212,7 +212,7 @@
                             <h2 class="text-2xl md:text-3xl font-black text-navy italic tracking-tighter uppercase">Operations Control</h2>
                             <p class="text-lightText font-bold text-xs md:text-sm">智慧核保引擎與保戶風險矩陣監控</p>
                         </div>
-                        <button @click="initCharts" class="w-full md:w-auto group flex items-center justify-center gap-2 bg-white border-2 border-navy/10 text-navy px-6 py-3 rounded-2xl font-black hover:bg-navy hover:text-white transition-all shadow-sm">
+                        <button @click="initCharts" class="w-full md:w-auto group flex items-center justify-center gap-2 bg-white border-2 border-navy/10 text-navy px-6 py-3 rounded-lg font-black hover:bg-navy hover:text-white transition-all shadow-sm">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 group-active:rotate-180 transition-transform duration-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                             <span class="text-xs uppercase tracking-widest">重整儀表板</span>
                         </button>
@@ -236,7 +236,7 @@
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
                         <div v-for="kpi in insuranceKpis" :key="kpi.label" class="bg-white p-6 md:p-8 rounded-[32px] shadow-premium group hover:-translate-y-2 transition-all duration-500 text-left border border-white/50">
-                            <div class="flex justify-between items-start mb-6"><div :class="['w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center text-white shadow-lg', kpi.bg]"><component :is="kpi.icon" class="h-6 w-6 md:h-7 md:w-7"></component></div><span class="text-xs font-black text-success">+{{ kpi.trend }}%</span></div>
+                            <div class="flex justify-between items-start mb-6"><div :class="['w-12 h-12 md:w-14 md:h-14 rounded-lg flex items-center justify-center text-white shadow-lg', kpi.bg]"><component :is="kpi.icon" class="h-6 w-6 md:h-7 md:w-7"></component></div><span class="text-xs font-black text-success">+{{ kpi.trend }}%</span></div>
                             <div class="text-[10px] font-black text-lightText uppercase mb-1 tracking-widest">{{ kpi.label }}</div>
                             <div class="text-2xl md:text-3xl font-black text-navy">{{ kpi.value }}</div>
                             <div class="mt-6 h-1.5 w-full bg-slate-50 rounded-full overflow-hidden"><div class="h-full rounded-full transition-all duration-1000" :class="kpi.color" :style="{ width: kpi.progress + '%' }"></div></div>
@@ -262,7 +262,7 @@
                             <h2 class="text-2xl md:text-4xl font-black text-navy mb-2 italic uppercase">Policy Analytics</h2>
                             <p class="text-lightText font-bold text-xs md:text-sm">全網險種分佈佔比與承保動態監控</p>
                         </div>
-                        <button @click="openAddPolicyModal" class="px-6 py-3 bg-navy text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-turquoise transition-all shadow-sm">+ 新增保單</button>
+                        <button @click="openAddPolicyModal" class="px-6 py-3 bg-navy text-white rounded-lg font-black text-[10px] uppercase tracking-widest hover:bg-turquoise transition-all shadow-sm">+ 新增保單</button>
                     </div>
                     <div class="bg-white p-6 md:p-10 rounded-[32px] md:rounded-[40px] shadow-premium border border-white text-left overflow-hidden">
                         <h3 class="text-lg md:text-xl font-black text-navy mb-8 flex items-center gap-3"><span class="w-1.5 h-6 bg-turquoise rounded-full"></span> 承保清單日誌</h3>
@@ -302,8 +302,8 @@
                             <p class="text-lightText font-bold text-xs md:text-sm text-left">管理保戶健康數據、減免記錄與風險檔案</p>
                         </div>
                         <div class="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-                            <input v-model="customerSearch" type="text" placeholder="搜尋 ID 或姓名..." class="flex-1 bg-white border-2 border-slate-100 rounded-2xl py-3 px-6 text-sm font-bold focus:border-turquoise outline-none transition-all">
-                            <select v-model="customerSort" class="bg-white border-2 border-slate-100 rounded-2xl py-3 px-6 text-sm font-black outline-none"><option value="score">依評分排序</option><option value="name">依姓名排序</option></select>
+                            <input v-model="customerSearch" type="text" placeholder="搜尋 ID 或姓名..." class="flex-1 bg-white border-2 border-slate-100 rounded-lg py-3 px-6 text-sm font-bold focus:border-turquoise outline-none transition-all">
+                            <select v-model="customerSort" class="bg-white border-2 border-slate-100 rounded-lg py-3 px-6 text-sm font-black outline-none"><option value="score">依評分排序</option><option value="name">依姓名排序</option></select>
                         </div>
                     </div>
                     <!-- 授權狀態說明。「沒有人授權」與「讀取失敗」對核保員的意義完全不同，
@@ -316,13 +316,13 @@
                         <p class="text-sm font-black text-navy">目前沒有病患授權本公司查閱核保摘要</p>
                         <p class="text-xs font-bold text-lightText mt-2 leading-relaxed">依個資法之目的限制與比例原則，本系統僅在病患主動授權後，提供其核保所需的最小必要摘要（用藥筆數、警示筆數、用藥安全評分、年齡級距），不提供完整用藥史。病患可於個人頁面授予或隨時撤回授權。</p>
                     </div>
-                    <div v-else class="bg-turquoise/10 border border-turquoise/30 rounded-2xl px-6 py-4">
+                    <div v-else class="bg-turquoise/10 border border-turquoise/30 rounded-lg px-6 py-4">
                         <p class="text-xs font-bold text-navy leading-relaxed">目前有 <strong>{{ consentedCount }}</strong> 位病患授權本公司查閱核保摘要。所列資料為<strong>病患自述之摘要</strong>，非系統驗證之病歷，核保時應依實務另行查證。授權有期限且病患可隨時撤回。</p>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 text-left">
                         <div v-for="user in sortedCustomers" :key="user.id" class="bg-white p-6 md:p-8 rounded-[32px] md:rounded-[40px] shadow-premium border border-white hover:border-turquoise/30 hover:-translate-y-2 transition-all duration-500 group flex flex-col">
                             <div class="flex items-center gap-6 mb-8">
-                                <div class="w-14 h-14 md:w-16 md:h-16 rounded-2xl turquoise-gradient flex items-center justify-center text-white font-black text-xl md:text-2xl shadow-lg">{{ user.name[0] }}</div>
+                                <div class="w-14 h-14 md:w-16 md:h-16 rounded-lg turquoise-gradient flex items-center justify-center text-white font-black text-xl md:text-2xl shadow-lg">{{ user.name[0] }}</div>
                                 <div class="text-left overflow-hidden"><div class="font-black text-navy text-lg md:text-xl truncate">{{ user.name }}</div><div class="text-[10px] font-black text-turquoise uppercase tracking-widest truncate">Safety Index: {{ user.score }}</div></div>
                             </div>
                             <div class="space-y-4 mb-8 flex-1">
@@ -330,11 +330,11 @@
                                 <div class="flex justify-between text-left"><span class="text-xs font-bold text-lightText uppercase">年齡</span><span class="text-xs font-black text-navy">{{ user.age }}</span></div>
                                 <div class="flex justify-between text-left"><span class="text-xs font-bold text-lightText uppercase">持有保單</span><span class="text-xs font-black text-navy">{{ user.policies }} 份</span></div>
                             </div>
-                            <div class="bg-slate-50 p-5 rounded-3xl flex justify-between items-center mb-6 text-left">
+                            <div class="bg-slate-50 p-5 rounded-xl flex justify-between items-center mb-6 text-left">
                                 <span class="text-[10px] font-black text-lightText uppercase">已省保費</span>
                                 <span class="text-lg font-black text-navy">{{ user.discount }}</span>
                             </div>
-                            <button @click="viewRiskDetail(user.id)" class="w-full py-4 bg-navy text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-turquoise transition-all flex justify-center">View Clinical Analysis</button>
+                            <button @click="viewRiskDetail(user.id)" class="w-full py-4 bg-navy text-white rounded-lg font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-turquoise transition-all flex justify-center">View Clinical Analysis</button>
                         </div>
                     </div>
                 </div>
@@ -350,10 +350,10 @@
                     <div class="bg-white p-6 md:p-10 rounded-[32px] md:rounded-[40px] shadow-premium border border-white">
                         <div v-if="careCases.length === 0" class="text-center text-lightText font-bold py-16 text-sm">尚無啟動中的個案關懷</div>
                         <div v-else class="space-y-6">
-                            <div v-for="c in careCases" :key="c.id" class="p-5 md:p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                            <div v-for="c in careCases" :key="c.id" class="p-5 md:p-6 bg-slate-50 rounded-xl border border-slate-100">
                                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                     <div class="flex items-center gap-4">
-                                        <div class="w-10 h-10 md:w-12 md:h-12 turquoise-gradient rounded-2xl flex items-center justify-center font-black text-white shrink-0">{{ (c.patientName || '?')[0] }}</div>
+                                        <div class="w-10 h-10 md:w-12 md:h-12 turquoise-gradient rounded-lg flex items-center justify-center font-black text-white shrink-0">{{ (c.patientName || '?')[0] }}</div>
                                         <div class="overflow-hidden">
                                             <div class="font-black text-navy truncate">{{ c.patientName }} ({{ c.patientId }})</div>
                                             <div class="text-[10px] font-bold text-lightText uppercase tracking-widest">{{ c.activatedDate }} · 承辦：{{ c.assignee }} · Safety Score {{ (c.riskScore === null || c.riskScore === undefined) ? '資料不足' : c.riskScore }}</div>
@@ -391,7 +391,7 @@
                                 </div>
                                 <div class="font-black text-navy text-lg mb-2 truncate">{{ gap.type }}</div>
                                 <div class="text-xs font-bold text-danger mb-6 text-left">受影響保戶: {{ gap.customerCount }} 名</div>
-                                <div class="text-xs font-bold text-navy bg-white/50 p-4 rounded-2xl italic leading-relaxed text-left">
+                                <div class="text-xs font-bold text-navy bg-white/50 p-4 rounded-lg italic leading-relaxed text-left">
                                     " {{ gap.recommendation }} "
                                 </div>
                             </div>
@@ -418,9 +418,9 @@
                             </div>
                             <div class="space-y-4 mb-8">
                                 <div class="text-xs font-black text-navy uppercase tracking-widest truncate">{{ detail.name }} ({{ detail.id }})</div>
-                                <div class="p-4 bg-slate-50 rounded-2xl text-[11px] font-bold text-navy italic border border-slate-100 leading-relaxed">" {{ detail.reason }} "</div>
+                                <div class="p-4 bg-slate-50 rounded-lg text-[11px] font-bold text-navy italic border border-slate-100 leading-relaxed">" {{ detail.reason }} "</div>
                             </div>
-                            <div class="p-5 bg-navy rounded-3xl mt-auto">
+                            <div class="p-5 bg-navy rounded-xl mt-auto">
                                 <div class="text-[9px] font-black text-turquoise uppercase tracking-widest mb-2">AI Recommendation</div>
                                 <div class="text-xs font-bold text-white/90 leading-relaxed text-left">{{ detail.recommendation }}</div>
                             </div>
@@ -435,7 +435,7 @@
                             <h2 class="text-2xl md:text-4xl font-black text-navy mb-2 italic uppercase">Report Center</h2>
                             <p class="text-lightText font-bold text-xs md:text-sm">保費、理賠與核保政策依據總覽，一鍵匯出 PDF</p>
                         </div>
-                        <button @click="exportReportPdf" class="px-6 py-3 bg-navy text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-turquoise transition-all shadow-sm flex items-center gap-2">
+                        <button @click="exportReportPdf" class="px-6 py-3 bg-navy text-white rounded-lg font-black text-[10px] uppercase tracking-widest hover:bg-turquoise transition-all shadow-sm flex items-center gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                             匯出 PDF
                         </button>
@@ -589,7 +589,7 @@
                                 <p class="text-xs text-lightText mt-1">依 DDI 風險等級模擬平均理賠成本，用於安排關懷介入的優先順序（模擬數據）</p>
                                 <!-- 這段不是免責聲明，是設計說明：本表刻意不產生費率建議。
                                      理由見 ddiPolicyRows 的註解——交互作用主要來自處方而非病患行為。 -->
-                                <div class="mt-3 flex items-start gap-2 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3">
+                                <div class="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-amber-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
                                     <p class="text-[11px] text-amber-900 leading-relaxed font-medium">
                                         本表<strong>不產生費率建議</strong>。藥物交互作用主要源自處方決策而非保戶行為，逕以其調整保費將使多重慢性病之年長保戶結構性承擔最高費率。
@@ -676,16 +676,16 @@
                     </div>
                     <div class="p-8 md:p-12 space-y-8 overflow-y-auto flex-1">
                         <div class="flex items-center gap-6 md:gap-8 pb-8 border-b border-slate-50">
-                            <div class="w-16 h-16 md:w-20 md:h-20 bg-bgMain rounded-3xl flex items-center justify-center text-3xl md:text-4xl font-black text-navy shadow-inner shrink-0">{{ selectedRiskPatient.name?.[0] }}</div>
+                            <div class="w-16 h-16 md:w-20 md:h-20 bg-bgMain rounded-xl flex items-center justify-center text-3xl md:text-4xl font-black text-navy shadow-inner shrink-0">{{ selectedRiskPatient.name?.[0] }}</div>
                             <div class="flex-1 min-w-0 text-left"><div class="text-2xl md:text-3xl font-black text-navy truncate">{{ selectedRiskPatient.name }}</div><div class="text-[10px] font-black text-lightText uppercase tracking-widest mt-1 truncate">Verified ID: {{ selectedRiskPatient.id }}</div></div>
                             <div class="text-4xl md:text-5xl font-black text-danger shrink-0">{{ selectedRiskPatient.score }}</div>
                         </div>
                         <div class="grid grid-cols-1 gap-6 text-left">
-                            <div class="space-y-2"><h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">病患自述健康摘要（未經醫師審核）</h4><div class="p-5 md:p-6 bg-red-50 text-danger text-sm font-bold rounded-2xl border border-red-100 italic">" {{ selectedRiskPatient.reason }} "</div></div>
-                            <div class="space-y-2"><h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">核保精算建議</h4><div class="p-5 md:p-6 bg-navy text-turquoise text-sm font-bold rounded-2xl italic leading-relaxed text-white">{{ selectedRiskPatient.recommendation }}</div></div>
+                            <div class="space-y-2"><h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">病患自述健康摘要（未經醫師審核）</h4><div class="p-5 md:p-6 bg-red-50 text-danger text-sm font-bold rounded-lg border border-red-100 italic">" {{ selectedRiskPatient.reason }} "</div></div>
+                            <div class="space-y-2"><h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">核保精算建議</h4><div class="p-5 md:p-6 bg-navy text-turquoise text-sm font-bold rounded-lg italic leading-relaxed text-white">{{ selectedRiskPatient.recommendation }}</div></div>
                             <div class="space-y-2">
                                 <h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">FHIR Patient 資源查核</h4>
-                                <div class="p-5 md:p-6 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col gap-3">
+                                <div class="p-5 md:p-6 bg-slate-50 rounded-lg border border-slate-100 flex flex-col gap-3">
                                     <p class="text-[11px] font-bold text-slate-500 leading-relaxed">向 FHIR 伺服器（<span class="font-mono">{{ fhirHost }}</span>）即時查詢是否有對應的 Patient 資源，用於驗證跨院資料交換介接是否暢通。</p>
                                     <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 該伺服器<strong>目前沒有存取控制</strong>，上面的資料任何人皆可讀取。</p>
                                     <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2 leading-relaxed"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 查詢以化名代號進行，<strong>不會將保戶姓名送出</strong>；查得到即代表該個案的跨院資料通道已打通。</p>
@@ -722,15 +722,15 @@
                     <div class="p-8">
                         <h3 class="text-xl font-black text-navy mb-6 italic uppercase">新增理賠案件</h3>
                         <div class="space-y-4">
-                            <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">保戶姓名</label><input v-model="newClaim.customer" type="text" class="w-full bg-slate-50 rounded-2xl py-3 px-5 font-bold outline-none"></div>
-                            <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">理賠金額 (NT$)</label><input v-model="newClaim.amount" type="number" min="0" class="w-full bg-slate-50 rounded-2xl py-3 px-5 font-bold outline-none"></div>
-                            <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">說明</label><textarea v-model="newClaim.description" rows="3" class="w-full bg-slate-50 rounded-2xl py-3 px-5 font-bold outline-none"></textarea></div>
+                            <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">保戶姓名</label><input v-model="newClaim.customer" type="text" class="w-full bg-slate-50 rounded-lg py-3 px-5 font-bold outline-none"></div>
+                            <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">理賠金額 (NT$)</label><input v-model="newClaim.amount" type="number" min="0" class="w-full bg-slate-50 rounded-lg py-3 px-5 font-bold outline-none"></div>
+                            <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">說明</label><textarea v-model="newClaim.description" rows="3" class="w-full bg-slate-50 rounded-lg py-3 px-5 font-bold outline-none"></textarea></div>
                             <div v-if="newClaimError" class="bg-red-50 text-danger text-xs font-bold p-3 rounded-xl">{{ newClaimError }}</div>
                         </div>
                     </div>
                     <div class="p-6 bg-slate-50 flex gap-4 border-t border-slate-100">
                         <button @click="showAddClaimModal = false" class="flex-1 py-4 font-black text-slate-400 uppercase text-[10px]">取消</button>
-                        <button @click="submitNewClaim" class="flex-[2] bg-navy text-white font-black rounded-2xl text-xs uppercase tracking-widest py-4">送出申請</button>
+                        <button @click="submitNewClaim" class="flex-[2] bg-navy text-white font-black rounded-lg text-xs uppercase tracking-widest py-4">送出申請</button>
                     </div>
                 </div>
             </div>
@@ -744,15 +744,15 @@
                     <div class="p-8">
                         <h3 class="text-xl font-black text-navy mb-6 italic uppercase">新增保單</h3>
                         <div class="space-y-4">
-                            <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">保戶姓名</label><input v-model="newPolicy.customer" type="text" class="w-full bg-slate-50 rounded-2xl py-3 px-5 font-bold outline-none"></div>
-                            <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">險種名稱</label><input v-model="newPolicy.planName" type="text" class="w-full bg-slate-50 rounded-2xl py-3 px-5 font-bold outline-none"></div>
-                            <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">保額 (NT$)</label><input v-model="newPolicy.amount" type="number" min="0" class="w-full bg-slate-50 rounded-2xl py-3 px-5 font-bold outline-none"></div>
+                            <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">保戶姓名</label><input v-model="newPolicy.customer" type="text" class="w-full bg-slate-50 rounded-lg py-3 px-5 font-bold outline-none"></div>
+                            <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">險種名稱</label><input v-model="newPolicy.planName" type="text" class="w-full bg-slate-50 rounded-lg py-3 px-5 font-bold outline-none"></div>
+                            <div><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">保額 (NT$)</label><input v-model="newPolicy.amount" type="number" min="0" class="w-full bg-slate-50 rounded-lg py-3 px-5 font-bold outline-none"></div>
                             <div v-if="newPolicyError" class="bg-red-50 text-danger text-xs font-bold p-3 rounded-xl">{{ newPolicyError }}</div>
                         </div>
                     </div>
                     <div class="p-6 bg-slate-50 flex gap-4 border-t border-slate-100">
                         <button @click="showAddPolicyModal = false" class="flex-1 py-4 font-black text-slate-400 uppercase text-[10px]">取消</button>
-                        <button @click="submitNewPolicy" class="flex-[2] bg-navy text-white font-black rounded-2xl text-xs uppercase tracking-widest py-4">建立保單</button>
+                        <button @click="submitNewPolicy" class="flex-[2] bg-navy text-white font-black rounded-lg text-xs uppercase tracking-widest py-4">建立保單</button>
                     </div>
                 </div>
             </div>

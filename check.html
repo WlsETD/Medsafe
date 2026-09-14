@@ -97,10 +97,10 @@
                                @keydown.escape="openIndex = null"
                                @blur="closeSoon()"
                                :placeholder="i === 0 ? '例如：華法林、Warfarin' : '例如：阿斯匹靈、Aspirin'"
-                               class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3.5 px-5 outline-none transition-all font-bold text-title">
+                               class="w-full bg-bgMain border-2 border-transparent focus:border-primary/20 focus:bg-white rounded-lg py-3.5 px-5 outline-none transition-all font-bold text-title">
                         <transition name="fade">
                             <div v-if="openIndex === i && optionsFor(i).length"
-                                 class="absolute z-30 left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-64 overflow-y-auto">
+                                 class="absolute z-30 left-0 right-0 mt-2 bg-white rounded-lg shadow-2xl border border-slate-100 max-h-64 overflow-y-auto">
                                 <button v-for="d in optionsFor(i)" :key="d.atc" type="button"
                                         @mousedown.prevent="pickDrug(i, d)"
                                         class="w-full text-left px-5 py-3 hover:bg-mint border-b border-slate-50 last:border-0 transition-colors">
@@ -114,7 +114,7 @@
                         </transition>
                     </div>
                     <button v-if="slots.length > 2" @click="removeSlot(i)" type="button"
-                            class="shrink-0 w-12 h-12 mt-0 rounded-2xl bg-bgMain text-lightText hover:bg-red-50 hover:text-danger transition-colors flex items-center justify-center"
+                            class="shrink-0 w-12 h-12 mt-0 rounded-lg bg-bgMain text-lightText hover:bg-red-50 hover:text-danger transition-colors flex items-center justify-center"
                             aria-label="移除">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
@@ -134,7 +134,7 @@
             </button>
 
             <button @click="runCheck" :disabled="!canCheck || checking"
-                    class="w-full hero-gradient text-white font-black py-4 rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.01] transition-all disabled:opacity-40 disabled:hover:scale-100 flex items-center justify-center gap-3">
+                    class="w-full hero-gradient text-white font-black py-4 rounded-lg shadow-xl shadow-primary/20 hover:scale-[1.01] transition-all disabled:opacity-40 disabled:hover:scale-100 flex items-center justify-center gap-3">
                 <svg v-if="checking" class="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                 {{ checking ? '查詢中...' : (canCheck ? '查詢交互作用' : '請至少輸入 2 種可辨識的藥物') }}
             </button>
@@ -157,7 +157,7 @@
                         <span class="ml-auto text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border" :class="f.severityClass">{{ f.severityZh }}</span>
                     </div>
                     <p v-if="f.effect" class="text-xs font-bold text-content leading-relaxed">{{ f.effect }}</p>
-                    <p v-if="f.recommendation" class="text-xs font-bold text-primary bg-mint rounded-2xl px-4 py-3 leading-relaxed"><i class="fa-solid fa-lightbulb" aria-hidden="true"></i> {{ f.recommendation }}</p>
+                    <p v-if="f.recommendation" class="text-xs font-bold text-primary bg-mint rounded-lg px-4 py-3 leading-relaxed"><i class="fa-solid fa-lightbulb" aria-hidden="true"></i> {{ f.recommendation }}</p>
                     <p v-if="f.detailLevel === 'severity-only'" class="text-[10px] font-bold text-amber-600 leading-relaxed">此筆記載僅有嚴重度分級，資料庫未收錄作用機轉與處置建議，請另行向藥師或醫師查證。</p>
                     <p class="text-[10px] font-bold text-lightText">出處：{{ f.source || '未標示' }}{{ f.reviewedOn ? '（' + f.reviewedOn + '）' : '' }}</p>
                 </div>

@@ -89,17 +89,24 @@ for (const s of [
   check('回報敘述不被誤判為查詢：「' + s + '」', CABINET_RE.test(s) === false);
 }
 
-// 「服藥時間表」意圖：與 CABINET_RE 同樣錨定整句。這是 Rich Menu 上的
-// 按鈕文字（見 richmenu.js），改回 message action 後直接借用這條分支，
-// 回覆跟每日提醒卡同一張 Flex 卡片，而不是原本的 uri（開 schedule.html）。
-const SCHEDULE_RE = /^(服藥時間表|今日服藥時間表|今日用藥時間表|用藥時間表)[？?。!！]*$/;
-
-for (const q of ['服藥時間表', '今日服藥時間表', '今日用藥時間表', '用藥時間表', '服藥時間表？', '服藥時間表。']) {
-  check('服藥時間表意圖仍被辨識：「' + q + '」', SCHEDULE_RE.test(q));
-}
-
-for (const s of ['幫我看服藥時間表裡的血壓藥', '今天的服藥時間表跟藥箱有什麼不一樣']) {
-  check('含關鍵字但非整句指令，不被誤判為服藥時間表意圖：「' + s + '」', SCHEDULE_RE.test(s) === false);
+// 「服藥時間表」查詢意圖：與 CABINET_RE 同樣錨定整句、直接用 webhook.js
+// 匯出的正則，不在測試裡重寫一份（Rich Menu／選單這格原本是 uri 直接開
+// schedule.html，改成文字指令後才有這個意圖需要辨識，見 replyTodaySchedule
+// 註解：回覆跟每日提醒卡同一張 Flex 卡片，而不是純文字或開網頁）。
+{
+  const { SCHEDULE_RE } = require('../functions/src/webhook.js')._internal;
+  for (const q of [
+    '服藥時間表', '今日服藥時間表', '今日用藥時間表', '用藥時間表',
+    '時間表', '提醒時間', '吃藥時間', '服藥時間表？', '時間表？'
+  ]) {
+    check('時間表查詢意圖被辨識：「' + q + '」', SCHEDULE_RE.test(q));
+  }
+  for (const s of [
+    '請問看診時間表在哪裡查', '早上的提醒時間可以改嗎',
+    '幫我看服藥時間表裡的血壓藥', '今天的服藥時間表跟藥箱有什麼不一樣'
+  ]) {
+    check('時間表查詢意圖不誤判夾在句子裡的同字：「' + s + '」', SCHEDULE_RE.test(s) === false);
+  }
 }
 
 // 「選單」意圖：與 CABINET_RE 同樣錨定整句。
@@ -113,27 +120,18 @@ for (const s of ['說明書上寫早上吃', '這個功能怎麼用', '選單上
   check('選單意圖不誤判夾在句子裡的同字：「' + s + '」', MENU_RE.test(s) === false);
 }
 
-// 「開發中功能」的誠實提示：Rich Menu 上「回報不適」這格目前還沒實作
-// （Phase 4），按下去要有明確的開發中訊息，不能被自由文字 NLU 收走
-// （那會讓 GPT 硬答一個功能還不存在的問題）。「預約」在 Phase 3 做完後
-// 移出這張表，改用下面獨立的 BOOKING_RE（見 webhook.js 的說明），
-// 兩者都直接從 webhook.js 的 _internal 取，不在測試裡重寫一份規則，
-// 避免兩邊定義漂移。
-const COMING_SOON = { 回報不適: 'y' };
-const COMING_SOON_RE_LOCAL = new RegExp('^(' + Object.keys(COMING_SOON).join('|') + ')[？?。!！]*$');
-
-for (const q of ['回報不適', '回報不適!']) {
-  check('開發中提示意圖被辨識：「' + q + '」', COMING_SOON_RE_LOCAL.test(q));
-}
-for (const s of ['幫我掛號給張醫師', '我不適很久了']) {
-  check('開發中提示不誤判夾在句子裡的同字：「' + s + '」', COMING_SOON_RE_LOCAL.test(s) === false);
-}
-check('「預約」已不在開發中提示表內（Phase 3 完成後移出，見 BOOKING_RE）',
-  COMING_SOON_RE_LOCAL.test('預約') === false);
+// 「回報不適」意圖（Phase 4，已實作）：與 CABINET_RE 同樣錨定整句，
+// 直接用 webhook.js 匯出的正則，不在測試裡重寫一份規則，避免兩邊定義漂移。
+// 這格原本是 COMING_SOON 的開發中提示，Phase 4 做完後移出——與「預約」
+// 當初移出 COMING_SOON、改用獨立的 BOOKING_RE 是同一個模式。
 {
-  const m = '回報不適！'.match(COMING_SOON_RE_LOCAL);
-  check('帶標點時仍能用捕獲群組查到正確的訊息（不因標點查表落空）',
-    m && COMING_SOON[m[1]] === 'y');
+  const { SYMPTOM_RE } = require('../functions/src/webhook.js')._internal;
+  for (const q of ['回報不適', '回報不適!', '回報不適？']) {
+    check('回報不適意圖被辨識：「' + q + '」', SYMPTOM_RE.test(q));
+  }
+  for (const s of ['幫我掛號給張醫師', '我不適很久了']) {
+    check('回報不適意圖不誤判夾在句子裡的同字：「' + s + '」', SYMPTOM_RE.test(s) === false);
+  }
 }
 
 // ── 線上預約（Phase 3）：BOOKING_RE 的意圖辨識，直接用 webhook.js 匯出的正則 ──

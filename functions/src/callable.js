@@ -53,8 +53,23 @@ exports.lineCreateLinkCode = onCall({ region: REGION }, async (request) => {
   return { code, expiresAt, ttlMs: LINK_CODE_TTL_MS, sendUrl, addFriendUrl };
 });
 
+// 透過 LINE 自助註冊的帳號（bindings.js 的 registerPatientViaLine()）沒有密碼——
+// 唯一的登入方式就是這支 LINE。解除綁定等於自己把自己鎖在帳號外面，且沒有
+// 「忘記密碼」這條後路可以救回來（帳號根本沒設過密碼），因此在這裡直接擋下，
+// 不能只靠前端隱藏按鈕：呼叫端能繞過 UI 直接打這支 callable。
+// 判斷方式與 patient.html 的 isPasswordlessAccount 相同（providerData 有無
+// 'password'），只是這裡要用 Admin SDK 查，因為前端沒有其他使用者的 Auth 資料。
+async function hasPassword(uid) {
+  const user = await admin.auth().getUser(uid);
+  return (user.providerData || []).some(p => p && p.providerId === 'password');
+}
+
 exports.lineUnbind = onCall({ region: REGION }, async (request) => {
-  const { username } = await requirePatient(request);
+  const { uid, username } = await requirePatient(request);
+  if (!(await hasPassword(uid))) {
+    throw new HttpsError('failed-precondition',
+      '此帳號透過 LINE 註冊、沒有設定密碼，解除綁定會導致無法再登入，因此不開放解除綁定。');
+  }
   const r = await bindings.unbind(username);
   logger.info('解除綁定', { username, ok: r.ok });
   return { ok: r.ok, reason: r.reason || null };
@@ -82,3 +97,5 @@ exports.lineCreateFamilyInviteCode = onCall({ region: REGION }, async (request) 
   logger.info('產生家屬邀請碼', { username, relationshipLabel });
   return { code, expiresAt, ttlMs: FAMILY_INVITE_TTL_MS, sendUrl, addFriendUrl };
 });
+
+exports._internal = { hasPassword, requirePatient };

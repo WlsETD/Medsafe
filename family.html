@@ -40,7 +40,7 @@
                      現有 LIFF App 是 Full 尺寸（無 LINE 原生關閉列），少了這顆
                      按鈕，家屬會被困在頁面上只能靠系統返回鍵離開。 -->
                 <button v-if="canClose" @click="closeApp" type="button"
-                        class="shrink-0 w-10 h-10 rounded-2xl bg-white border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center"
+                        class="shrink-0 w-10 h-10 rounded-lg bg-white border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center"
                         aria-label="關閉">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
@@ -50,7 +50,7 @@
 
             <div v-else-if="error" class="card p-8 space-y-3">
                 <p class="text-sm font-black text-danger">{{ error }}</p>
-                <button @click="init" class="px-6 py-3 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-widest">重新載入</button>
+                <button @click="init" class="px-6 py-3 rounded-lg bg-primary text-white text-[11px] font-black uppercase tracking-widest">重新載入</button>
             </div>
 
             <div v-else-if="!consents.length" class="card p-10 text-center space-y-2">
@@ -65,7 +65,7 @@
                 <!-- 多位病患時提供切換；只有一位時省略這一列，畫面直接顯示內容 -->
                 <div v-if="consents.length > 1" class="flex flex-wrap gap-2">
                     <button v-for="c in consents" :key="c.patient" @click="switchPatient(c.patient)"
-                            :class="['px-5 py-2.5 rounded-2xl text-xs font-black transition-all', selectedPatient === c.patient ? 'bg-primary text-white' : 'bg-white text-slate-500 border border-slate-200']">
+                            :class="['px-5 py-2.5 rounded-lg text-xs font-black transition-all', selectedPatient === c.patient ? 'bg-primary text-white' : 'bg-white text-slate-500 border border-slate-200']">
                         {{ c.relationshipLabel ? (view && view.patient === c.patient ? view.displayName : c.patient) + '（' + c.relationshipLabel + '）' : (view && view.patient === c.patient ? view.displayName : c.patient) }}
                     </button>
                 </div>
@@ -89,7 +89,7 @@
                     <div class="card p-8 space-y-4">
                         <h2 class="text-sm font-black text-title uppercase tracking-widest">用藥清單（{{ view.medicationCount }}）</h2>
                         <div v-if="!view.medications.length" class="text-xs font-bold text-slate-400">目前沒有登記中的用藥</div>
-                        <div v-for="(m, i) in view.medications" :key="i" class="flex items-center justify-between gap-4 bg-bgMain rounded-2xl px-5 py-3 bg-slate-50">
+                        <div v-for="(m, i) in view.medications" :key="i" class="flex items-center justify-between gap-4 bg-bgMain rounded-lg px-5 py-3 bg-slate-50">
                             <div>
                                 <p class="text-sm font-black text-title">{{ m.nameZh || m.nameEn }}</p>
                                 <p class="text-[10px] font-bold text-slate-400">{{ m.nameEn }}</p>
@@ -105,7 +105,7 @@
                     <div class="card p-8 space-y-4">
                         <h2 class="text-sm font-black text-title uppercase tracking-widest">交互作用警示（{{ view.alertCount }}）</h2>
                         <div v-if="!view.findings.length && !view.ungraded.length" class="text-xs font-bold text-slate-400">目前的用藥組合查無已知交互作用</div>
-                        <div v-for="(f, i) in view.findings" :key="'f' + i" class="rounded-2xl px-5 py-4 bg-red-50 border border-red-100">
+                        <div v-for="(f, i) in view.findings" :key="'f' + i" class="rounded-lg px-5 py-4 bg-red-50 border border-red-100">
                             <div class="flex items-center justify-between gap-3 mb-1">
                                 <p class="text-sm font-black text-title">{{ f.drugA }} ＋ {{ f.drugB }}</p>
                                 <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-danger text-white shrink-0">{{ f.severityZh }}</span>
@@ -115,7 +115,7 @@
                         </div>
                         <!-- 未分級：知識庫有記載但未標註嚴重度，不可跟上面已分級的警示混在一起看——
                              這是 ddi-engine.js 的既有原則，家屬檢視同樣要保留這個區隔。 -->
-                        <div v-for="(f, i) in view.ungraded" :key="'u' + i" class="rounded-2xl px-5 py-4 bg-slate-50 border border-slate-200">
+                        <div v-for="(f, i) in view.ungraded" :key="'u' + i" class="rounded-lg px-5 py-4 bg-slate-50 border border-slate-200">
                             <div class="flex items-center justify-between gap-3">
                                 <p class="text-sm font-black text-title">{{ f.drugA }} ＋ {{ f.drugB }}</p>
                                 <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-400 text-white shrink-0">未分級</span>
@@ -131,7 +131,7 @@
                     <div class="card p-8 space-y-4">
                         <h2 class="text-sm font-black text-title uppercase tracking-widest">掛號時間</h2>
                         <div v-if="!activeAppointments.length" class="text-xs font-bold text-slate-400">目前沒有預約中的回診</div>
-                        <div v-for="a in activeAppointments" :key="a.id" class="bg-slate-50 rounded-2xl px-5 py-4">
+                        <div v-for="a in activeAppointments" :key="a.id" class="bg-slate-50 rounded-lg px-5 py-4">
                             <p class="text-sm font-black text-title">{{ a.doctorName || a.doctor }}　{{ a.department }}</p>
                             <p class="text-[11px] font-bold text-slate-500 mt-1">{{ apptStatusText(a.status) }}<span v-if="apptDateText(a)"> · {{ apptDateText(a) }}</span><span v-if="apptQueueText(a)"> · {{ apptQueueText(a) }}</span></p>
                         </div>
