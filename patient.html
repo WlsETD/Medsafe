@@ -1046,7 +1046,7 @@
                             </button>
                         </div>
                     </div>
-                    <div class="p-10 space-y-8 overflow-y-auto max-h-[60vh] text-left">
+                    <div class="p-10 space-y-8 overflow-y-auto max-h-[50vh] text-left">
                         <div v-for="(detail, i) in detailedInsights" :key="i" class="flex gap-8 items-start group text-left">
                             <div :class="['w-14 h-14 rounded-lg flex items-center justify-center shrink-0 shadow-sm transition-all group-hover:scale-110 group-hover:shadow-glow', detail.bg]">
                                 <component :is="detail.icon" class="h-7 w-7"></component>
@@ -1065,12 +1065,8 @@
                             <p class="text-[11px] font-bold text-red-600 mt-1.5 leading-relaxed">但這<strong>不等於去識別化</strong>：化名由帳號名稱以公開演算法推導，任何人讀了本站原始碼都能還原對應關係；藥品組合本身也可能足以指認個人。<strong>請勿以真實個人資料操作本功能。</strong></p>
                         </div>
                         <div class="flex justify-end">
-                        <button @click="syncToCloud()" :disabled="syncing" class="hero-gradient text-white font-black px-12 py-4 rounded-lg shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all text-sm uppercase tracking-widest disabled:opacity-60 disabled:scale-100 disabled:cursor-not-allowed flex items-center gap-3">
-                            <svg v-if="syncing" class="animate-spin h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                            </svg>
-                            {{ syncing ? '同步中...' : '確認並同步雲端' }}
+                        <button @click="showInsightsModal = false" class="hero-gradient text-white font-black px-12 py-4 rounded-lg shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all text-sm uppercase tracking-widest flex items-center gap-3">
+                            確認
                         </button>
                         </div>
                     </div>

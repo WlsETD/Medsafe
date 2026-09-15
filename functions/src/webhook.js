@@ -461,9 +461,9 @@ async function replyCabinet(token, event, username, patientData) {
     lineApi.withQuickReply(lineApi.textMessage(lines.join('\n')), menuItems()));
 }
 
-// 服藥時間表：純文字版本，與 replyCabinet() 同一種「Reply、免費、隨時可查」設計。
+// 服藥時間表：Flex 卡片版本，與 dailyReminderCard() 同樣視覺設計。
 // reminders[] 的 {time, text} 形狀與 flex.js 的 dailyReminderCard() 讀的是同一份欄位——
-// 每日卡片與這裡的文字列表必須顯示同樣的時段與內容，改一邊要同步改另一邊。
+// 每日卡片與這裡的卡片必須顯示同樣的時段與內容，改一邊要同步改另一邊。
 async function replySchedule(token, event, username) {
   const snap = await admin.firestore().collection('patient_data').doc(username).get();
   if (!snap.exists) {
@@ -477,12 +477,13 @@ async function replySchedule(token, event, username) {
       lineApi.textMessage('尚未設定用藥提醒。請於 MedSafe 網頁的病患端設定每日提醒時段。'), menuItems()));
   }
   const sorted = reminders.slice().sort((x, y) => String(x.time).localeCompare(String(y.time)));
-  const lines = ['您的服藥時間表', ''];
-  for (const r of sorted) {
-    lines.push('・' + r.time + '　' + (r.text || ''));
-  }
-  return lineApi.reply(token, event.replyToken,
-    lineApi.withQuickReply(lineApi.textMessage(lines.join('\n')), menuItems()));
+  const name = (data.profile && data.profile.name) || username;
+
+  // 卡片上附一個「完整服藥時間表」按鈕，直通免登入的 schedule.html
+  const scheduleUrl = richmenu.SITE_ORIGIN + '/schedule.html';
+
+  const card = lineApi.withQuickReply(flex.scheduleCard(name, sorted, scheduleUrl), menuItems());
+  return lineApi.reply(token, event.replyToken, card);
 }
 
 // 下次回診。掛號紀錄本身就是病患自己的資料，查詢條件也只有

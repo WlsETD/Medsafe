@@ -132,4 +132,59 @@ function ddiAlertCard(newMedName, findings) {
   };
 }
 
-module.exports = { dailyReminderCard, ddiAlertCard };
+// 服藥時間表卡片（查詢用）。
+// 與 dailyReminderCard 類似，但不帶「已服用」按鈕，純展示用藥時間表。
+function scheduleCard(displayName, reminders, liffUrl) {
+  const list = reminders.map(r => ({
+    type: 'box',
+    layout: 'baseline',
+    spacing: 'sm',
+    margin: 'md',
+    contents: [
+      { type: 'text', text: r.time, size: 'lg', weight: 'bold', color: '#1F7A8C', flex: 2 },
+      { type: 'text', text: clip(r.text, 40), size: 'lg', wrap: true, flex: 5 }
+    ]
+  }));
+
+  const footer = [];
+  if (liffUrl) {
+    footer.push({
+      type: 'button',
+      style: 'primary',
+      height: 'md',
+      action: {
+        type: 'uri',
+        label: '完整服藥時間表',
+        uri: liffUrl
+      }
+    });
+  }
+
+  return {
+    type: 'flex',
+    altText: '服藥時間表（' + reminders.length + ' 個時段）',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: '服藥時間表', size: 'xl', weight: 'bold', color: '#1F7A8C' },
+          { type: 'text', text: displayName, size: 'sm', color: '#888888', margin: 'sm' },
+          { type: 'separator', margin: 'lg' },
+          ...list,
+          { type: 'separator', margin: 'lg' },
+          { type: 'text', text: '若需要調整時間，請於網頁端設定', size: 'sm', color: '#888888', margin: 'lg' }
+        ]
+      },
+      footer: footer.length > 0 ? {
+        type: 'box',
+        layout: 'vertical',
+        contents: footer,
+        spacing: 'sm'
+      } : undefined
+    }
+  };
+}
+
+module.exports = { dailyReminderCard, ddiAlertCard, scheduleCard };
