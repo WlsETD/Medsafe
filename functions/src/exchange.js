@@ -22,8 +22,10 @@ const https = require('https');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 
-const { REGION, LINE_LOGIN_CHANNEL_ID } = require('./config');
+const { REGION, LINE_LOGIN_CHANNEL_ID, LINE_CHANNEL_ACCESS_TOKEN } = require('./config');
 const bindings = require('./bindings');
+const lineApi = require('./line-api');
+const { welcomeMessage } = require('./webhook');
 
 function verifyIdToken(idToken, channelId) {
   const body = new URLSearchParams({ id_token: idToken, client_id: channelId }).toString();
@@ -257,7 +259,7 @@ exports.lineExchangeToken = onCall({ region: REGION }, async (request) => {
 // 建帳本體（Auth 帳號 + 五份 Firestore 文件）在 bindings.js 的
 // registerPatientViaLine()——跟其餘綁定邏輯放在一起，維持「這四個
 // LINE 專屬集合只有 bindings.js 會寫」的既有慣例（見檔案開頭說明）。
-exports.lineRegisterPatient = onCall({ region: REGION }, async (request) => {
+exports.lineRegisterPatient = onCall({ region: REGION, secrets: [LINE_CHANNEL_ACCESS_TOKEN] }, async (request) => {
   const data = request.data || {};
   const idToken = data.idToken;
   if (typeof idToken !== 'string' || !idToken) {
@@ -317,6 +319,23 @@ exports.lineRegisterPatient = onCall({ region: REGION }, async (request) => {
     }
     logger.error('LINE 首次註冊失敗', { username, message: e.message });
     throw new HttpsError('internal', '註冊失敗，請稍後再試');
+  }
+
+  // 註冊當下就推播「綁定成功」，和既有的 8 碼綁定碼流程給人一致的第一印象
+  // （見 webhook.js welcomeMessage() 的說明）。這裡沒有 replyToken 可用
+  // ——lineRegisterPatient 是 callable，不是 webhook 收到的訊息事件——因此
+  // 只能走 push（計費）。剛註冊的 patient_data.reminders 必為空陣列
+  // （見 bindings.js registerPatientViaLine()），不會有當日用藥卡可附，
+  // 純文字即可，不需要 replyWithTodayCard 那套鎖與 Flex 卡片邏輯。
+  // 推播失敗不可讓整個註冊看起來失敗——帳號與綁定（Firestore 寫入）已經
+  // 成功了，只是少了這則錦上添花的通知。
+  try {
+    const r = await lineApi.push(LINE_CHANNEL_ACCESS_TOKEN.value(), lineUserId, welcomeMessage());
+    if (!r.ok) {
+      logger.error('LINE 首次註冊完成但歡迎推播失敗', { username, status: r.status, body: r.body });
+    }
+  } catch (e) {
+    logger.error('LINE 首次註冊完成但歡迎推播拋出例外', { username, message: e.message });
   }
 
   let customToken;

@@ -226,6 +226,14 @@ async function handleUnfollow(event) {
   logger.info('unfollow：已停止推播', { lineUserId });
 }
 
+// 「綁定成功」文字＋選單快速回覆，供下面 replyWithTodayCard（8 碼綁定碼流程）
+// 與 exchange.js 的 pushRegistrationWelcome（LIFF 自助註冊流程）共用同一句話——
+// 兩條路徑都是「這支 LINE 帳號從現在起與某個病患身分綁定」，不該各寫各的文案。
+function welcomeMessage() {
+  const welcome = '綁定成功。\n\n之後每天早上會傳一張當日用藥卡給您，吃完按一下就完成回報。\n\n' + HELP;
+  return lineApi.withQuickReply(lineApi.textMessage(welcome), menuItems());
+}
+
 // 綁定成功後順便把今天的用藥卡一起送出，而不是只回一句文字讓人等到
 // 隔天早上才看得到效果——這對長輩的第一印象很重要：綁定這個動作
 // 「馬上有用」，而不是一個看不出成效的設定步驟。
@@ -234,32 +242,30 @@ async function handleUnfollow(event) {
 // 冪等鎖：這裡送過一次，07:30 的排程就會因為鎖已存在而跳過，
 // 不會重複推播幾乎一樣的卡片，也不會多消耗一次月配額。
 async function replyWithTodayCard(token, replyToken, username) {
-  const welcome = '綁定成功。\n\n之後每天早上會傳一張當日用藥卡給您，吃完按一下就完成回報。\n\n' + HELP;
-
   try {
     const snap = await admin.firestore().collection('patient_data').doc(username).get();
     const reminders = snap.exists && Array.isArray(snap.data().reminders) ? snap.data().reminders : [];
     if (!reminders.length) {
-      return lineApi.reply(token, replyToken, lineApi.withQuickReply(lineApi.textMessage(welcome), menuItems()));
+      return lineApi.reply(token, replyToken, welcomeMessage());
     }
 
     const day = dayKey();
     const claimed = await claimPushSlot(dailyLockKey(username, day));
     if (!claimed) {
       // 今天已經推過了（例如同一天重新綁定）——不重複附卡，只回文字
-      return lineApi.reply(token, replyToken, lineApi.withQuickReply(lineApi.textMessage(welcome), menuItems()));
+      return lineApi.reply(token, replyToken, welcomeMessage());
     }
 
     const name = (snap.data().profile && snap.data().profile.name) || username;
     const sorted = reminders.slice().sort((a, b) => String(a.time).localeCompare(String(b.time)));
     // quickReply 只在一次回覆的「最後一則」訊息上生效，因此掛在卡片上，不是文字訊息上。
     const card = lineApi.withQuickReply(flex.dailyReminderCard(name, day, sorted), menuItems());
-    return lineApi.reply(token, replyToken, [lineApi.textMessage(welcome), card]);
+    return lineApi.reply(token, replyToken, [lineApi.textMessage('綁定成功。\n\n之後每天早上會傳一張當日用藥卡給您，吃完按一下就完成回報。\n\n' + HELP), card]);
   } catch (e) {
     // 附卡失敗不可讓整個綁定看起來失敗——綁定本身（Firestore 寫入）已經成功了，
     // 只是少了這張錦上添花的卡片，仍要回覆確認訊息。
     logger.error('綁定成功但附卡失敗', { username, error: e.message });
-    return lineApi.reply(token, replyToken, lineApi.withQuickReply(lineApi.textMessage(welcome), menuItems()));
+    return lineApi.reply(token, replyToken, welcomeMessage());
   }
 }
 
@@ -756,6 +762,11 @@ async function claimEvent(event) {
   if (!id) return true;
   return claimPushSlot('evt:' + id);
 }
+
+// 供 exchange.js 的 pushRegistrationWelcome() 重用同一句「綁定成功」文案＋選單，
+// 不是測試專用——LIFF 自助註冊沒有 replyToken，只能用 push，訊息內容仍須與
+// 8 碼綁定碼流程一致。
+exports.welcomeMessage = welcomeMessage;
 
 // 供 tests/line-webhook.test.mjs 驗證 LIFF_ID 有無設定時的選單／掛號回覆差異。
 exports._internal = { menuItems, bookingReply, BOOKING_RE,
