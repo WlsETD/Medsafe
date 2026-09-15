@@ -336,8 +336,8 @@ exports.lineRegisterPatient = onCall({ region: REGION, secrets: [LINE_CHANNEL_AC
     const messages = [welcomeMessage()];
     if (appointmentUrl) {
       messages.push(lineApi.withQuickReply(
-        lineApi.textMessage('掛號時需要您的身分證字號。下面可以直接進入掛號頁面填寫。'),
-        [{ label: '進入掛號頁面', uri: appointmentUrl }]
+        lineApi.textMessage('在開始之前需要您先綁定身分證字號。'),
+        [{ label: '綁定連結', uri: appointmentUrl }]
       ));
     }
 
