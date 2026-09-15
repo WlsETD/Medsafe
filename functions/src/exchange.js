@@ -22,7 +22,7 @@ const https = require('https');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 
-const { REGION, LINE_LOGIN_CHANNEL_ID, LINE_CHANNEL_ACCESS_TOKEN } = require('./config');
+const { REGION, LINE_LOGIN_CHANNEL_ID, LINE_CHANNEL_ACCESS_TOKEN, LIFF_ID } = require('./config');
 const bindings = require('./bindings');
 const lineApi = require('./line-api');
 const { welcomeMessage } = require('./webhook');
@@ -321,16 +321,27 @@ exports.lineRegisterPatient = onCall({ region: REGION, secrets: [LINE_CHANNEL_AC
     throw new HttpsError('internal', '註冊失敗，請稍後再試');
   }
 
-  // 註冊當下就推播「綁定成功」，和既有的 8 碼綁定碼流程給人一致的第一印象
-  // （見 webhook.js welcomeMessage() 的說明）。這裡沒有 replyToken 可用
-  // ——lineRegisterPatient 是 callable，不是 webhook 收到的訊息事件——因此
-  // 只能走 push（計費）。剛註冊的 patient_data.reminders 必為空陣列
-  // （見 bindings.js registerPatientViaLine()），不會有當日用藥卡可附，
-  // 純文字即可，不需要 replyWithTodayCard 那套鎖與 Flex 卡片邏輯。
+  // 註冊當下就推播「綁定成功」＋「請填寫身分證」提示，和既有的 8 碼綁定碼流程
+  // 給人一致的第一印象（見 webhook.js welcomeMessage() 的說明）。這裡沒有
+  // replyToken 可用——lineRegisterPatient 是 callable，不是 webhook 收到的訊息
+  // 事件——因此只能走 push（計費）。剛註冊的 patient_data.reminders 必為空陣列
+  // （見 bindings.js registerPatientViaLine()），不會有當日用藥卡可附。
+  // 推播兩則訊息：文字＋按鈕。第二則訊息含掛號頁連結（身分證綁定就在掛號流程中）。
   // 推播失敗不可讓整個註冊看起來失敗——帳號與綁定（Firestore 寫入）已經
-  // 成功了，只是少了這則錦上添花的通知。
+  // 成功了，只是少了這些錦上添花的通知。
   try {
-    const r = await lineApi.push(LINE_CHANNEL_ACCESS_TOKEN.value(), lineUserId, welcomeMessage());
+    const liffId = LIFF_ID.value();
+    const appointmentUrl = liffId ? 'https://liff.line.me/' + liffId + '?view=appointments' : null;
+
+    const messages = [welcomeMessage()];
+    if (appointmentUrl) {
+      messages.push(lineApi.withQuickReply(
+        lineApi.textMessage('掛號時需要您的身分證字號。下面可以直接進入掛號頁面填寫。'),
+        [{ label: '進入掛號頁面', uri: appointmentUrl }]
+      ));
+    }
+
+    const r = await lineApi.push(LINE_CHANNEL_ACCESS_TOKEN.value(), lineUserId, messages);
     if (!r.ok) {
       logger.error('LINE 首次註冊完成但歡迎推播失敗', { username, status: r.status, body: r.body });
     }
