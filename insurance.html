@@ -686,7 +686,7 @@
                             <div class="space-y-2">
                                 <h4 class="text-[10px] font-black text-lightText uppercase tracking-widest">跨院資料查核</h4>
                                 <div class="p-5 md:p-6 bg-slate-50 rounded-lg border border-slate-100 flex flex-col gap-3">
-                                    <p class="text-[11px] font-bold text-slate-500 leading-relaxed">向資料交換伺服器（<span class="font-mono">{{ fhirHost }}</span>）即時查詢是否有對應的 Patient 資源，用於驗證跨院資料交換介接是否暢通。</p>
+                                    <p class="text-[11px] font-bold text-slate-500 leading-relaxed">向資料交換伺服器即時查詢是否有對應的 Patient 資源，用於驗證跨院資料交換介接是否暢通。</p>
                                     <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 該伺服器<strong>目前沒有存取控制</strong>，上面的資料任何人皆可讀取。</p>
                                     <p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2 leading-relaxed"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 查詢以化名代號進行，<strong>不會將保戶姓名送出</strong>；查得到即代表該個案的跨院資料通道已打通。</p>
                                     <p v-if="fhirCheckStatus === 'not-synced'" class="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 mt-2 leading-relaxed">該保戶尚未同步任何資料至資料交換伺服器，因此查無紀錄。這不是查詢失敗，也不代表其用藥有異常。</p>

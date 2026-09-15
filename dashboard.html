@@ -1127,7 +1127,7 @@
                     <div class="p-8 bg-slate-50 border-t border-slate-100 space-y-4">
                         <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                             <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 資料上傳警告</p>
-                            <p v-if="fhirUnprotected" class="text-[10px] font-bold text-amber-600 mt-1">處方會上傳至 <span class="font-mono">{{ fhirHost }}</span>，該伺服器<strong>目前無存取控制</strong>，任何人皆可讀寫。病患身分以化名送出、不含姓名，但<strong>藥品名稱與劑量為明文</strong>，請勿輸入可識別個人的自由文字。</p>
+                            <p v-if="fhirUnprotected" class="text-[10px] font-bold text-amber-600 mt-1">處方會上傳至資料交換伺服器，該伺服器<strong>目前無存取控制</strong>，任何人皆可讀寫。病患身分以化名送出、不含姓名，但<strong>藥品名稱與劑量為明文</strong>，請勿輸入可識別個人的自由文字。</p>
                         </div>
                         <div class="flex gap-4">
                             <button @click="showPrescriptionModal = false; resetAiCheck()" class="flex-1 py-4 font-black text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest text-[10px]">Cancel</button>

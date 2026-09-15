@@ -1061,7 +1061,7 @@
                     <div class="p-8 bg-slate-50 border-t border-slate-100 space-y-4 shrink-0">
                         <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg text-left">
                             <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 資料上傳警告</p>
-                            <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">上傳目標（<span class="font-mono">{{ fhirHost }}</span>）<strong>目前沒有存取控制</strong>，任何人皆可讀取上面的資料。因此本系統<strong>不會送出您的姓名</strong>：改以固定化名代表您，出生日期模糊為 5 年級距的年份，僅用藥品項與劑量會被上傳，用於展示跨院資料交換格式。</p>
+                            <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">上傳目標<strong>目前沒有存取控制</strong>，任何人皆可讀取上面的資料。因此本系統<strong>不會送出您的姓名</strong>：改以固定化名代表您，出生日期模糊為 5 年級距的年份，僅用藥品項與劑量會被上傳，用於展示跨院資料交換格式。</p>
                             <p class="text-[11px] font-bold text-red-600 mt-1.5 leading-relaxed">但這<strong>不等於去識別化</strong>：化名由帳號名稱以公開演算法推導，任何人讀了本站原始碼都能還原對應關係；藥品組合本身也可能足以指認個人。<strong>請勿以真實個人資料操作本功能。</strong></p>
                         </div>
                         <div class="flex justify-end">
@@ -1247,7 +1247,7 @@
                     <div class="p-8 md:p-10 bg-slate-50 border-t border-slate-100 space-y-4 shrink-0 text-left">
                         <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg">
                             <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 資料上傳警告</p>
-                            <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">按下確認會將本次交互作用的藥品名稱以健康資料紀錄上傳至 <span class="font-mono">{{ fhirHost }}</span>。該伺服器<strong>目前沒有存取控制</strong>，任何人皆可讀取。您的身分以固定化名代表，<strong>不會送出姓名或系統帳號</strong>；但化名由公開演算法推導、可被還原，故此非去識別化，請勿以真實資料操作。</p>
+                            <p v-if="fhirUnprotected" class="text-[11px] font-bold text-amber-600 mt-1 leading-relaxed">按下確認會將本次交互作用的藥品名稱以健康資料紀錄上傳至資料交換伺服器。該伺服器<strong>目前沒有存取控制</strong>，任何人皆可讀取。您的身分以固定化名代表，<strong>不會送出姓名或系統帳號</strong>；但化名由公開演算法推導、可被還原，故此非去識別化，請勿以真實資料操作。</p>
                         </div>
                         <div class="flex justify-end">
                         <button @click="confirmDdiAwareness()" :disabled="confirmingAwareness" class="bg-danger text-white font-black px-12 py-5 rounded-[24px] shadow-2xl shadow-danger/20 hover:scale-[1.03] active:scale-[0.97] transition-all uppercase tracking-widest text-xs flex justify-center items-center gap-3 disabled:opacity-60 disabled:scale-100 disabled:cursor-not-allowed">
