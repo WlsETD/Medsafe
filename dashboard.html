@@ -1022,7 +1022,7 @@
                                      目錄外的藥無法參與交互作用比對。允許開立等於在病歷裡
                                      放進一筆系統永遠檢查不到的用藥，而後續每一次檢測
                                      都會在不涵蓋它的情況下回報「未發現」。 -->
-                                <button @click="startAiCheck" :disabled="!newRx.drugName.trim() || !rxResolved" class="px-10 py-3 bg-primary text-white font-black rounded-xl hover:scale-105 transition-all text-xs shadow-lg shadow-primary/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100">啟動 AI 安全檢測</button>
+                                <button @click="startAiCheck" :disabled="!newRx.drugName.trim() || !rxResolved" class="px-10 py-3 bg-primary text-white font-black rounded-xl hover:scale-105 transition-all text-xs shadow-lg shadow-primary/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100">啟動安全檢測</button>
                                 <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">{{ !newRx.drugName.trim() ? '請先輸入藥品名稱' : (rxResolved ? '比對跨院處方紀錄' : '此藥不在目錄中，無法開立') }}</p>
                             </div>
                             <div v-else-if="aiCheckStatus === 'checking'" class="flex flex-col items-center gap-3 py-4">
