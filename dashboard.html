@@ -2766,9 +2766,16 @@
                         }
                     }
 
-                    // 寫入成功才更新畫面
-                    if (!Array.isArray(this.extraPrescriptions[pid])) this.extraPrescriptions[pid] = [];
-                    this.extraPrescriptions[pid].push(newMed);
+                    // 寫入成功才更新畫面。persisted 時 watchPatientData 的 onSnapshot
+                    // 會自己把新藥帶進 selectedPatient.medications；extraPrescriptions
+                    // 是專為「示範病患沒有雲端病歷」（!persisted，見下方 toast）保留的
+                    // 純前端暫存。兩者同時成立時，currentMeds/allMedsForDisplay 會把
+                    // 同一顆藥算兩次，直到重新整理清空這個純前端陣列才恢復正常——
+                    // 因此只在 !persisted 時才寫入，避免與 Firestore 監聽器重複。
+                    if (!persisted) {
+                        if (!Array.isArray(this.extraPrescriptions[pid])) this.extraPrescriptions[pid] = [];
+                        this.extraPrescriptions[pid].push(newMed);
+                    }
                     this.showPrescriptionModal = false;
                     this.submitting = false;
 
