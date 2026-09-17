@@ -5,11 +5,85 @@
 // 顏色只用兩種語意（提醒＝主色、警示＝紅），不做漸層與圖示裝飾——
 // 在老花與強光下，對比度比美觀重要。
 
+const richmenu = require('./richmenu');
+
 const MAX_LABEL = 20;  // LINE 對 button label 的長度上限
 
 function clip(s, n) {
   const t = String(s || '');
   return t.length <= n ? t : t.slice(0, n - 1) + '…';
+}
+
+// 使用說明的圖文教學卡（Flex carousel），取代原本純文字條列的 HELP。
+//
+// 【為什麼從純文字改成圖卡】
+// 純文字條列式說明，長輩要一段一段讀完才知道哪個按鈕做什麼；一張卡配
+// 一張示意圖只講一件事，看圖比讀字快，也更貼近「這顆按鈕按下去長怎樣」
+// 的直覺對應。
+//
+// 【卡片內容從 buildAreas() 取得，不是自己重複定義一份】
+// label／action 直接沿用 richmenu.js 的 buildAreas()——那才是實際印在
+// 選單圖片上、使用者會按到的按鈕定義。這裡只補教學用的說明文字與圖片，
+// 避免出現「教學卡跟真正選單對不起來」的情況（例如哪天 buildAreas()
+// 改了某格的 action，這裡忘記同步）。「使用說明」本身不需要教自己，
+// 因此被排除在外，共 5 張卡。
+//
+// 【圖片哪裡來】
+// hero 圖片是靜態示意圖，放在 images/tutorial/ 下由 Firebase Hosting
+// 提供公開 https 網址——LINE Flex 的 image 元件只接受 https 網址，
+// 不接受 data URI 或相對路徑。實際圖檔由設計端另外提供，檔名見下表；
+// 圖片就緒前，讀不到的圖在 LINE 用戶端會顯示灰底，不影響文字與按鈕。
+const TUTORIAL_META = {
+  '藥箱': { desc: '隨時查看目前的用藥清單，還有交互作用警示。', image: 'cabinet.png' },
+  '線上預約': { desc: '選擇日期與診次，線上掛號不用等電話。', image: 'booking.png' },
+  '回報不適': { desc: '直接告訴我您的狀況，會轉達給您的主治醫師。', image: 'symptom.png' },
+  '綁定家屬': { desc: '邀請家人一起用 LINE 查看您的用藥與掛號狀況。', image: 'family.png' },
+  '服藥時間表': { desc: '查看今天實際要吃的藥，吃完直接按按鈕回報。', image: 'schedule.png' }
+};
+
+function tutorialBubble(area) {
+  const meta = TUTORIAL_META[area.action.label];
+  const action = area.action.type === 'uri'
+    ? { type: 'uri', label: clip(area.action.label, MAX_LABEL), uri: area.action.uri }
+    : { type: 'message', label: clip(area.action.label, MAX_LABEL), text: area.action.text };
+
+  return {
+    type: 'bubble',
+    hero: {
+      type: 'image',
+      url: richmenu.SITE_ORIGIN + '/images/tutorial/' + meta.image,
+      size: 'full',
+      aspectRatio: '1:1',
+      aspectMode: 'cover'
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      contents: [
+        { type: 'text', text: area.action.label, size: 'xl', weight: 'bold', color: '#1F7A8C' },
+        { type: 'text', text: meta.desc, size: 'md', wrap: true, margin: 'md', color: '#555555' }
+      ]
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      contents: [{ type: 'button', style: 'primary', height: 'md', action }]
+    }
+  };
+}
+
+function tutorialCarousel() {
+  const bubbles = richmenu.buildAreas()
+    .filter(a => TUTORIAL_META[a.action.label])
+    .map(tutorialBubble);
+
+  return {
+    type: 'flex',
+    // altText 給看不到 Flex 的情境（通知欄、舊版用戶端）用，維持跟舊版
+    // HELP 純文字同樣的內容，功能上不算移除，只是主要呈現方式改變。
+    altText: '使用說明：點圖卡可直接試用該功能',
+    contents: { type: 'carousel', contents: bubbles }
+  };
 }
 
 // 每日用藥彙整卡。
@@ -132,4 +206,4 @@ function ddiAlertCard(newMedName, findings) {
   };
 }
 
-module.exports = { dailyReminderCard, ddiAlertCard };
+module.exports = { dailyReminderCard, ddiAlertCard, tutorialCarousel };

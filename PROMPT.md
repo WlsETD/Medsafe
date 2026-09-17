@@ -31,7 +31,7 @@ square canvas, high detail --no background
 | 2 | `appointment.png` | 線上預約 | `a desk calendar icon with a highlighted date square, flat blue and lavender two-tone fill, simple flat vector style` |
 | 3 | `symptom.png` | 回報不適 | `a stethoscope icon coiled into a friendly rounded shape, flat purple and light blue two-tone fill, simple flat vector style` |
 | 4 | `guide.png` | 使用說明 | `an open book icon with visible page lines, flat light blue cover with white pages, simple flat vector style` |
-| 5 | `drug-check.png` | 用藥查詢 | `a magnifying glass icon examining a small pill, flat teal and purple two-tone fill, simple flat vector style` |
+| 5 | `family-bind.png` | 綁定家屬 | `two simple rounded human silhouette icons holding hands, flat teal and warm orange two-tone fill, simple flat vector style` |
 | 6 | `schedule.png` | 服藥時間表 | `a small desktop printer icon printing out a sheet of paper, flat purple and white two-tone fill, simple flat vector style` |
 
 ---

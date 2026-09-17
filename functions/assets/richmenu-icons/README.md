@@ -17,8 +17,9 @@
 | `appointment.png` | 線上預約 | 紫藍桌曆，標示日期 14 |
 | `symptom.png` | 回報不適 | 紫藍聽診器線稿 |
 | `guide.png` | 使用說明 | 藍色翻開書本 |
-| `drug-check.png` | 用藥查詢 | 青紫放大鏡檢視膠囊 |
+| `drug-check.png` | （已下架，選單改為「綁定家屬」） | 青紫放大鏡檢視膠囊，保留檔案供未來復用 |
 | `schedule.png` | 服藥時間表 | 紫色印表機列印清單 |
+| `family-bind.png`（待生成） | 綁定家屬 | 牽手圖示，prompt 見專案根目錄 `PROMPT.md` |
 
 ## 之後要換圖怎麼做
 

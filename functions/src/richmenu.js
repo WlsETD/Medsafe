@@ -36,8 +36,12 @@ const SITE_ORIGIN = 'https://medsafe-554b7.web.app';
 
 // 3x2 六宮格。「使用說明」是既有文字指令；「回報不適」是 Phase 4
 // 兩步式真正功能（見 webhook.js 的 SYMPTOM_RE／startSymptomReport），
-// 不再是開發中提示。「用藥查詢」直接連到免登入的公開頁面，不需要任何
-// 後端處理。
+// 不再是開發中提示。「綁定家屬」直接連到免登入的教學頁面，不需要任何
+// 後端處理——邀請碼本身是病患各自產生的、無法在帳號層級的選單裡帶入，
+// 因此這一格只能是靜態教學頁，實際核銷仍是使用者把邀請碼貼進對話框
+// 觸發既有的 webhook 文字比對流程（見 family-bind-help.html 的說明）。
+// 原本掛在這一格的「用藥查詢」（check.html）並未刪除，只是拿掉選單入口，
+// 它本來就是設計給外部分享連結用的免登入公益工具，不受影響。
 //
 // 【「藥箱」「服藥時間表」為什麼是文字指令，不是直接開網頁】
 // 「藥箱」原本在 LIFF_ID 設定後改成直接 uri 開 patient.html；「服藥時間表」
@@ -75,7 +79,7 @@ function buildAreas() {
     { bounds: { x: 0, y: 843, width: 834, height: 843 },
       action: { type: 'message', label: '使用說明', text: '選單' } },
     { bounds: { x: 834, y: 843, width: 833, height: 843 },
-      action: { type: 'uri', label: '用藥查詢', uri: SITE_ORIGIN + '/check.html' } },
+      action: { type: 'uri', label: '綁定家屬', uri: SITE_ORIGIN + '/family-bind-help.html' } },
     { bounds: { x: 1667, y: 843, width: 833, height: 843 },
       action: { type: 'message', label: '服藥時間表', text: '服藥時間表' } }
   ];

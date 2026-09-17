@@ -192,7 +192,7 @@ function menuItems() {
     { label: '查藥箱', text: '藥箱' },
     { label: '線上預約', text: '預約' },
     { label: '回報不適', text: '回報不適' },
-    { label: '用藥查詢', uri: richmenu.SITE_ORIGIN + '/check.html' },
+    { label: '綁定家屬', uri: richmenu.SITE_ORIGIN + '/family-bind-help.html' },
     { label: '服藥時間表', text: '服藥時間表' }
   ];
   const liffId = LIFF_ID.value();
@@ -356,9 +356,12 @@ async function handleText(token, event) {
   }
 
   // ── 選單 ──
+  // 圖文教學卡（flex.tutorialCarousel()）取代純文字 HELP——內容與設計理由
+  // 見 flex.js 該函式上方註解。quick reply 選單維持不變，圖卡按鈕與
+  // quick reply 是同一組動作，看習慣哪個都能操作。
   if (MENU_RE.test(text)) {
     return lineApi.reply(token, event.replyToken,
-      lineApi.withQuickReply(lineApi.textMessage(HELP), menuItems()));
+      lineApi.withQuickReply(flex.tutorialCarousel(), menuItems()));
   }
 
   // ── 線上預約（見 BOOKING_RE／bookingReply 註解）──

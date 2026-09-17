@@ -333,12 +333,12 @@ function claimEvent(lock, event) {
     !!liffItem && liffItem.uri === 'https://liff.line.me/test-liff-id-0001');
   check('「完整藥箱」是 uri 型別而非 message（開 LIFF，不是送文字）',
     !!liffItem && !liffItem.text);
-  check('既有選單項目（查藥箱／線上預約／回報不適／用藥查詢／服藥時間表）不受影響',
+  check('既有選單項目（查藥箱／線上預約／回報不適／綁定家屬／服藥時間表）不受影響',
     itemsWithLiff.length === 6
     && itemsWithLiff.some(i => i.label === '查藥箱' && i.text === '藥箱')
     && itemsWithLiff.some(i => i.label === '線上預約')
     && itemsWithLiff.some(i => i.label === '回報不適')
-    && itemsWithLiff.some(i => i.label === '用藥查詢')
+    && itemsWithLiff.some(i => i.label === '綁定家屬')
     && itemsWithLiff.some(i => i.label === '服藥時間表'));
 
   if (originalLiffId === undefined) delete process.env.LIFF_ID;

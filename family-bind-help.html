@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#24A15D">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="images/LOGO.png">
+    <title>如何綁定家屬帳號 | MedSafe</title>
+    <meta name="description" content="MedSafe 家屬共照模式綁定教學：請病患先在網頁版產生邀請碼，家屬將收到的邀請碼傳送給官方帳號即可完成綁定。">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#24A15D',
+                        deep: '#175C3A',
+                        mint: '#EAF7F0',
+                        bgMain: '#F8FAF9',
+                        title: '#1C2B24',
+                        content: '#4B5563',
+                        lightText: '#9CA3AF'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif; background-color: #F8FAF9; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="max-w-md mx-auto px-6 py-8">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <img src="images/LOGO.png" class="w-14 h-14 rounded-2xl object-contain mx-auto mb-3" alt="MedSafe">
+            <h1 class="text-2xl font-black text-title">如何綁定家屬帳號</h1>
+            <p class="text-sm text-content mt-2">完成綁定後，即可透過 LINE 查看病患的用藥、交互作用警示、掛號時間與服藥回報。</p>
+        </div>
+
+        <!-- 步驟卡片：這頁純顯示，不做輸入表單——邀請碼的核銷仍走既有的
+             webhook 文字比對流程（functions/src/bindings.js 的
+             redeemFamilyInviteCode），這裡只負責告訴使用者下一步該做什麼。 -->
+        <div class="space-y-4">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex gap-4">
+                <div class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-black shrink-0">1</div>
+                <div>
+                    <p class="font-black text-title mb-1">請病患產生邀請碼</p>
+                    <p class="text-sm text-content leading-relaxed">請病患打開 MedSafe 網頁版，進入「病患中心 → 家屬檢視 → 邀請新家屬」，即可產生一組 8 碼邀請碼（30 分鐘內有效）。</p>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex gap-4">
+                <div class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-black shrink-0">2</div>
+                <div>
+                    <p class="font-black text-title mb-1">把邀請碼傳給我</p>
+                    <p class="text-sm text-content leading-relaxed">收到病患分享的邀請碼後，關閉這個頁面回到與 MedSafe 的對話視窗，把邀請碼原文直接貼上傳送即可（不需要加其他文字）。</p>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex gap-4">
+                <div class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-black shrink-0">3</div>
+                <div>
+                    <p class="font-black text-title mb-1">系統自動完成綁定</p>
+                    <p class="text-sm text-content leading-relaxed">系統驗證成功後會立即回覆確認訊息與家屬檢視頁面連結，之後隨時可以從選單再次開啟。</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 提示：邀請碼失效或核銷失敗的常見情況 -->
+        <div class="mt-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <p class="text-xs font-black text-amber-700 mb-1"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> 邀請碼沒有作用？</p>
+            <p class="text-xs text-amber-700 leading-relaxed">邀請碼 30 分鐘後會失效，且每組只能使用一次。若已過期或已核銷過，請請病患重新產生一組新的邀請碼。</p>
+        </div>
+
+        <div class="mt-8 text-center">
+            <p class="text-xs font-bold text-lightText">請關閉此頁面，回到與 MedSafe 的對話視窗操作</p>
+        </div>
+    </div>
+</body>
+</html>
