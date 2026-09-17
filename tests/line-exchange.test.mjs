@@ -182,6 +182,53 @@ check('非字串輸入被拒絕', validateUsername(undefined) === '帳號格式�
   }
 }
 
+// ── assertIsFriend：登入前的好友門檻（見 exchange.js 該函式的長註解）──
+// 以替換 line-api.js 的 getProfile 來模擬 LINE Messaging API 的三種回應，
+// 不打真的網路——與上面替換 https.request 同一個理由（同一個模組物件，
+// exchange.js require 進來的是同一份 exports）。
+{
+  const lineApi = require('../functions/src/line-api.js');
+  const { assertIsFriend } = _internal;
+  const realGetProfile = lineApi.getProfile;
+
+  try {
+    // 1. 是好友（profile 查得到）：不拋錯
+    lineApi.getProfile = async () => ({ userId: 'U_FRIEND' });
+    let err = null;
+    try { await assertIsFriend('U_FRIEND'); } catch (e) { err = e; }
+    check('已加好友時不拋錯，登入可以繼續', err === null);
+
+    // 2. 不是好友／已封鎖（profile 404 → getProfile 回 null）：拋出帶
+    //    notFriend:true 的 failed-precondition，且 addFriendUrl 由
+    //    LINE_BASIC_ID 組出
+    process.env.LINE_BASIC_ID = '@testid';
+    lineApi.getProfile = async () => null;
+    err = null;
+    try { await assertIsFriend('U_NOT_FRIEND'); } catch (e) { err = e; }
+    check('未加好友時拋出 failed-precondition 且帶 notFriend:true',
+      !!err && err.code === 'failed-precondition' && err.details && err.details.notFriend === true);
+    check('未加好友時的錯誤帶著由 LINE_BASIC_ID 組出的 addFriendUrl',
+      !!err && err.details.addFriendUrl === 'https://line.me/R/ti/p/%40testid');
+    delete process.env.LINE_BASIC_ID;
+
+    // 3. LINE_BASIC_ID 未設定時：不給一個開不了的連結（null 而非組出畸形網址）
+    lineApi.getProfile = async () => null;
+    err = null;
+    try { await assertIsFriend('U_NOT_FRIEND'); } catch (e) { err = e; }
+    check('LINE_BASIC_ID 未設定時，addFriendUrl 為 null 而非畸形網址',
+      !!err && err.details.addFriendUrl === null);
+
+    // 4. 查詢本身失敗（LINE API 打不通/逾時）：暫時放行（fail-open），
+    //    不可讓第三方 API 短暫不穩定擋下所有人的登入——見 assertIsFriend 註解。
+    lineApi.getProfile = async () => { throw new Error('LINE API 逾時'); };
+    err = null;
+    try { await assertIsFriend('U_UNKNOWN'); } catch (e) { err = e; }
+    check('好友狀態查詢本身失敗時暫時放行（fail-open），不擋登入', err === null);
+  } finally {
+    lineApi.getProfile = realGetProfile;
+  }
+}
+
 const failed = results.filter(r => r[0] === 'FAIL');
 for (const [status, name, detail] of results) {
   console.log(`${status === 'PASS' ? '✅' : '❌'} ${name}${detail ? '  (' + detail + ')' : ''}`);

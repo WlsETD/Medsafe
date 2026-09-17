@@ -78,3 +78,7 @@ exports.lineExchangeToken = exchange.lineExchangeToken;
 // 共用同一支 LIFF ID Token 驗證邏輯，差別只在查無綁定時的後續動作
 // （見 exchange.js 檔內說明）。
 exports.lineRegisterPatient = exchange.lineRegisterPatient;
+// 家屬邀請碼核銷（LIFF 版）：family.html 尚未綁定時就地貼碼完成綁定，
+// 不必先繞去對話框打字。與既有 webhook 文字指令共用同一支
+// bindings.redeemFamilyInviteCode()（見 exchange.js 檔內說明）。
+exports.lineRedeemFamilyInviteCode = exchange.lineRedeemFamilyInviteCode;

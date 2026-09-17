@@ -73,6 +73,14 @@
                 <div v-if="viewLoading" class="card p-10 text-center text-sm font-bold text-slate-400">載入病患資料中…</div>
 
                 <template v-else-if="view">
+                    <!-- 身分識別：一律顯示，不受 consents.length 影響——多病患時的
+                         切換列（上方）只回答「有哪些人選」，這裡回答「我現在看的
+                         這位是誰、我是他的什麼人」，兩者用途不同。relationshipLabel
+                         留空時退回「家屬」，與 patient.html 已邀請家屬清單同一個 fallback。 -->
+                    <p v-if="currentConsent" class="text-xs font-bold text-slate-500 px-1">
+                        您是 {{ view.displayName }} 的 {{ currentConsent.relationshipLabel || '家屬' }}
+                    </p>
+
                     <!-- 用藥安全參考分數 -->
                     <div class="card p-8 flex items-center justify-between gap-6">
                         <div>
@@ -183,6 +191,11 @@
                 };
             },
             computed: {
+                // 目前正在看的這位病患對應的授權文件——relationshipLabel 存在這裡，
+                // 不是 view 裡（view 是病患自己發布的摘要，不該由病患決定家屬跟自己的稱謂）。
+                currentConsent() {
+                    return this.consents.find(c => c.patient === this.selectedPatient) || null;
+                },
                 activeAppointments() {
                     return (this.appointments || []).filter(a => this.apptIsActive(a));
                 },
@@ -293,6 +306,83 @@
             }
         });
 
+        // 未加 MedSafe LINE 官方帳號好友（見 functions/src/exchange.js 的
+        // assertIsFriend()）。抽成獨立函式而非寫死在 IIFE 裡一次性用——
+        // renderFamilyBindForm() 送出邀請碼後若同樣查到未加好友，需要秀
+        // 出同一個畫面，兩處共用同一份文案與版面，避免改一邊忘了改另一邊。
+        function renderLiffNotFriend(addFriendUrl) {
+            document.title = '請先加好友 | MedSafe';
+            document.getElementById('app').innerHTML =
+                '<div class="max-w-md mx-auto mt-24 card p-10 text-center space-y-3">'
+                + '<p class="text-sm font-black text-title">請先加好友</p>'
+                + '<p class="text-[11px] font-bold text-slate-400 leading-relaxed">用 LINE 查看家人的用藥資料前，需要先加入 MedSafe 官方帳號好友。加好友後請重新整理本頁。</p>'
+                + (addFriendUrl
+                    ? '<a href="' + addFriendUrl + '" target="_blank" rel="noopener" class="inline-block bg-primary text-white rounded-lg px-6 py-3 text-xs font-black">加入好友</a>'
+                    : '<p class="text-[11px] font-bold text-slate-400">請洽系統管理者取得加好友連結</p>')
+                + '</div></div>';
+        }
+
+        // 這支 LINE 從沒綁過任何身分時（bootLiff() 回傳 'failed-precondition'）
+        // 就地完成家屬邀請碼核銷——不用 Vue（app 這時還沒 mount），純字串拼
+        // innerHTML＋原生 DOM 事件，跟 patient.html 的 renderLiffRegister()
+        // 是同一種寫法。表單只收邀請碼一個欄位；核銷本體是新增的
+        // lineRedeemFamilyInviteCode（見 functions/src/exchange.js），跟既有
+        // 「把邀請碼傳給 Bot」文字指令走的是同一份 bindings.redeemFamilyInviteCode()。
+        function renderFamilyBindForm() {
+            document.title = '綁定家屬帳號 | MedSafe';
+            document.getElementById('app').innerHTML =
+                '<div class="max-w-md mx-auto mt-16 card p-10 space-y-5">'
+                + '<div class="text-center space-y-2">'
+                + '<h1 class="text-lg font-black text-title">綁定家屬帳號</h1>'
+                + '<p class="text-xs font-bold text-slate-400 leading-relaxed">請輸入病患提供的 8 碼邀請碼，完成後即可查看病患的用藥、交互作用警示、掛號時間與服藥回報。</p>'
+                + '</div>'
+                + '<form id="familyBindForm" class="space-y-3">'
+                + '<input id="familyBindCode" type="text" maxlength="8" autocomplete="off" autocapitalize="characters" '
+                + 'placeholder="輸入 8 碼邀請碼" '
+                + 'class="w-full text-center font-mono text-xl tracking-[0.3em] uppercase border-2 border-slate-200 focus:border-primary focus:outline-none rounded-xl px-4 py-3">'
+                + '<p id="familyBindError" class="text-xs font-bold text-danger hidden"></p>'
+                + '<button type="submit" id="familyBindSubmit" class="w-full bg-primary text-white font-black py-3 rounded-xl">送出並綁定</button>'
+                + '</form>'
+                + '<p class="text-center text-[11px] font-bold text-slate-400">還沒有邀請碼？'
+                + '<a href="family-bind-help.html" class="text-primary underline">查看如何取得</a></p>'
+                + '</div>';
+
+            const errEl = document.getElementById('familyBindError');
+            const submitBtn = document.getElementById('familyBindSubmit');
+            const showError = (msg) => { errEl.textContent = msg; errEl.classList.remove('hidden'); };
+
+            document.getElementById('familyBindForm').addEventListener('submit', async (ev) => {
+                ev.preventDefault();
+                errEl.classList.add('hidden');
+                const code = document.getElementById('familyBindCode').value.trim();
+                if (!code) { showError('請輸入邀請碼'); return; }
+
+                submitBtn.disabled = true;
+                submitBtn.textContent = '處理中...';
+                const r = await window.liffRedeemFamilyInvite(code);
+                if (r.ok) {
+                    // 重新整理讓整個 IIFE 重跑一次：這次 bootLiff() 會走
+                    // lineExchangeToken（綁定已存在）直接成功登入，不必在這裡
+                    // 另外重刻一份「核銷成功後掛載 app」的邏輯。
+                    location.reload();
+                    return;
+                }
+                if (r.reason === 'not-friend') {
+                    // 整頁置換而非 showError：表單內容反正救不回來，直接給
+                    // 明確的下一步，跟 bootLiff() 失敗時的處理一致。
+                    renderLiffNotFriend(r.addFriendUrl);
+                    return;
+                }
+                submitBtn.disabled = false;
+                submitBtn.textContent = '送出並綁定';
+                if (r.reason === 'token-expired') {
+                    showError('登入已逾時，請重新整理頁面再試一次（請重新輸入邀請碼）');
+                } else {
+                    showError(r.message || '核銷失敗，請稍後再試');
+                }
+            });
+        }
+
         (async () => {
             // 家屬帳號沒有帳號密碼（見 functions/src/bindings.js
             // redeemFamilyInviteCode() 的說明），唯一入口是核銷邀請碼後
@@ -312,6 +402,22 @@
             if (liffResult.reason === 'redirecting') return;
             if (!liffResult.ok) {
                 console.error('家屬 LIFF 登入未完成：', liffResult.reason, liffResult.message || '');
+                // 未加好友（見 functions/src/exchange.js 的 assertIsFriend()）是
+                // 明確可解決的狀態，不能跟「稍後再試」的通用錯誤混在一起——
+                // 同一個理由見 patient.html 的 renderLiffNotFriend() 說明。
+                if (liffResult.reason === 'not-friend') {
+                    renderLiffNotFriend(liffResult.addFriendUrl);
+                    return;
+                }
+                // 這支 LINE 從沒綁過任何身分（既不是病患、也不是別人的家屬）——
+                // 與 patient.html 對 'failed-precondition' 的處理同一個原則：
+                // 不能當成一般性錯誤要人「稍後再試」，正確的下一步是就地
+                // 貼邀請碼完成綁定，而不是給一個「請透過連結開啟」的死路訊息
+                // （這支 LINE 本來就是透過合法的 LIFF 連結開啟的，只是還沒綁）。
+                if (liffResult.reason === 'failed-precondition') {
+                    renderFamilyBindForm();
+                    return;
+                }
                 document.getElementById('app').innerHTML =
                     '<div class="max-w-md mx-auto mt-24 card p-10 text-center space-y-3">'
                     + '<p class="text-sm font-black text-danger">登入時發生錯誤</p>'

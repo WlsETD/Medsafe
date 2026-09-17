@@ -22,8 +22,9 @@ const https = require('https');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 
-const { REGION, LINE_LOGIN_CHANNEL_ID } = require('./config');
+const { REGION, LINE_LOGIN_CHANNEL_ID, LINE_CHANNEL_ACCESS_TOKEN, LINE_BASIC_ID } = require('./config');
 const bindings = require('./bindings');
+const lineApi = require('./line-api');
 
 function verifyIdToken(idToken, channelId) {
   const body = new URLSearchParams({ id_token: idToken, client_id: channelId }).toString();
@@ -168,6 +169,42 @@ function extractLineUserId(verified, expectedChannelId) {
   return verified.sub;
 }
 
+// 好友門檻：LINE 登入（LIFF）跟「加官方帳號好友」本來是兩件互不相關的
+// LINE 功能——光靠 LIFF Login 就能拿到 ID Token，不需要先加好友。但這個
+// 系統的核心價值（每日用藥提醒、交互作用警示）全部靠 push／reply 送到
+// LINE，沒加好友就永遠收不到，等於註冊了一個看起來成功、實際上什麼都
+// 做不了的帳號。因此在換發 Custom Token（登入）與首次自助註冊這兩個
+// 入口都擋一次，而不是留給使用者自己發現「怎麼都沒收到提醒」。
+//
+// 只能用 LINE 的 Messaging API 問，不能信任前端的 liff.getFriendship()——
+// 這是一個純靜態前端，任何前端檢查都能被改過的網頁繞過（同一個理由，
+// CLAUDE.md 講得很清楚：firestore.rules 才是唯一的信任邊界，這裡的
+// 信任邊界換成「LINE 自己的伺服器怎麼回答」）。
+//
+// 【查不到好友狀態時為什麼放行，不是擋下】
+// 這支查詢本身依賴 LINE 的 Messaging API，跟登入流程原本依賴的 LINE
+// Login／ID Token 驗證是不同的服務。讓一個第三方 API 的短暫不穩定，
+// 直接讓所有人（包含已經加好友多年的老病患）登入不了，風險遠大於
+// 誤放行幾個沒加好友的人——沒加好友的人本來就收不到提醒，這條規則
+// 真正要防的後果本來就不會因為放行而發生，只是慢了一步被使用者自己
+// 發現而已。查詢失敗因此只記 log，不阻擋登入。
+async function assertIsFriend(lineUserId) {
+  let profile;
+  try {
+    profile = await lineApi.getProfile(lineUserId, LINE_CHANNEL_ACCESS_TOKEN.value());
+  } catch (e) {
+    logger.error('好友狀態查詢失敗，暫時視為已加好友以避免登入功能整個中斷', { lineUserId, error: e.message });
+    return;
+  }
+  if (profile === null) {
+    const basicId = LINE_BASIC_ID.value();
+    throw new HttpsError('failed-precondition', '請先將 MedSafe 加為 LINE 官方帳號好友，才能使用 LINE 登入', {
+      notFriend: true,
+      addFriendUrl: basicId ? 'https://line.me/R/ti/p/' + encodeURIComponent(basicId) : null
+    });
+  }
+}
+
 // 與 login.html 的 register()、firestore.rules 的 isSelfRegisteringPatient
 // 用同一組規則，三處必須保持同步（見 patientInitialDocIsClean 附近的說明）。
 // 這裡要重新寫一份而不是共用同一支程式碼，是因為前端規則活在瀏覽器全域
@@ -183,7 +220,7 @@ function validateUsername(username) {
   return null;
 }
 
-exports.lineExchangeToken = onCall({ region: REGION }, async (request) => {
+exports.lineExchangeToken = onCall({ region: REGION, secrets: [LINE_CHANNEL_ACCESS_TOKEN] }, async (request) => {
   const idToken = request.data && request.data.idToken;
   if (typeof idToken !== 'string' || !idToken) {
     throw new HttpsError('invalid-argument', '缺少 idToken');
@@ -221,6 +258,8 @@ exports.lineExchangeToken = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('unauthenticated', detailMsg, { expired });
   }
 
+  await assertIsFriend(lineUserId);
+
   // line_users 是唯一的 lineUserId → uid 反向索引，且解除綁定時會被刪除
   // （見 bindings.js 的說明）——因此「查不到」與「已解除綁定」是同一件事，
   // 兩者都應該得到同一個「請先完成綁定」的結果，不需要也不應該區分。
@@ -257,7 +296,7 @@ exports.lineExchangeToken = onCall({ region: REGION }, async (request) => {
 // 建帳本體（Auth 帳號 + 五份 Firestore 文件）在 bindings.js 的
 // registerPatientViaLine()——跟其餘綁定邏輯放在一起，維持「這四個
 // LINE 專屬集合只有 bindings.js 會寫」的既有慣例（見檔案開頭說明）。
-exports.lineRegisterPatient = onCall({ region: REGION }, async (request) => {
+exports.lineRegisterPatient = onCall({ region: REGION, secrets: [LINE_CHANNEL_ACCESS_TOKEN] }, async (request) => {
   const data = request.data || {};
   const idToken = data.idToken;
   if (typeof idToken !== 'string' || !idToken) {
@@ -300,6 +339,8 @@ exports.lineRegisterPatient = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('unauthenticated', detailMsg, { expired });
   }
 
+  await assertIsFriend(lineUserId);
+
   // 這支 LINE 已經綁過某個身分（病患本人或家屬）——正常前端流程不會走到
   // 這裡（bootLiff 會先呼叫 lineExchangeToken 並成功），出現代表重放或
   // 使用者手動重複送出，一律拒絕，不覆蓋既有綁定。
@@ -333,4 +374,97 @@ exports.lineRegisterPatient = onCall({ region: REGION }, async (request) => {
   return { customToken, username };
 });
 
-exports._internal = { extractLineUserId, validateUsername, assertAccessTokenForChannel, extractProfileUserId, resolveLineUserId };
+// 家屬邀請碼核銷（LIFF 版）：讓家屬直接在 family.html 內貼上邀請碼完成
+// 綁定，不必先繞去對話框打字。核銷本體與既有 webhook 文字指令走的是
+// 同一支 bindings.redeemFamilyInviteCode()，只是身分來源換成 LIFF ID
+// Token（resolveLineUserId），而不是 webhook 事件本身帶的
+// event.source.userId——兩條路徑最終落在同一份 Firestore 交易上，
+// 不會出現「網頁貼碼綁的」跟「傳訊息綁的」是兩套邏輯的分裂。
+//
+// 【為什麼在這裡直接換發 Custom Token，而不是核銷完後讓使用者自己重新整理】
+// patient.html 的 liffRegisterPatient() 建完帳號後可以 location.reload()
+// 讓 bootLiff() 重跑一次 lineExchangeToken 拿到 Custom Token；這裡選擇
+// 一次做完（核銷 + 換token），是因為核銷成功「同時」也拿得到
+// familyUsername／relationshipLabel，可以直接在同一個畫面顯示「已連結
+// （女兒）」，不必多一次重新整理才看得到這段文字。
+exports.lineRedeemFamilyInviteCode = onCall({ region: REGION, secrets: [LINE_CHANNEL_ACCESS_TOKEN] }, async (request) => {
+  const data = request.data || {};
+  const idToken = data.idToken;
+  if (typeof idToken !== 'string' || !idToken) {
+    throw new HttpsError('invalid-argument', '缺少 idToken');
+  }
+
+  const code = typeof data.code === 'string' ? data.code.trim().toUpperCase().replace(/[\s-]/g, '') : '';
+  const codeRe = new RegExp('^[' + bindings.ALPHABET + ']{' + bindings.CODE_LEN + '}$');
+  if (!codeRe.test(code)) {
+    throw new HttpsError('invalid-argument', '邀請碼格式不正確，請確認 8 碼是否輸入完整');
+  }
+
+  const channelId = LINE_LOGIN_CHANNEL_ID.value();
+  if (!channelId) {
+    throw new HttpsError('failed-precondition', 'LIFF 尚未設定完成，請聯絡管理員');
+  }
+
+  let lineUserId;
+  try {
+    lineUserId = await resolveLineUserId({ idToken, accessToken: data.accessToken }, channelId);
+  } catch (e) {
+    logger.warn('LINE ID Token 驗證失敗（家屬綁定）', { message: e.message, code: e.code });
+    // 錯誤分類與 lineExchangeToken 同一套理由，見該函式的說明。
+    const expired = !!(e.message && /expired/i.test(e.message));
+    let detailMsg = 'LINE 登入驗證失敗，請重新開啟頁面';
+    if (expired) {
+      detailMsg = 'LINE 登入已逾時，請重新整理頁面再試一次';
+    } else if (e.message && e.message.includes('LINE verify')) {
+      detailMsg = 'LINE verify 服務暫時無法連接，請稍後再試';
+    } else if (e.message && e.message.includes('aud')) {
+      detailMsg = 'LINE Login channel 設定不符，請聯絡管理員';
+    } else if (e.message && e.message.includes('未設定')) {
+      detailMsg = 'LIFF 尚未完全設定，請聯絡管理員';
+    }
+    throw new HttpsError('unauthenticated', detailMsg, { expired });
+  }
+
+  await assertIsFriend(lineUserId);
+
+  const outcome = await bindings.redeemFamilyInviteCode(code, lineUserId);
+  if (!outcome.ok) {
+    // 文案與 webhook.js 文字指令核銷路徑（handleText 的 CODE_RE 分支）
+    // 保持一致，避免兩個入口對同一種失敗說法不同。
+    const reasonMsg = {
+      'not-found': '這組邀請碼不存在，請確認是否輸入正確。',
+      'expired': '這組邀請碼已超過 30 分鐘失效，請請病患重新產生一組。',
+      'used': '這組邀請碼已經使用過了，請請病患重新產生一組。',
+      'self-invite': '不能用病患自己的 LINE 帳號核銷自己的家屬邀請碼。',
+      'already-bound-other-role': '這支 LINE 帳號已經綁定為其他身分，無法再核銷家屬邀請碼。'
+    }[outcome.reason] || '核銷失敗，請稍後再試。';
+    throw new HttpsError('failed-precondition', reasonMsg, { reason: outcome.reason });
+  }
+
+  const link = await bindings.findByLineUserId(lineUserId);
+  if (!link || !link.uid) {
+    // 理論上核銷成功後一定找得到（redeemFamilyInviteCode 內部剛寫入或
+    // 沿用既有的 line_users）；查不到代表資料不一致，比照 lineExchangeToken
+    // 對 internal 錯誤的處理方式，不能讓使用者看到看起來成功卻卡住的畫面。
+    logger.error('家屬邀請碼核銷成功但查無 line_users 對應', { lineUserId, patient: outcome.patient });
+    throw new HttpsError('internal', '綁定資料寫入異常，請稍後再試或聯絡管理員');
+  }
+
+  let customToken;
+  try {
+    customToken = await admin.auth().createCustomToken(link.uid);
+  } catch (e) {
+    logger.error('createCustomToken 失敗（家屬綁定）', { familyUsername: outcome.familyUsername, code: e.code, message: e.message });
+    throw new HttpsError('internal', '系統換發登入憑證失敗，請稍後再試或聯絡管理員');
+  }
+
+  logger.info('家屬邀請碼核銷成功（LIFF）', { patient: outcome.patient, familyUsername: outcome.familyUsername });
+  return {
+    customToken,
+    patient: outcome.patient,
+    familyUsername: outcome.familyUsername,
+    relationshipLabel: outcome.relationshipLabel
+  };
+});
+
+exports._internal = { extractLineUserId, validateUsername, assertAccessTokenForChannel, extractProfileUserId, resolveLineUserId, assertIsFriend };

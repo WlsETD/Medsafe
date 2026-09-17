@@ -81,6 +81,19 @@ exports.lineUnbind = onCall({ region: REGION }, async (request) => {
 // 備註（例如「女兒」），純顯示用途，不影響授權範圍。
 exports.lineCreateFamilyInviteCode = onCall({ region: REGION }, async (request) => {
   const { uid, username } = await requirePatient(request);
+
+  // 邀請家屬前，病患自己必須已經完成 LINE 綁定——家屬看得到的資料完全
+  // 靠 LINE 傳送，一個從沒綁過 LINE 的病患邀請家屬，家屬核銷成功後卻永遠
+  // 收不到任何跟這位病患有關的通知，且病患自己也無從得知邀請碼是否被領走。
+  // LINE 自助註冊的帳號（registerPatientViaLine()）建立當下就會一併寫入
+  // line_bindings.active=true，因此這裡單看 active 這一個欄位，就同時涵蓋
+  // 「本身用 LINE 登入」與「帳密帳號另外完成綁定」兩種情況，不需要額外
+  // 欄位分辨帳號來源。
+  const binding = await bindings.getBinding(username);
+  if (!binding || !binding.active) {
+    throw new HttpsError('failed-precondition', '請先完成 LINE 綁定，才能邀請家屬查看您的資料');
+  }
+
   const relationshipLabel = typeof request.data?.relationshipLabel === 'string'
     ? request.data.relationshipLabel.trim().slice(0, 20)
     : '';

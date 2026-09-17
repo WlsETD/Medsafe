@@ -188,11 +188,14 @@ function bookingReply() {
 // 完整的用藥時間軸與所有 DDI 警示細節。兩層設計理由見 linebot.md §5.2。
 // LIFF_ID 未設定時（尚未走完 Phase 0）不顯示這個按鈕，而不是給一個開不了的死連結。
 function menuItems() {
+  // 「綁定家屬」的 uri 直接沿用 richmenu.familyBindAction()，不在這裡
+  // 重複判斷一次 FAMILY_LIFF_ID——理由見該函式上方註解。
+  const familyBind = richmenu.familyBindAction();
   const items = [
     { label: '查藥箱', text: '藥箱' },
     { label: '線上預約', text: '預約' },
     { label: '回報不適', text: '回報不適' },
-    { label: '綁定家屬', uri: richmenu.SITE_ORIGIN + '/family-bind-help.html' },
+    { label: familyBind.label, uri: familyBind.uri },
     { label: '服藥時間表', text: '服藥時間表' }
   ];
   const liffId = LIFF_ID.value();

@@ -115,6 +115,35 @@ const areasWithLiff = richmenu.buildAreas();
 if (originalLiffIdForAreas === undefined) delete process.env.LIFF_ID;
 else process.env.LIFF_ID = originalLiffIdForAreas;
 
+// 狀態三：FAMILY_LIFF_ID（家屬 LIFF App）已設定——「綁定家屬」格改為直接
+// 開 family.html 的 LIFF 頁面，不再是免登入教學頁。與 LIFF_ID 的測法
+// 同一個模式：直接切換 process.env，結束後還原。
+const originalFamilyLiffId = process.env.FAMILY_LIFF_ID;
+
+delete process.env.FAMILY_LIFF_ID;
+{
+  const areas = richmenu.buildAreas();
+  const familyBind = areas.find(a => a.action.label === '綁定家屬');
+  check('FAMILY_LIFF_ID 未設定時，「綁定家屬」退回免登入教學頁',
+    !!familyBind && familyBind.action.type === 'uri'
+    && familyBind.action.uri === richmenu.SITE_ORIGIN + '/family-bind-help.html');
+}
+
+process.env.FAMILY_LIFF_ID = 'test-family-liff-id-0007';
+{
+  const areas = richmenu.buildAreas();
+  const familyBind = areas.find(a => a.action.label === '綁定家屬');
+  check('FAMILY_LIFF_ID 已設定時，「綁定家屬」直接開 LIFF 頁面',
+    !!familyBind && familyBind.action.type === 'uri'
+    && familyBind.action.uri === 'https://liff.line.me/test-family-liff-id-0007');
+
+  check('familyBindAction() 匯出函式與 buildAreas() 用的是同一個結果（單一事實來源）',
+    JSON.stringify(richmenu.familyBindAction()) === JSON.stringify(familyBind.action));
+}
+
+if (originalFamilyLiffId === undefined) delete process.env.FAMILY_LIFF_ID;
+else process.env.FAMILY_LIFF_ID = originalFamilyLiffId;
+
 // ── 二、setup() 的呼叫順序與參數 ────────────────────────────────────
 
 {

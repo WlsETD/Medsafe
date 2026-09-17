@@ -17,7 +17,7 @@ const path = require('path');
 const admin = require('firebase-admin');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
-const { REGION, LINE_CHANNEL_ACCESS_TOKEN, LIFF_ID } = require('./config');
+const { REGION, LINE_CHANNEL_ACCESS_TOKEN, LIFF_ID, FAMILY_LIFF_ID } = require('./config');
 
 const RICHMENU_API = 'https://api.line.me/v2/bot/richmenu';
 const RICHMENU_DATA_API = 'https://api-data.line.me/v2/bot/richmenu';
@@ -65,6 +65,24 @@ const SITE_ORIGIN = 'https://medsafe-554b7.web.app';
 // message 分支（借用 webhook.js 既有的 BOOKING_RE 文字指令），與
 // webhook.js 的 menuItems()「LIFF_ID 未設定不顯示完整藥箱按鈕」是同一種
 // 「功能未就緒時優雅降級」設計。
+// 「綁定家屬」按鈕的動作，被 buildAreas()（大選單）與 webhook.js 的
+// menuItems()（快速回覆選單）兩處共用——抽成獨立函式而非各自判斷一次
+// FAMILY_LIFF_ID，避免日後改其中一邊時忘了改另一邊，跟 flex.js
+// tutorialCarousel() 直接沿用 buildAreas() 是同一個「單一事實來源」考量。
+//
+// FAMILY_LIFF_ID 已設定時直接開 family.html 的 LIFF 頁面——尚未綁定的
+// LINE 帳號會被 family.html 的 bootLiff() 導向就地貼邀請碼的表單
+// （renderFamilyBindForm()，見該檔案說明），一次點擊就能完成綁定，不必
+// 先跳教學頁再手動把碼貼進對話框。FAMILY_LIFF_ID 未設定時（LIFF App
+// 尚未註冊完成）退回純教學頁，與其餘 LIFF 功能「未就緒時優雅降級」
+// 是同一種設計。
+function familyBindAction() {
+  const familyLiffId = FAMILY_LIFF_ID.value();
+  return familyLiffId
+    ? { type: 'uri', label: '綁定家屬', uri: 'https://liff.line.me/' + familyLiffId }
+    : { type: 'uri', label: '綁定家屬', uri: SITE_ORIGIN + '/family-bind-help.html' };
+}
+
 function buildAreas() {
   const liffId = LIFF_ID.value();
   const bookingAction = liffId
@@ -78,8 +96,7 @@ function buildAreas() {
       action: { type: 'message', label: '回報不適', text: '回報不適' } },
     { bounds: { x: 0, y: 843, width: 834, height: 843 },
       action: { type: 'message', label: '使用說明', text: '選單' } },
-    { bounds: { x: 834, y: 843, width: 833, height: 843 },
-      action: { type: 'uri', label: '綁定家屬', uri: SITE_ORIGIN + '/family-bind-help.html' } },
+    { bounds: { x: 834, y: 843, width: 833, height: 843 }, action: familyBindAction() },
     { bounds: { x: 1667, y: 843, width: 833, height: 843 },
       action: { type: 'message', label: '服藥時間表', text: '服藥時間表' } }
   ];
@@ -186,6 +203,7 @@ module.exports = {
   lineSetupRichMenu,
   buildAreas,
   buildDefinition,
+  familyBindAction,
   SITE_ORIGIN,
   // 【測試用】注入/恢復 HTTP 實作
   setImpl(fn) { httpImpl = fn; },

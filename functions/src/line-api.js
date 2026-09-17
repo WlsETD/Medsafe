@@ -53,6 +53,20 @@ async function callLine(url, token, payload) {
   };
 }
 
+// 查詢這支 LINE 帳號是否為官方帳號的好友。LINE 這支 API 只有「是好友」
+// 才回得到 profile（200）；未加好友或已封鎖一律 404——沒有第三種回應能
+// 直接問「是不是好友」，因此用「查得到 profile」當代理指標。
+// 用於登入時的好友門檻（見 exchange.js 的 assertIsFriend()），不是
+// webhook 訊息流程的一部分，因此獨立於 callLine()（那支是 POST 專用）。
+async function getProfile(userId, token) {
+  const res = await fetch('https://api.line.me/v2/bot/profile/' + encodeURIComponent(userId), {
+    headers: { Authorization: 'Bearer ' + token }
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error('LINE API ' + res.status);
+  return res.json();
+}
+
 // 回覆使用者剛剛送來的事件（免費）。replyToken 只能用一次、約 1 分鐘內有效。
 function reply(token, replyToken, messages) {
   return callLine(REPLY_URL, token, {
@@ -127,6 +141,6 @@ function withQuickReply(message, items) {
 }
 
 module.exports = {
-  verifySignature, reply, push, showLoading,
+  verifySignature, reply, push, showLoading, getProfile,
   textMessage, textWithQuickReply, withQuickReply, quickReplyItems
 };

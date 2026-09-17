@@ -129,6 +129,14 @@ async function bootLiff(liffId) {
     // 不保證解決，使用者可能要手動再試一次才會觸發完整登入。LINE App
     // 內建瀏覽器（多數病患實際使用的路徑）走的是原生 App 對 App 驗證，
     // 不吃這個 SSO 快取問題。
+    // 未加官方帳號好友（見 functions/src/exchange.js 的 assertIsFriend()）——
+    // 獨立於過期/驗證失敗判斷之前：這不是「重新登入一次就能解決」的情況，
+    // 使用者要先離開頁面去加好友，回來後重新整理才有意義。
+    const notFriend = !!(e && e.details && e.details.notFriend);
+    if (notFriend) {
+      return { attempted: true, ok: false, reason: 'not-friend', addFriendUrl: (e.details && e.details.addFriendUrl) || null };
+    }
+
     const expired = !!(e && e.details && e.details.expired);
     const alreadyRetried = sessionStorage.getItem('liff_relogin_once') === '1';
     if (expired && !alreadyRetried) {
@@ -178,10 +186,60 @@ async function liffRegisterPatient(name, username) {
     // token-expired 這個明確原因，交給 patient.html 顯示對應訊息，
     // 由使用者自己決定何時重新整理（不自動導頁）。expired 的判斷同樣
     // 來自伺服器（見 exchange.js），不在前端自行猜測，避免誤判。
+    const notFriend = !!(e && e.details && e.details.notFriend);
+    if (notFriend) {
+      return { ok: false, reason: 'not-friend', addFriendUrl: (e.details && e.details.addFriendUrl) || null };
+    }
     const expired = !!(e && e.details && e.details.expired);
     return { ok: false, reason: expired ? 'token-expired' : (bareErrorCode(e && e.code) || 'register-failed'), message: e && e.message };
   }
 }
 
+// 家屬邀請碼核銷（LIFF 版）：bootLiff() 回傳 reason:'failed-precondition'
+// 時代表這支 LINE 從沒綁過任何身分——family.html 在這裡秀出一個貼邀請碼
+// 的表單，送出後打這支函式，寫法與 liffRegisterPatient() 同一個模式
+// （見上方註解），差別只在後端呼叫的 callable 與帶的參數不同。
+async function liffRedeemFamilyInvite(code) {
+  if (typeof liff === 'undefined' || !liff.isLoggedIn()) {
+    return { ok: false, reason: 'not-logged-in' };
+  }
+
+  let idToken;
+  try {
+    idToken = liff.getIDToken();
+  } catch (e) {
+    console.error('取得 LINE ID Token 失敗：', e);
+    return { ok: false, reason: 'no-id-token' };
+  }
+  if (!idToken) return { ok: false, reason: 'no-id-token' };
+
+  if (!window.functions) {
+    console.error('Cloud Functions SDK 未載入，無法呼叫 lineRedeemFamilyInviteCode');
+    return { ok: false, reason: 'no-functions-sdk' };
+  }
+
+  try {
+    const r = await window.functions.httpsCallable('lineRedeemFamilyInviteCode')({ idToken, accessToken: liffAccessToken(), code });
+    await window.auth.signInWithCustomToken(r.data.customToken);
+    return { ok: true, patient: r.data.patient, familyUsername: r.data.familyUsername, relationshipLabel: r.data.relationshipLabel };
+  } catch (e) {
+    console.error('家屬邀請碼核銷失敗：', e);
+    const notFriend = !!(e && e.details && e.details.notFriend);
+    if (notFriend) {
+      return { ok: false, reason: 'not-friend', addFriendUrl: (e.details && e.details.addFriendUrl) || null };
+    }
+    const expired = !!(e && e.details && e.details.expired);
+    // failed-precondition 這裡固定代表「邀請碼本身的問題」（不存在／過期／
+    // 用過／自邀／身分衝突），伺服器端已經把對應文字放進 e.message，
+    // 直接顯示即可，不需要在前端再猜一次是哪一種原因。
+    return {
+      ok: false,
+      reason: expired ? 'token-expired' : (bareErrorCode(e && e.code) || 'redeem-failed'),
+      message: e && e.message
+    };
+  }
+}
+
 window.bootLiff = bootLiff;
 window.liffRegisterPatient = liffRegisterPatient;
+window.liffRedeemFamilyInvite = liffRedeemFamilyInvite;
