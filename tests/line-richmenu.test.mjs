@@ -95,54 +95,34 @@ const definitionNoLiff = richmenu.buildDefinition();
     w === 2500 && (h === 843 || h === 1686));
 }
 
-// 狀態二：LIFF_ID 已設定（Phase 0 完成）——只有「線上預約」改成一次點擊
-// 直接開 LIFF 的 uri action（需要選日期／診次，文字指令做不到）；「藥箱」
-// 維持 message，不因 LIFF_ID 而改變（見 buildAreas() 上方的說明）。
+// 狀態二：LIFF_ID 已設定（Phase 0 完成）——「線上預約」與「綁定家屬」都
+// 改成一次點擊直接開 LIFF 的 uri action：前者需要選日期／診次，文字指令
+// 做不到；後者是病患本人要落在 patient.html 的「家屬綁定」頁籤產生邀請
+// 碼，不是家屬核銷頁面（family.html／FAMILY_LIFF_ID）。「藥箱」維持
+// message，不因 LIFF_ID 而改變（見 buildAreas() 上方的說明）。
 process.env.LIFF_ID = 'test-liff-id-0003';
 const areasWithLiff = richmenu.buildAreas();
 {
   const cabinet = areasWithLiff[0], booking = areasWithLiff[1];
+  const familyBind = areasWithLiff.find(a => a.action.label === '綁定家屬');
   check('LIFF_ID 已設定時，「藥箱」格仍是 message（按下去回文字，不開網頁）',
     cabinet.action.type === 'message' && cabinet.action.text === '藥箱');
   check('LIFF_ID 已設定時，「線上預約」格帶 ?view=appointments 深連結',
     booking.action.type === 'uri' && booking.action.uri === 'https://liff.line.me/test-liff-id-0003?view=appointments');
+  check('LIFF_ID 已設定時，「綁定家屬」格開病人端 LIFF 並帶 ?view=family 深連結（不是 FAMILY_LIFF_ID／family.html）',
+    !!familyBind && familyBind.action.type === 'uri'
+    && familyBind.action.uri === 'https://liff.line.me/test-liff-id-0003?view=family');
   const messageCount = areasWithLiff.filter(a => a.action.type === 'message').length;
   const uriCount = areasWithLiff.filter(a => a.action.type === 'uri').length;
   check('LIFF_ID 已設定時，六宮格變成 4 格文字指令 + 2 格連結（線上預約與綁定家屬）',
     areasWithLiff.length === 6 && messageCount === 4 && uriCount === 2);
-}
-
-if (originalLiffIdForAreas === undefined) delete process.env.LIFF_ID;
-else process.env.LIFF_ID = originalLiffIdForAreas;
-
-// 狀態三：FAMILY_LIFF_ID（家屬 LIFF App）已設定——「綁定家屬」格改為直接
-// 開 family.html 的 LIFF 頁面，不再是免登入教學頁。與 LIFF_ID 的測法
-// 同一個模式：直接切換 process.env，結束後還原。
-const originalFamilyLiffId = process.env.FAMILY_LIFF_ID;
-
-delete process.env.FAMILY_LIFF_ID;
-{
-  const areas = richmenu.buildAreas();
-  const familyBind = areas.find(a => a.action.label === '綁定家屬');
-  check('FAMILY_LIFF_ID 未設定時，「綁定家屬」退回免登入教學頁',
-    !!familyBind && familyBind.action.type === 'uri'
-    && familyBind.action.uri === richmenu.SITE_ORIGIN + '/family-bind-help.html');
-}
-
-process.env.FAMILY_LIFF_ID = 'test-family-liff-id-0007';
-{
-  const areas = richmenu.buildAreas();
-  const familyBind = areas.find(a => a.action.label === '綁定家屬');
-  check('FAMILY_LIFF_ID 已設定時，「綁定家屬」直接開 LIFF 頁面',
-    !!familyBind && familyBind.action.type === 'uri'
-    && familyBind.action.uri === 'https://liff.line.me/test-family-liff-id-0007');
 
   check('familyBindAction() 匯出函式與 buildAreas() 用的是同一個結果（單一事實來源）',
     JSON.stringify(richmenu.familyBindAction()) === JSON.stringify(familyBind.action));
 }
 
-if (originalFamilyLiffId === undefined) delete process.env.FAMILY_LIFF_ID;
-else process.env.FAMILY_LIFF_ID = originalFamilyLiffId;
+if (originalLiffIdForAreas === undefined) delete process.env.LIFF_ID;
+else process.env.LIFF_ID = originalLiffIdForAreas;
 
 // ── 二、setup() 的呼叫順序與參數 ────────────────────────────────────
 

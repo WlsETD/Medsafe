@@ -3431,7 +3431,10 @@
             // 讓 LIFF 直接落在掛號頁，不必再多點一次側欄——完全重用既有頁面
             // 與既有的 DbService.appointments，沒有另外刻一個對話式掛號流程
             // （理由見 linebot.md §4.2：規則已經把關，對話式重刻只會多一份
-            // 邏輯要跟 firestore.rules 保持一致，卻不會更安全）。
+            // 邏輯要跟 firestore.rules 保持一致，卻不會更安全）。同一套機制
+            // 也用在「綁定家屬」的 ?view=family——見 functions/src/richmenu.js
+            // 的 familyBindAction() 說明：按下去的是病患本人，要落在這裡的
+            // 「家屬綁定」頁籤產生邀請碼，不是 family.html 的核銷頁面。
             if (mounted) {
                 // isInClient() 而非單看有沒有 ?liff=1：LIFF 也支援在一般瀏覽器
                 // 開啟做開發除錯，那種情境下沒有 LINE 原生容器，側欄應維持
@@ -3448,7 +3451,7 @@
                 mounted.isPasswordlessAccount = !!authUser
                     && !(authUser.providerData || []).some(p => p && p.providerId === 'password');
                 const view = new URLSearchParams(location.search).get('view');
-                if (['home', 'appointments', 'line'].includes(view)
+                if (['home', 'appointments', 'line', 'family'].includes(view)
                     || (view === 'consent' && mounted.insurancePortalEnabled)) {
                     mounted.activeView = view;
                 } else if (view === 'chat') {

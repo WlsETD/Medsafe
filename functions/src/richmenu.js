@@ -17,7 +17,7 @@ const path = require('path');
 const admin = require('firebase-admin');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
-const { REGION, LINE_CHANNEL_ACCESS_TOKEN, LIFF_ID, FAMILY_LIFF_ID } = require('./config');
+const { REGION, LINE_CHANNEL_ACCESS_TOKEN, LIFF_ID } = require('./config');
 
 const RICHMENU_API = 'https://api.line.me/v2/bot/richmenu';
 const RICHMENU_DATA_API = 'https://api-data.line.me/v2/bot/richmenu';
@@ -36,10 +36,10 @@ const SITE_ORIGIN = 'https://medsafe-554b7.web.app';
 
 // 3x2 六宮格。「使用說明」是既有文字指令；「回報不適」是 Phase 4
 // 兩步式真正功能（見 webhook.js 的 SYMPTOM_RE／startSymptomReport），
-// 不再是開發中提示。「綁定家屬」直接連到免登入的教學頁面，不需要任何
-// 後端處理——邀請碼本身是病患各自產生的、無法在帳號層級的選單裡帶入，
-// 因此這一格只能是靜態教學頁，實際核銷仍是使用者把邀請碼貼進對話框
-// 觸發既有的 webhook 文字比對流程（見 family-bind-help.html 的說明）。
+// 不再是開發中提示。「綁定家屬」按下去的是病患本人，目的是產生邀請碼
+// 給家屬，見 familyBindAction() 上方的完整說明——LIFF_ID 已設定時開
+// patient.html 的「家屬綁定」頁籤，未設定時退回免登入教學頁
+// （family-bind-help.html，說明邀請碼要手動貼進對話框核銷）。
 // 原本掛在這一格的「用藥查詢」（check.html）並未刪除，只是拿掉選單入口，
 // 它本來就是設計給外部分享連結用的免登入公益工具，不受影響。
 //
@@ -67,19 +67,26 @@ const SITE_ORIGIN = 'https://medsafe-554b7.web.app';
 // 「功能未就緒時優雅降級」設計。
 // 「綁定家屬」按鈕的動作，被 buildAreas()（大選單）與 webhook.js 的
 // menuItems()（快速回覆選單）兩處共用——抽成獨立函式而非各自判斷一次
-// FAMILY_LIFF_ID，避免日後改其中一邊時忘了改另一邊，跟 flex.js
+// LIFF_ID，避免日後改其中一邊時忘了改另一邊，跟 flex.js
 // tutorialCarousel() 直接沿用 buildAreas() 是同一個「單一事實來源」考量。
 //
-// FAMILY_LIFF_ID 已設定時直接開 family.html 的 LIFF 頁面——尚未綁定的
-// LINE 帳號會被 family.html 的 bootLiff() 導向就地貼邀請碼的表單
-// （renderFamilyBindForm()，見該檔案說明），一次點擊就能完成綁定，不必
-// 先跳教學頁再手動把碼貼進對話框。FAMILY_LIFF_ID 未設定時（LIFF App
-// 尚未註冊完成）退回純教學頁，與其餘 LIFF 功能「未就緒時優雅降級」
+// 這顆按鈕掛在「病患」自己的 Rich Menu／快速回覆選單上，按下去的是病患
+// 本人，目的是請病患產生邀請碼給家屬——不是家屬核銷邀請碼，因此要開的
+// 是 LIFF_ID（病人端 patient.html），不是 FAMILY_LIFF_ID（family.html，
+// 家屬用來貼碼核銷的頁面；那個頁面仍由 webhook.js 核銷成功後的回覆
+// 訊息、以及誤觸病患指令的家屬帳號導去，見 replyFamilyBound()／
+// replyFamilyRedirect()，不受這裡的變更影響）。
+//
+// LIFF_ID 已設定時帶 ?view=family 深連結，直接落在 patient.html 側欄的
+// 「家屬綁定」頁籤（產生/分享邀請碼、撤回既有家屬存取權），跟「線上
+// 預約」?view=appointments 深連結是同一套機制（見 patient.html 對
+// URLSearchParams('view') 的白名單判斷）。LIFF_ID 未設定時（Phase 0
+// 尚未完成）退回免登入教學頁，與其餘 LIFF 功能「未就緒時優雅降級」
 // 是同一種設計。
 function familyBindAction() {
-  const familyLiffId = FAMILY_LIFF_ID.value();
-  return familyLiffId
-    ? { type: 'uri', label: '綁定家屬', uri: 'https://liff.line.me/' + familyLiffId }
+  const liffId = LIFF_ID.value();
+  return liffId
+    ? { type: 'uri', label: '綁定家屬', uri: 'https://liff.line.me/' + liffId + '?view=family' }
     : { type: 'uri', label: '綁定家屬', uri: SITE_ORIGIN + '/family-bind-help.html' };
 }
 
