@@ -908,6 +908,26 @@
                 <div class="bg-white rounded-[40px] p-8 sm:p-10 shadow-sm space-y-6">
                     <h3 class="text-lg font-black text-title">邀請新家屬</h3>
 
+                    <!-- 未完成 LINE 綁定：家屬核銷邀請後完全靠 LINE 通知，病患自己
+                         也無從得知邀請碼是否被領走，因此邀請功能必須先完成綁定。
+                         LINE 自助註冊的帳號一開始就會有 lineBinding.active=true
+                         （見 functions/src/bindings.js registerPatientViaLine()），
+                         不會被這道檢查擋到。真正的強制在後端（見
+                         functions/src/callable.js 的 lineCreateFamilyInviteCode），
+                         這裡只是提前告知、避免白跑一趟。 -->
+                    <div v-if="!(lineBinding && lineBinding.active)" class="bg-bgMain rounded-lg px-5 py-6 text-center space-y-3">
+                        <p class="text-xs font-bold text-title">請先完成 LINE 綁定，才能邀請家屬</p>
+                        <p class="text-[11px] font-bold text-lightText leading-relaxed">
+                            家屬核銷邀請後，是透過 LINE 收到「已連結」的通知；您自己的帳號也需要先綁定 LINE，
+                            邀請功能才有意義。
+                        </p>
+                        <button @click="activeView = 'line'" type="button"
+                                class="px-8 py-3.5 rounded-lg bg-primary text-white text-[11px] font-black uppercase tracking-widest">
+                            前往完成 LINE 綁定
+                        </button>
+                    </div>
+
+                    <template v-else>
                     <div v-if="!familyCode">
                         <label class="block text-[10px] font-black text-lightText uppercase mb-2">關係備註（選填，例如「女兒」）</label>
                         <input v-model="familyRelationshipLabel" type="text" maxlength="20"
@@ -952,6 +972,7 @@
                                     class="px-8 py-3.5 rounded-lg bg-white border-2 border-slate-200 text-content text-[11px] font-black uppercase tracking-widest disabled:opacity-40">已邀請，檢查狀態</button>
                         </div>
                     </div>
+                    </template>
 
                     <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg">
                         <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest">關於隱私</p>
@@ -1591,10 +1612,26 @@
                          + '仍請依醫囑服用並定期回診。';
                 },
 
-                // 回診日期。原本直接顯示資料中的字串，示範資料放著不動就必然過期——
-                // 評審打開網站看到的是一個早就過去的「下次回診」。
-                // 現在會判斷是否已逾期並據實陳述，而不是把過去的日期講成未來的安排。
+                // 回診日期。優先看真正的掛號紀錄（appointments，見 loadAppointments）——
+                // 掛號本身就是授權事件的來源，「下次回診」不該是另外猜的一個字串。
+                // 一個帳號同時只能有一筆進行中掛號（見 firestore.rules 的
+                // appointment_locks），upcomingAppointments[0] 就是唯一的那一筆，
+                // apptDateText()／apptQueueText() 沿用「我的掛號」分頁同一套格式，
+                // 不另外發明一種日期顯示方式。
                 nextAppointmentText() {
+                    const next = (this.upcomingAppointments || [])[0];
+                    if (next) {
+                        const date = this.apptDateText(next);
+                        const doctor = next.doctorName || next.doctor || '';
+                        const queue = this.apptQueueText(next);
+                        const label = [date, doctor].filter(Boolean).join('　');
+                        return { text: `下次回診：${label}` + (queue ? `　${queue}` : ''), overdue: false };
+                    }
+
+                    // 沒有掛號紀錄時，退回舊制的 profile 欄位（既有示範資料／尚未走過
+                    // 新制掛號流程的帳號）。原本直接顯示資料中的字串，示範資料放著
+                    // 不動就必然過期——評審打開網站看到的是一個早就過去的「下次回診」。
+                    // 現在會判斷是否已逾期並據實陳述，而不是把過去的日期講成未來的安排。
                     const pf = this.profile || {};
                     let d = null;
                     if (pf.nextAppointment) {
@@ -3271,6 +3308,31 @@
                 + '</div></div>';
         }
 
+        // 未加 MedSafe LINE 官方帳號好友（見 functions/src/exchange.js 的
+        // assertIsFriend()）。不能用 renderLiffError 的通用文案——那句話暗示
+        // 「重新整理／過一陣子再試」，但這裡的下一步是明確的「先去加好友」，
+        // 混在一起會讓使用者不斷重整卻永遠登入不了。addFriendUrl 為 null
+        // 時（LINE_BASIC_ID 未設定）不給一個開不了的按鈕，比照
+        // lineAddFriendUrl 未設定時的既有優雅降級慣例。
+        function renderLiffNotFriend(addFriendUrl) {
+            document.title = '請先加好友 | MedSafe';
+            document.body.innerHTML =
+                '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;'
+                + 'font-family:system-ui,-apple-system,Segoe UI,Noto Sans TC,sans-serif;background:#F7F8FA;padding:24px">'
+                + '<div style="max-width:420px;text-align:center;background:#fff;border-radius:24px;padding:40px 32px;'
+                + 'box-shadow:0 8px 32px rgba(15,23,42,.08)">'
+                + '<div style="font-size:40px;line-height:1;margin-bottom:16px"><i class="fa-solid fa-user-plus" aria-hidden="true"></i></div>'
+                + '<h1 style="font-size:20px;font-weight:800;color:#0F172A;margin:0 0 8px">請先加好友</h1>'
+                + '<p style="font-size:13px;color:#64748B;line-height:1.7;margin:0 0 24px">用 LINE 登入 MedSafe 前，需要先加入 MedSafe 官方帳號好友——否則每天的用藥提醒、交互作用警示都無法送達給您。加好友後請重新整理本頁。</p>'
+                + (addFriendUrl
+                    ? '<a href="' + addFriendUrl + '" target="_blank" rel="noopener" style="display:inline-block;background:#24A15D;color:#fff;'
+                      + 'border-radius:16px;padding:14px 32px;font-size:13px;font-weight:800;text-decoration:none;margin-right:8px">加入好友</a>'
+                    : '<p style="font-size:12px;color:#94A3B8;margin:0 0 16px">請洽系統管理者取得加好友連結</p>')
+                + '<button onclick="location.reload()" style="display:inline-block;background:#fff;color:#24A15D;'
+                + 'border:2px solid #24A15D;border-radius:16px;padding:12px 30px;font-size:13px;font-weight:800;cursor:pointer">已加好友，重新整理</button>'
+                + '</div></div>';
+        }
+
         // 首次用 LINE 登入、尚未有任何帳號時就地完成註冊——不用 Vue（app 這時
         // 還沒 mount），純字串拼 innerHTML＋原生 DOM 事件，跟 renderLiffError
         // 是同一種寫法。表單本身只收姓名／帳號兩個欄位，跟 login.html 目前的
@@ -3328,6 +3390,13 @@
                     location.reload();
                     return;
                 }
+                if (r.reason === 'not-friend') {
+                    // 整頁置換而非 showError：表單內容反正救不回來（送出當下
+                    // 已經帶著填好的姓名/帳號打過一次 lineRegisterPatient），
+                    // 不如直接給明確的下一步，跟 bootLiff() 失敗時的處理一致。
+                    renderLiffNotFriend(r.addFriendUrl);
+                    return;
+                }
                 submitBtn.disabled = false;
                 submitBtn.textContent = '完成註冊並登入';
                 if (r.reason === 'already-exists') {
@@ -3347,7 +3416,9 @@
             }
             if (liffResult.attempted && !liffResult.ok && liffResult.reason !== 'redirecting') {
                 console.error('LIFF 登入未完成：', liffResult.reason, liffResult.message || '');
-                if (liffResult.reason === 'failed-precondition') {
+                if (liffResult.reason === 'not-friend') {
+                    renderLiffNotFriend(liffResult.addFriendUrl);
+                } else if (liffResult.reason === 'failed-precondition') {
                     renderLiffRegister();
                 } else {
                     renderLiffError(liffResult.reason, liffResult.message);
