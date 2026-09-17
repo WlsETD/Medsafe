@@ -361,6 +361,7 @@
                     <p><strong class="text-title">5. FHIR 整合限制</strong><br>本系統透過 HL7 官方公開測試伺服器（hapi.fhir.org）進行 FHIR 整合演示，資料傳輸過程採 HTTPS 加密，但該公開測試伺服器本身<strong class="text-amber-700">不具備任何存取控制</strong>——任何人皆可讀取或寫入其上的所有資料，且系統無法確保資料能被完整刪除。系統送出前會將姓名、身分證字號等直接識別欄位移除並以隨機化名與模糊化出生年代替，惟此僅為<strong>去識別化（pseudonymization）</strong>，非可保證無法還原之匿名化；用藥組合本身仍可能具有間接識別性。使用者應視此為完全不安全之公開展示環境，不宜傳送任何真實資料。</p>
                     <p><strong class="text-title">6. 著作權聲明</strong><br>本系統之所有內容、功能設計與源代碼，由參賽開發者保有完整著作權；同時依 2026 LINE AI 創新創業競賽規則，授權賽事主辦方用於宣傳與推廣。使用者得查閱 GitHub 開源源碼，但不得用於商業目的或未經授權之衍生開發。</p>
                     <p><strong class="text-title">7. 風險承擔與不實用警告</strong><br>使用者同意自行承擔使用本系統之所有風險，包括但不限於系統故障、數據遺失、隱私外洩等。本系統不提供任何明示或默示之擔保（包括不限於適銷性、特定用途適用性等）。</p>
+                    <p><strong class="text-title">8. 藥物交互作用資料來源</strong><br>本系統之藥物交互作用（DDI）資料採用 <strong>DDInter 2.0</strong> 資料庫，由香港浸會大學計算生物與藥物設計組（<a href="http://www.scbdd.com/" target="_blank" class="text-blue-600 hover:underline">Computational Biology &amp; Drug Design Group</a>）維護。DDInter 資料庫依 <strong>Creative Commons Attribution-NonCommercial-ShareAlike 4.0</strong> 授權發布。詳見 <a href="https://ddinter2.scbdd.com/terms/" target="_blank" class="text-blue-600 hover:underline">DDInter 服務條款與隱私政策</a>。本系統使用該資料庫進行藥物相互作用檢測，但對資料庫內容之準確性不承擔責任。</p>
                     <p class="text-lightText text-[10px] border-t border-slate-200 pt-2 mt-2">本條款為競賽展示專案之特定使用條款。若對條款有疑問，請參閱 <strong>GitHub 開源源碼</strong> 或 <strong>競賽主辦單位官方規則</strong>。繼續使用即表示同意本條款之所有內容。</p>
                 </div>
                 <div class="px-6 py-4 border-t border-slate-100">
