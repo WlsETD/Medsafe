@@ -1,0 +1,2140 @@
+[
+  {
+    "cat": "A-藥名",
+    "text": "阿斯匹靈吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "A-藥名",
+    "text": "華法林吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "A-藥名",
+    "text": "二甲雙胍吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "A-藥名",
+    "text": "賴諾普利吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "A-藥名",
+    "text": "維生素D3吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A11CC05",
+            "name": "Vitamin D3",
+            "zhName": "維生素 D3",
+            "category": "營養補充",
+            "hospital": "馬偕醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "A-藥名",
+    "text": "吃了立普妥",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": [
+        "立普妥"
+      ]
+    },
+    "error": null
+  },
+  {
+    "cat": "A-藥名",
+    "text": "吃了維骨力",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A11CC05",
+            "name": "Vitamin D3",
+            "zhName": "維生素 D3",
+            "category": "營養補充",
+            "hospital": "馬偕醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "A-藥名",
+    "text": "吃了維他命",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A11A",
+            "name": "Multivitamin",
+            "zhName": "綜合維他命",
+            "category": "營養補充",
+            "hospital": "台大醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "B-口語",
+    "text": "血壓藥吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "B-口語",
+    "text": "血糖藥吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "B-口語",
+    "text": "抗凝血的藥吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "B-口語",
+    "text": "消炎藥吃了",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": [
+        "消炎藥"
+      ]
+    },
+    "error": null
+  },
+  {
+    "cat": "B-口語",
+    "text": "降壓藥還沒吃",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "B-口語",
+    "text": "血糖的那顆忘記吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "B-口語",
+    "text": "抗凝血劑好像吃了吧",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.9
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "B-口語",
+    "text": "血壓藥好像有吃齁",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.8
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "C-指涉",
+    "text": "早上的藥都吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        },
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "confidence": 0.95
+        },
+        {
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "confidence": 0.95
+        },
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A11CC05",
+            "name": "Vitamin D3",
+            "zhName": "維生素 D3",
+            "category": "營養補充",
+            "hospital": "馬偕醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        },
+        {
+          "med": {
+            "atc": "A11A",
+            "name": "Multivitamin",
+            "zhName": "綜合維他命",
+            "category": "營養補充",
+            "hospital": "台大醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "C-指涉",
+    "text": "晚上的藥吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.9
+        },
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "confidence": 0.9
+        },
+        {
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "confidence": 0.9
+        },
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.9
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A11CC05",
+            "name": "Vitamin D3",
+            "zhName": "維生素 D3",
+            "category": "營養補充",
+            "hospital": "馬偕醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        },
+        {
+          "med": {
+            "atc": "A11A",
+            "name": "Multivitamin",
+            "zhName": "綜合維他命",
+            "category": "營養補充",
+            "hospital": "台大醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "C-指涉",
+    "text": "中午的藥吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        },
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "confidence": 0.95
+        },
+        {
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "confidence": 0.95
+        },
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A11CC05",
+            "name": "Vitamin D3",
+            "zhName": "維生素 D3",
+            "category": "營養補充",
+            "hospital": "馬偕醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        },
+        {
+          "med": {
+            "atc": "A11A",
+            "name": "Multivitamin",
+            "zhName": "綜合維他命",
+            "category": "營養補充",
+            "hospital": "台大醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "C-指涉",
+    "text": "晚上的忘記吃",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "C-指涉",
+    "text": "中午那顆還沒吃",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "C-指涉",
+    "text": "早上兩顆都忘記吃",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "action": "skipped"
+        },
+        {
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "C-指涉",
+    "text": "睡前的藥還沒吃",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "action": "skipped"
+        },
+        {
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "action": "skipped"
+        },
+        {
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "action": "skipped"
+        },
+        {
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "action": "skipped"
+        },
+        {
+          "med": {
+            "atc": "A11CC05",
+            "name": "Vitamin D3",
+            "zhName": "維生素 D3",
+            "category": "營養補充",
+            "hospital": "馬偕醫院"
+          },
+          "slot": null,
+          "action": "skipped",
+          "reason": "no-slot"
+        },
+        {
+          "med": {
+            "atc": "A11A",
+            "name": "Multivitamin",
+            "zhName": "綜合維他命",
+            "category": "營養補充",
+            "hospital": "台大醫院"
+          },
+          "slot": null,
+          "action": "skipped",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "C-指涉",
+    "text": "早上兩顆都吃了",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "confidence": 0.95
+        },
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "D-台語",
+    "text": "阿斯匹靈呷矣",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "D-台語",
+    "text": "血壓仔的藥呷矣",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "D-台語",
+    "text": "糖仔藥猶未呷",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "D-台語",
+    "text": "早頓彼兩粒藥仔攏呷矣",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A11CC05",
+            "name": "Vitamin D3",
+            "zhName": "維生素 D3",
+            "category": "營養補充",
+            "hospital": "馬偕醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        },
+        {
+          "med": {
+            "atc": "A11A",
+            "name": "Multivitamin",
+            "zhName": "綜合維他命",
+            "category": "營養補充",
+            "hospital": "台大醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "D-台語",
+    "text": "暗時彼粒猶未呷啦",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "action": "skipped"
+        },
+        {
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "action": "skipped"
+        },
+        {
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "D-台語",
+    "text": "血糖仔敢有呷",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "confidence": 0.9
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "D-台語",
+    "text": "血壓仔敢有呷未",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "action": "uncertain"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "D-台語",
+    "text": "維他命嘛呷矣",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A11A",
+            "name": "Multivitamin",
+            "zhName": "綜合維他命",
+            "category": "營養補充",
+            "hospital": "台大醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "E-多藥",
+    "text": "阿斯匹靈跟賴諾普利都吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "confidence": 0.95
+        },
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "E-多藥",
+    "text": "血壓藥吃了，血糖藥忘記",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "E-多藥",
+    "text": "早上的藥吃了，晚上的還沒",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "E-多藥",
+    "text": "血壓藥跟抗凝血劑都吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        },
+        {
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "E-多藥",
+    "text": "阿斯匹靈吃了，維生素D3也吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "confidence": 0.9
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A11CC05",
+            "name": "Vitamin D3",
+            "zhName": "維生素 D3",
+            "category": "營養補充",
+            "hospital": "馬偕醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "E-多藥",
+    "text": "血糖藥跟抗凝血劑都還沒吃",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "action": "skipped"
+        },
+        {
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "E-多藥",
+    "text": "阿斯匹靈吃了，血糖藥還沒",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "E-多藥",
+    "text": "早上藥吃了，血糖藥也吃了",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.9
+        },
+        {
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "confidence": 0.9
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "F-否定",
+    "text": "阿斯匹靈忘記吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "F-否定",
+    "text": "抗凝血劑跳過沒吃",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "F-否定",
+    "text": "血糖藥還沒吃，晚點再吃",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "action": "skipped"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "F-否定",
+    "text": "華法林應該是吃了吧",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.9
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "F-否定",
+    "text": "維他命不確定有沒有吃",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A11A",
+            "name": "Multivitamin",
+            "zhName": "綜合維他命",
+            "category": "營養補充",
+            "hospital": "台大醫院"
+          },
+          "slot": null,
+          "action": "uncertain",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "F-否定",
+    "text": "血壓藥不確定有吃過沒",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "action": "uncertain"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "F-否定",
+    "text": "都還沒吃",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "action": "skipped"
+        },
+        {
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "action": "skipped"
+        },
+        {
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "action": "skipped"
+        },
+        {
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "action": "skipped"
+        },
+        {
+          "med": {
+            "atc": "A11CC05",
+            "name": "Vitamin D3",
+            "zhName": "維生素 D3",
+            "category": "營養補充",
+            "hospital": "馬偕醫院"
+          },
+          "slot": null,
+          "action": "skipped",
+          "reason": "no-slot"
+        },
+        {
+          "med": {
+            "atc": "A11A",
+            "name": "Multivitamin",
+            "zhName": "綜合維他命",
+            "category": "營養補充",
+            "hospital": "台大醫院"
+          },
+          "slot": null,
+          "action": "skipped",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "F-否定",
+    "text": "都吃了",
+    "pass": false,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "20:00",
+            "text": "服用華法林"
+          },
+          "med": {
+            "atc": "B01AA03",
+            "name": "Warfarin",
+            "zhName": "華法林",
+            "category": "抗凝血劑",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        },
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "confidence": 0.95
+        },
+        {
+          "slot": {
+            "time": "12:00",
+            "text": "服用二甲雙胍 (飯後)"
+          },
+          "med": {
+            "atc": "A10BA02",
+            "name": "Metformin",
+            "zhName": "二甲雙胍",
+            "category": "降血糖藥",
+            "hospital": "榮總醫院"
+          },
+          "confidence": 0.95
+        },
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A11CC05",
+            "name": "Vitamin D3",
+            "zhName": "維生素 D3",
+            "category": "營養補充",
+            "hospital": "馬偕醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        },
+        {
+          "med": {
+            "atc": "A11A",
+            "name": "Multivitamin",
+            "zhName": "綜合維他命",
+            "category": "營養補充",
+            "hospital": "台大醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "G-意圖",
+    "text": "我現在在吃什麼藥",
+    "pass": true,
+    "raw": {
+      "status": "intent",
+      "intent": "cabinet-query"
+    },
+    "error": null
+  },
+  {
+    "cat": "G-意圖",
+    "text": "幫我看藥箱",
+    "pass": true,
+    "raw": {
+      "status": "intent",
+      "intent": "cabinet-query"
+    },
+    "error": null
+  },
+  {
+    "cat": "G-意圖",
+    "text": "我想預約下次門診",
+    "pass": true,
+    "raw": {
+      "status": "intent",
+      "intent": "booking"
+    },
+    "error": null
+  },
+  {
+    "cat": "G-意圖",
+    "text": "下次可以改約禮拜五嗎",
+    "pass": true,
+    "raw": {
+      "status": "intent",
+      "intent": "booking"
+    },
+    "error": null
+  },
+  {
+    "cat": "G-意圖",
+    "text": "我下次回診是什麼時候",
+    "pass": true,
+    "raw": {
+      "status": "intent",
+      "intent": "next-visit"
+    },
+    "error": null
+  },
+  {
+    "cat": "G-意圖",
+    "text": "你們這個系統能幹嘛",
+    "pass": true,
+    "raw": {
+      "status": "intent",
+      "intent": "help"
+    },
+    "error": null
+  },
+  {
+    "cat": "G-意圖",
+    "text": "我今天頭很暈想吐",
+    "pass": true,
+    "raw": {
+      "status": "intent",
+      "intent": "discomfort"
+    },
+    "error": null
+  },
+  {
+    "cat": "G-意圖",
+    "text": "阿斯匹靈可以跟華法林一起吃嗎",
+    "pass": true,
+    "raw": {
+      "status": "intent",
+      "intent": "other"
+    },
+    "error": null
+  },
+  {
+    "cat": "H-干擾",
+    "text": "今天天氣真好",
+    "pass": true,
+    "raw": {
+      "status": "intent",
+      "intent": "other"
+    },
+    "error": null
+  },
+  {
+    "cat": "H-干擾",
+    "text": "吃了一顆糖",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A11A",
+            "name": "Multivitamin",
+            "zhName": "綜合維他命",
+            "category": "營養補充",
+            "hospital": "台大醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "H-干擾",
+    "text": "吃了維骨力",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [],
+      "confirm": [],
+      "notRecorded": [
+        {
+          "med": {
+            "atc": "A11CC05",
+            "name": "Vitamin D3",
+            "zhName": "維生素 D3",
+            "category": "營養補充",
+            "hospital": "馬偕醫院"
+          },
+          "slot": null,
+          "action": "taken",
+          "reason": "no-slot"
+        }
+      ],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "H-干擾",
+    "text": "血壓藥跟感冒藥都吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": [
+        "感冒藥"
+      ]
+    },
+    "error": null
+  },
+  {
+    "cat": "H-干擾",
+    "text": "阿斯匹靈跟維骨力都吃了",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "B01AC06",
+            "name": "Aspirin",
+            "zhName": "阿斯匹靈",
+            "category": "非類固醇消炎藥",
+            "hospital": "長庚醫院"
+          },
+          "confidence": 0.95
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": [
+        "維骨力"
+      ]
+    },
+    "error": null
+  },
+  {
+    "cat": "H-干擾",
+    "text": "我朋友的血壓藥我也吃了一顆",
+    "pass": true,
+    "raw": {
+      "status": "ok",
+      "toRecord": [
+        {
+          "slot": {
+            "time": "08:00",
+            "text": "服用阿斯匹靈、賴諾普利"
+          },
+          "med": {
+            "atc": "C09AA03",
+            "name": "Lisinopril",
+            "zhName": "賴諾普利",
+            "category": "降血壓藥",
+            "hospital": "台大醫院"
+          },
+          "confidence": 0.9
+        }
+      ],
+      "confirm": [],
+      "notRecorded": [],
+      "unmatched": []
+    },
+    "error": null
+  },
+  {
+    "cat": "H-干擾",
+    "text": "藥吃完了要去藥局補",
+    "pass": true,
+    "raw": {
+      "status": "intent",
+      "intent": "other"
+    },
+    "error": null
+  },
+  {
+    "cat": "H-干擾",
+    "text": "謝謝你",
+    "pass": true,
+    "raw": {
+      "status": "intent",
+      "intent": "other"
+    },
+    "error": null
+  }
+]

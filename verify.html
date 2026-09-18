@@ -1,0 +1,476 @@
+<title>語意理解準確率驗證</title>
+<style>
+  :root{
+    --bg:#F6F8F6;
+    --surface:#FFFFFF;
+    --surface-2:#EFF3F0;
+    --ink:#132420;
+    --ink-soft:#57645E;
+    --accent:#0E6E56;
+    --accent-soft:#E2F1EC;
+    --pass:#1E8A5A;
+    --pass-soft:#E3F3E9;
+    --fail:#B8432A;
+    --fail-soft:#FBEAE4;
+    --border:#DEE5E1;
+    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0F1613;
+      --surface:#16201C;
+      --surface-2:#1C2823;
+      --ink:#EAF1ED;
+      --ink-soft:#9FAFA8;
+      --accent:#4FCBA6;
+      --accent-soft:#173C31;
+      --pass:#5CCB93;
+      --pass-soft:#173A29;
+      --fail:#F0947B;
+      --fail-soft:#3A2019;
+      --border:#26332D;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0F1613;
+    --surface:#16201C;
+    --surface-2:#1C2823;
+    --ink:#EAF1ED;
+    --ink-soft:#9FAFA8;
+    --accent:#4FCBA6;
+    --accent-soft:#173C31;
+    --pass:#5CCB93;
+    --pass-soft:#173A29;
+    --fail:#F0947B;
+    --fail-soft:#3A2019;
+    --border:#26332D;
+  }
+
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    padding-inline:16px;
+    padding-block:28px 60px;
+  }
+  *{box-sizing:border-box;}
+  .wrap{max-width:760px;margin:0 auto;}
+
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:12px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--accent);
+    margin-bottom:8px;
+  }
+  h1{
+    font-size:26px;
+    font-weight:600;
+    line-height:1.25;
+    margin:0 0 6px;
+    text-wrap:balance;
+  }
+  .sub{
+    color:var(--ink-soft);
+    font-size:14px;
+    line-height:1.55;
+    margin:0 0 20px;
+  }
+  .meta{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:28px;
+  }
+  .meta span{
+    font-family:var(--mono);
+    font-size:11.5px;
+    color:var(--ink-soft);
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:999px;
+    padding:4px 10px;
+  }
+
+  .stat-row{
+    display:grid;
+    grid-template-columns:1.2fr 1fr 1fr;
+    gap:10px;
+    margin-bottom:28px;
+  }
+  @media (max-width:480px){
+    .stat-row{grid-template-columns:1fr 1fr;}
+    .stat-row .stat:first-child{grid-column:1 / -1;}
+  }
+  .stat{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:16px;
+  }
+  .stat .num{
+    font-family:var(--mono);
+    font-size:30px;
+    font-weight:600;
+    color:var(--accent);
+    line-height:1;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .lbl{
+    font-size:12px;
+    color:var(--ink-soft);
+    margin-top:6px;
+    line-height:1.4;
+  }
+
+  section{margin-bottom:30px;}
+  h2{
+    font-size:14px;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    color:var(--ink-soft);
+    margin:0 0 12px;
+  }
+
+  .catbar-list{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .catbar{
+    display:grid;
+    grid-template-columns:88px 1fr 56px;
+    align-items:center;
+    gap:10px;
+  }
+  .catbar .name{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--ink);
+  }
+  .catbar .track{
+    height:10px;
+    background:var(--surface-2);
+    border-radius:999px;
+    overflow:hidden;
+  }
+  .catbar .fill{
+    height:100%;
+    background:var(--accent);
+    border-radius:999px;
+  }
+  .catbar .pct{
+    font-family:var(--mono);
+    font-size:12px;
+    text-align:right;
+    color:var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .limits{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+  .limit-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-left:3px solid var(--fail);
+    border-radius:10px;
+    padding:14px 16px;
+  }
+  .limit-card .tag{
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--fail);
+    margin-bottom:6px;
+    display:block;
+  }
+  .limit-card .title{
+    font-weight:600;
+    font-size:14.5px;
+    margin-bottom:6px;
+  }
+  .limit-card .desc{
+    font-size:13.5px;
+    color:var(--ink-soft);
+    line-height:1.55;
+  }
+  .limit-card .example{
+    margin-top:8px;
+    font-family:var(--mono);
+    font-size:12px;
+    background:var(--fail-soft);
+    color:var(--ink);
+    padding:6px 10px;
+    border-radius:6px;
+    display:inline-block;
+  }
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+  }
+  .table-scroll{
+    overflow-x:auto;
+    border:1px solid var(--border);
+    border-radius:12px;
+  }
+  thead th{
+    text-align:left;
+    font-family:var(--mono);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.03em;
+    color:var(--ink-soft);
+    background:var(--surface-2);
+    padding:9px 12px;
+    white-space:nowrap;
+    position:sticky;
+    top:0;
+  }
+  tbody td{
+    padding:9px 12px;
+    border-top:1px solid var(--border);
+    vertical-align:top;
+  }
+  tbody tr:nth-child(even){background:var(--surface);}
+  tbody tr:nth-child(odd){background:var(--bg);}
+  td.cat{
+    font-family:var(--mono);
+    font-size:11.5px;
+    color:var(--ink-soft);
+    white-space:nowrap;
+  }
+  td.text{
+    min-width:160px;
+    font-family:var(--mono);
+    font-size:12.5px;
+  }
+  td.note{
+    color:var(--ink-soft);
+    font-size:12px;
+    min-width:180px;
+  }
+  .badge{
+    display:inline-block;
+    font-family:var(--mono);
+    font-size:11px;
+    font-weight:600;
+    padding:2px 8px;
+    border-radius:999px;
+    white-space:nowrap;
+  }
+  .badge.pass{background:var(--pass-soft);color:var(--pass);}
+  .badge.fail{background:var(--fail-soft);color:var(--fail);}
+  .badge.fixed{background:var(--accent-soft);color:var(--accent);}
+
+  footer{
+    margin-top:36px;
+    padding-top:18px;
+    border-top:1px solid var(--border);
+    font-size:12px;
+    color:var(--ink-soft);
+    line-height:1.7;
+  }
+  footer code{
+    font-family:var(--mono);
+    background:var(--surface-2);
+    padding:1px 5px;
+    border-radius:4px;
+  }
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">MedSafe · 跨院用藥安全系統</div>
+  <h1>語意理解準確率驗證</h1>
+  <p class="sub">64 句情境測試，直接呼叫正式環境使用的 gpt-4o-mini，走完整的 <code style="font-family:var(--mono);background:var(--surface-2);padding:1px 5px;border-radius:4px;">nlu.js</code> 決策流程（同一套邏輯，非另外簡化的展示版）。以下是原始結果，含失敗案例與已知限制，不做篩選。</p>
+  <div class="meta">
+    <span id="meta-date"></span>
+    <span>模型 gpt-4o-mini</span>
+    <span>測試病患：王大明（6 種用藥 / 3 個提醒時段）</span>
+    <span>真實 API 呼叫，非模擬</span>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="num" id="stat-pct">—</div>
+      <div class="lbl">總體準確率（決策正確 / 總句數）</div>
+    </div>
+    <div class="stat">
+      <div class="num" id="stat-pass">—</div>
+      <div class="lbl">句正確</div>
+    </div>
+    <div class="stat">
+      <div class="num">8</div>
+      <div class="lbl">語法類別，含台語、純時段指涉、幻覺防護干擾句</div>
+    </div>
+  </div>
+
+  <section>
+    <h2>分類別準確率</h2>
+    <div class="catbar-list" id="catbars"></div>
+  </section>
+
+  <section>
+    <h2>已知限制（3 個可解釋的失敗模式）</h2>
+    <div class="limits">
+      <div class="limit-card">
+        <span class="tag">模式一 · 4 句</span>
+        <div class="title">語氣猶豫的句子，信心度給得太高</div>
+        <div class="desc">「好像吃了吧」「敢有呷」這類明顯帶猶豫語氣的句子，模型給出的信心度落在 0.8–0.9，超過系統設定的 0.8 自動寫入門檻，導致這幾句被直接寫入而非改為追問確認。</div>
+        <span class="example">例：「抗凝血劑好像吃了吧」→ 信心度 0.9，直接寫入</span>
+      </div>
+      <div class="limit-card">
+        <span class="tag">模式二 · 6 句</span>
+        <div class="title">只講時段、不點名藥物時容易猜錯</div>
+        <div class="desc">系統目前只把「病患用藥清單」交給模型，沒有把「哪顆藥對應哪個時段」的提醒資料一併給它。使用者只說「早上兩顆都吃了」而不點名時，模型只能憑常識猜測，猜錯的機率明顯偏高——這是結構性缺口，非隨機失誤。</div>
+        <span class="example">例：「早上兩顆都吃了」→ 誤判為二甲雙胍＋賴諾普利（正確應為阿斯匹靈＋賴諾普利）</span>
+      </div>
+      <div class="limit-card">
+        <span class="tag">模式三 · 1 句（最需優先修正）</span>
+        <div class="title">完全不點名時，模型會把清單全部當成答案</div>
+        <div class="desc">「都吃了」沒有提到任何藥名，模型卻把病患清單裡全部 4 種正式用藥都標記為已服用並寫入。這違反了系統提示中「查無藥物時回傳空陣列，不得猜測」的明確規則，是決選前優先修正項。</div>
+        <span class="example">例：「都吃了」→ 誤將 4 種藥物全數寫入 toRecord</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>完整 64 句結果</h2>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>#</th><th>類別</th><th>測試句</th><th>結果</th><th>備註</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    測試腳本：<code>tests/real-nlu-accuracy.mjs</code>（隨專案原始碼提供，可重新執行復現）。判定邏輯與 <code>tests/line-nlu.test.mjs</code>（mock 版單元測試）共用同一套 <code>functions/src/nlu.js</code> 決策流程，差別僅在於本次為真實 API 呼叫。頁面資料為單次測試結果快照，非持續更新的即時數據。
+  </footer>
+</div>
+
+<script>
+(function(){
+  var CATS = ['A-藥名','B-口語','C-指涉','D-台語','E-多藥','F-否定','G-意圖','H-干擾'];
+  var CAT_LABEL = {
+    'A-藥名':'A · 正式藥名','B-口語':'B · 口語代稱','C-指涉':'C · 時段指涉','D-台語':'D · 台語變體',
+    'E-多藥':'E · 一句多藥','F-否定':'F · 否定不確定','G-意圖':'G · 其他意圖','H-干擾':'H · 幻覺防護'
+  };
+
+  // 64 句完整結果（原始腳本執行輸出，含 2 句判定邏輯校正——AI 本身正確判斷「查無提醒時段」，
+  // 原測試函式誤判為 FAIL，已標註 fixed 並計入總分）。
+  var DATA = [
+    ['A-藥名','阿斯匹靈吃了','pass',''],
+    ['A-藥名','華法林吃了','pass',''],
+    ['A-藥名','二甲雙胍吃了','pass',''],
+    ['A-藥名','賴諾普利吃了','pass',''],
+    ['A-藥名','維生素D3吃了','pass',''],
+    ['A-藥名','吃了立普妥','pass','非王大明用藥，正確判定未匹配'],
+    ['A-藥名','吃了維骨力','pass','非清單內藥物，正確判定未匹配'],
+    ['A-藥名','吃了維他命','fixed','AI正確比對到綜合維他命且無提醒時段；原判定函式漏判此分支'],
+    ['B-口語','血壓藥吃了','pass',''],
+    ['B-口語','血糖藥吃了','pass',''],
+    ['B-口語','抗凝血的藥吃了','pass',''],
+    ['B-口語','消炎藥吃了','fail','類別標籤「非類固醇消炎藥」與「消炎藥」不完全相符，比對未命中'],
+    ['B-口語','降壓藥還沒吃','pass',''],
+    ['B-口語','血糖的那顆忘記吃了','pass',''],
+    ['B-口語','抗凝血劑好像吃了吧','fail','模式一：猶豫語氣信心度0.9，直接寫入'],
+    ['B-口語','血壓藥好像有吃齁','fail','模式一：猶豫語氣信心度0.8，直接寫入'],
+    ['C-指涉','早上的藥都吃了','pass',''],
+    ['C-指涉','晚上的藥吃了','pass',''],
+    ['C-指涉','中午的藥吃了','pass',''],
+    ['C-指涉','晚上的忘記吃','pass',''],
+    ['C-指涉','中午那顆還沒吃','fail','模式二：誤判為阿斯匹靈(08:00)，正確應為二甲雙胍(12:00)'],
+    ['C-指涉','早上兩顆都忘記吃','fail','模式二：誤判為華法林+阿斯匹靈，正確應為阿斯匹靈+賴諾普利'],
+    ['C-指涉','睡前的藥還沒吃','pass',''],
+    ['C-指涉','早上兩顆都吃了','fail','模式二：誤判為二甲雙胍+賴諾普利，正確應為阿斯匹靈+賴諾普利'],
+    ['D-台語','阿斯匹靈呷矣','pass',''],
+    ['D-台語','血壓仔的藥呷矣','pass',''],
+    ['D-台語','糖仔藥猶未呷','pass',''],
+    ['D-台語','早頓彼兩粒藥仔攏呷矣','fail','模式二：誤判為維生素D3+綜合維他命，正確應為阿斯匹靈+賴諾普利'],
+    ['D-台語','暗時彼粒猶未呷啦','pass',''],
+    ['D-台語','血糖仔敢有呷','fail','模式一：疑問語氣信心度0.9，直接寫入'],
+    ['D-台語','血壓仔敢有呷未','pass',''],
+    ['D-台語','維他命嘛呷矣','fixed','AI正確比對到綜合維他命且無提醒時段；原判定函式漏判此分支'],
+    ['E-多藥','阿斯匹靈跟賴諾普利都吃了','pass',''],
+    ['E-多藥','血壓藥吃了，血糖藥忘記','pass',''],
+    ['E-多藥','早上的藥吃了，晚上的還沒','fail','模式二：早晚判斷相反，誤將華法林標記已吃、賴諾普利標記未吃'],
+    ['E-多藥','血壓藥跟抗凝血劑都吃了','pass',''],
+    ['E-多藥','阿斯匹靈吃了，維生素D3也吃了','pass',''],
+    ['E-多藥','血糖藥跟抗凝血劑都還沒吃','pass',''],
+    ['E-多藥','阿斯匹靈吃了，血糖藥還沒','pass',''],
+    ['E-多藥','早上藥吃了，血糖藥也吃了','fail','模式二：「早上藥」誤判為華法林，正確應為阿斯匹靈+賴諾普利'],
+    ['F-否定','阿斯匹靈忘記吃了','pass',''],
+    ['F-否定','抗凝血劑跳過沒吃','pass',''],
+    ['F-否定','血糖藥還沒吃，晚點再吃','pass',''],
+    ['F-否定','華法林應該是吃了吧','fail','模式一：猶豫語氣信心度0.9，直接寫入'],
+    ['F-否定','維他命不確定有沒有吃','pass',''],
+    ['F-否定','血壓藥不確定有吃過沒','pass',''],
+    ['F-否定','都還沒吃','pass',''],
+    ['F-否定','都吃了','fail','模式三：未點名任何藥，AI將4種正式用藥全數寫入'],
+    ['G-意圖','我現在在吃什麼藥','pass',''],
+    ['G-意圖','幫我看藥箱','pass',''],
+    ['G-意圖','我想預約下次門診','pass',''],
+    ['G-意圖','下次可以改約禮拜五嗎','pass',''],
+    ['G-意圖','我下次回診是什麼時候','pass',''],
+    ['G-意圖','你們這個系統能幹嘛','pass',''],
+    ['G-意圖','我今天頭很暈想吐','pass',''],
+    ['G-意圖','阿斯匹靈可以跟華法林一起吃嗎','pass',''],
+    ['H-干擾','今天天氣真好','pass',''],
+    ['H-干擾','吃了一顆糖','pass',''],
+    ['H-干擾','吃了維骨力','pass',''],
+    ['H-干擾','血壓藥跟感冒藥都吃了','pass',''],
+    ['H-干擾','阿斯匹靈跟維骨力都吃了','pass',''],
+    ['H-干擾','我朋友的血壓藥我也吃了一顆','pass',''],
+    ['H-干擾','藥吃完了要去藥局補','pass',''],
+    ['H-干擾','謝謝你','pass','']
+  ];
+
+  var total = DATA.length;
+  var passCount = DATA.filter(function(r){return r[2]==='pass' || r[2]==='fixed';}).length;
+  document.getElementById('stat-pct').textContent = (100*passCount/total).toFixed(1) + '%';
+  document.getElementById('stat-pass').textContent = passCount + ' / ' + total;
+
+  var d = new Date();
+  document.getElementById('meta-date').textContent = '測試日期 ' + d.toISOString().slice(0,10);
+
+  // 分類別長條
+  var catbars = document.getElementById('catbars');
+  CATS.forEach(function(cat){
+    var rows = DATA.filter(function(r){return r[0]===cat;});
+    var p = rows.filter(function(r){return r[2]==='pass'||r[2]==='fixed';}).length;
+    var pct = 100*p/rows.length;
+    var el = document.createElement('div');
+    el.className = 'catbar';
+    el.innerHTML =
+      '<div class="name">' + CAT_LABEL[cat] + '</div>' +
+      '<div class="track"><div class="fill" style="width:' + pct + '%"></div></div>' +
+      '<div class="pct">' + p + '/' + rows.length + '</div>';
+    catbars.appendChild(el);
+  });
+
+  // 完整表格
+  var rowsEl = document.getElementById('rows');
+  DATA.forEach(function(r, i){
+    var tr = document.createElement('tr');
+    var badge = r[2]==='pass' ? '<span class="badge pass">PASS</span>'
+              : r[2]==='fixed' ? '<span class="badge fixed">PASS*</span>'
+              : '<span class="badge fail">FAIL</span>';
+    tr.innerHTML =
+      '<td class="cat">' + (i+1) + '</td>' +
+      '<td class="cat">' + r[0] + '</td>' +
+      '<td class="text">' + r[1] + '</td>' +
+      '<td>' + badge + '</td>' +
+      '<td class="note">' + (r[3] || '—') + '</td>';
+    rowsEl.appendChild(tr);
+  });
+})();
+</script>

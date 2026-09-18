@@ -6,3 +6,5 @@ node_modules/
 vendor/
 .env
 .env.local
+.secret.local
+.secret.local.*
