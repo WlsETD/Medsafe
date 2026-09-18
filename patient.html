@@ -2291,7 +2291,8 @@
                 // 只有真的 reject（權限未開、SDK 內部錯誤）才算失敗。
                 async shareFamilyInvite() {
                     this.familyError = '';
-                    let text = (this.familyRelationshipLabel || '我')
+                    const inviterName = (this.profile && this.profile.name) || this._username || '我';
+                    let text = inviterName
                         + ' 邀請你在 MedSafe 查看用藥狀況。\n'
                         + '請加 MedSafe 官方帳號好友，並把這組代碼傳給它完成連結：' + this.familyCode + '\n'
                         + '（剩餘 ' + this.familyCodeCountdown + ' 內有效，逾期請回來我這裡重新產生）';
