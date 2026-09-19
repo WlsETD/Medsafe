@@ -2204,15 +2204,23 @@
                     this._lineTimer = setInterval(tick, 1000);
                     // 綁定是在 LINE 那一端完成的，網頁不會收到通知。
                     // 因此在碼有效期間定期回查一次綁定狀態，讓畫面自己翻成「已綁定」，
-                    // 不必要求長輩回來按重新整理。
+                    // 不必要求長輩回來按重新整理。前 30 秒加密檢查（更容易發現成功），
+                    // 之後改為低頻率（降低 Firestore 讀取成本）。
                     if (this._linePoll) clearInterval(this._linePoll);
+                    let pollCount = 0;
                     this._linePoll = setInterval(() => {
                         if (this.lineCodeSecondsLeft <= 0 || (this.lineBinding && this.lineBinding.active)) {
                             clearInterval(this._linePoll);
                             this._linePoll = null;
                             return;
                         }
-                        this.refreshLineBinding();
+                        pollCount++;
+                        // 前 6 次（30 秒內）每 5 秒檢查一次，之後改為 10 秒
+                        if (pollCount <= 6) {
+                            this.refreshLineBinding();
+                        } else if (pollCount % 2 === 0) {
+                            this.refreshLineBinding();
+                        }
                     }, 5000);
                 },
 
