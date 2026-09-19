@@ -237,7 +237,7 @@ async function handleUnfollow(event) {
 // 冪等鎖：這裡送過一次，07:30 的排程就會因為鎖已存在而跳過，
 // 不會重複推播幾乎一樣的卡片，也不會多消耗一次月配額。
 async function replyWithTodayCard(token, replyToken, username) {
-  const welcome = '綁定成功。\n\n之後每天早上會傳一張當日用藥卡給您，吃完按一下就完成回報。\n\n' + HELP;
+  const welcome = '綁定成功。\n\n之後每天早上會傳一張當日用藥卡給您，吃完按一下就完成回報。\n\n💡 請在 MedSafe 網頁設定身分證字號，系統才能進行安全檢查。\n\n' + HELP;
 
   try {
     const snap = await admin.firestore().collection('patient_data').doc(username).get();

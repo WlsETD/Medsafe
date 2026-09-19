@@ -371,6 +371,19 @@ exports.lineRegisterPatient = onCall({ region: REGION, secrets: [LINE_CHANNEL_AC
   }
 
   logger.info('LINE 首次註冊完成', { username });
+
+  // 綁定成功後推送通知（非計費），並提醒設定身分證
+  const token = LINE_CHANNEL_ACCESS_TOKEN.value();
+  if (token && lineUserId) {
+    lineApi.push(token, lineUserId, lineApi.textMessage(
+      '綁定成功！\n\n' +
+      '之後每天早上會傳用藥提醒卡給您。\n\n' +
+      '💡 為了保護您的隱私，請在 MedSafe 網頁設定身分證字號，系統才能進行安全檢查。'
+    )).catch(e => {
+      logger.error('LINE 綁定成功推播失敗', { username, lineUserId, message: e.message });
+    });
+  }
+
   return { customToken, username };
 });
 
