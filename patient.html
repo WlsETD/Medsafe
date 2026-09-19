@@ -1518,6 +1518,7 @@
                     showToast: false,
                     toastTitle: '系統通知',
                     toastMessage: '同步成功',
+                    _toastTimer: null,
                     // 通知清單只放「真的發生過的事」。實際會寫入的是醫師回覆（見 chatStore 監聽處）。
                     //
                     // 原本這裡預載三則寫死的通知，第一則的問題最嚴重：
@@ -3232,10 +3233,14 @@
                     });
                 },
                 triggerToast(title, msg) {
+                    if (this._toastTimer) clearTimeout(this._toastTimer);
                     this.toastTitle = title;
                     this.toastMessage = msg;
                     this.showToast = true;
-                    setTimeout(() => this.showToast = false, 3000);
+                    this._toastTimer = setTimeout(() => {
+                        this.showToast = false;
+                        this._toastTimer = null;
+                    }, 5000);
                 },
                 destroyCharts() { if (this._charts) { Object.values(this._charts).forEach(c => { if (c) c.dispose(); }); this._charts = {}; } },
                 initCharts() {
