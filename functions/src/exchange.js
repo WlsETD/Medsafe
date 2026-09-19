@@ -22,7 +22,7 @@ const https = require('https');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 
-const { REGION, LINE_LOGIN_CHANNEL_ID, LINE_CHANNEL_ACCESS_TOKEN, LINE_BASIC_ID } = require('./config');
+const { REGION, LINE_LOGIN_CHANNEL_ID, LINE_CHANNEL_ACCESS_TOKEN, LINE_BASIC_ID, LIFF_ID } = require('./config');
 const bindings = require('./bindings');
 const lineApi = require('./line-api');
 
