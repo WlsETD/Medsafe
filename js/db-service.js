@@ -1213,8 +1213,8 @@ window.DbService = {
     // ungraded 是「知識庫有記載但未標註嚴重度」，混進 findings 會讓
     // 家屬把它當成已分級的交互作用看待（與 ddi-engine.js 的既有原則相同）。
     const describe = (f) => ({
-      severity: f.severity,
-      severityZh: f.severityZh,
+      severity: f.severity || 'unknown',
+      severityZh: f.severityZh || '',
       drugA: (f.a && (f.a.name_zh || f.a.name_en)) || '',
       drugB: (f.b && (f.b.name_zh || f.b.name_en)) || '',
       effect: f.effect || '',
@@ -1253,7 +1253,9 @@ window.DbService = {
       alertCount: (liveAnalysis && liveAnalysis.findings) ? liveAnalysis.findings.length : 0,
       safetyScore: this.computeSafetyScore(meds, scoreInput),
       scoreStatus: this.safetyScoreStatus(meds, scoreInput),
-      remindersSchedule: reminders.map(r => ({ time: r.time, text: r.text })),
+      // Firestore 會拒絕整份含 undefined 的文件——少一格提醒時間就讓家屬
+      // 什麼都看不到，因此這裡一律補成空字串。
+      remindersSchedule: reminders.map(r => ({ time: (r && r.time) || '', text: (r && r.text) || '' })),
       adherenceRecent
     };
   },

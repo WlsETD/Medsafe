@@ -81,6 +81,19 @@
                         您是 {{ view.displayName }} 的 {{ currentConsent.relationshipLabel || '家屬' }}
                     </p>
 
+                    <!-- 病患尚未發布過摘要：用藥／警示／分數／服藥回報都還沒有資料，
+                         必須明說「尚未同步」，不能顯示成「沒有用藥」「查無交互作用」——
+                         那等於把「不知道」說成「安全」（與 ddi-engine.js 的既有原則相同）。
+                         掛號是即時讀取，不受影響，照常顯示在下方。 -->
+                    <div v-if="viewMissing" class="card p-8 space-y-2 border border-amber-200">
+                        <p class="text-sm font-black text-title">{{ view.displayName }} 的用藥資料尚未同步</p>
+                        <p class="text-[11px] font-bold text-slate-500 leading-relaxed">
+                            用藥清單、交互作用警示與服藥回報，需要病患本人開啟一次 MedSafe（網頁或 LINE 選單）後才會同步到這裡。
+                            這不代表病患沒有用藥或沒有風險，請提醒病患開啟一次後再重新整理本頁。
+                        </p>
+                    </div>
+
+                    <template v-if="!viewMissing">
                     <!-- 用藥安全參考分數 -->
                     <div class="card p-8 flex items-center justify-between gap-6">
                         <div>
@@ -135,6 +148,8 @@
                         </div>
                     </div>
 
+                    </template>
+
                     <!-- 掛號時間 -->
                     <div class="card p-8 space-y-4">
                         <h2 class="text-sm font-black text-title uppercase tracking-widest">掛號時間</h2>
@@ -146,7 +161,7 @@
                     </div>
 
                     <!-- 服藥回報 / 遵從度 -->
-                    <div class="card p-8 space-y-4">
+                    <div v-if="!viewMissing" class="card p-8 space-y-4">
                         <h2 class="text-sm font-black text-title uppercase tracking-widest">近期服藥回報</h2>
                         <p class="text-[11px] font-bold text-slate-400 leading-relaxed">病患自述，非系統觀測到的事實——沒有回報不代表沒有服藥。</p>
                         <div v-if="!view.adherenceRecent.length" class="text-xs font-bold text-slate-400">近期沒有回報紀錄</div>
@@ -162,6 +177,7 @@
 
                     <p class="text-[10px] font-bold text-slate-400 text-center leading-relaxed">
                         本頁資料由病患本人授權分享，最後更新於病患上次開啟 MedSafe 網頁的時間，非即時同步。
+                        <span v-if="publishedAtText"><br>用藥資料最後同步：{{ publishedAtText }}（掛號時間為即時資料）</span>
                     </p>
                 </template>
             </template>
@@ -185,6 +201,7 @@
                     consents: [],
                     selectedPatient: '',
                     view: null,
+                    viewMissing: false,
                     appointments: [],
                     schedulesByDoctor: {},
                     canClose: false
@@ -195,6 +212,13 @@
                 // 不是 view 裡（view 是病患自己發布的摘要，不該由病患決定家屬跟自己的稱謂）。
                 currentConsent() {
                     return this.consents.find(c => c.patient === this.selectedPatient) || null;
+                },
+                publishedAtText() {
+                    const t = this.view && this.view.publishedAt;
+                    const d = t && t.toDate ? t.toDate() : null;
+                    if (!d || isNaN(d.getTime())) return '';
+                    const p = (n) => String(n).padStart(2, '0');
+                    return DbService.adherence.dayKey(d) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
                 },
                 activeAppointments() {
                     return (this.appointments || []).filter(a => this.apptIsActive(a));
@@ -235,12 +259,14 @@
                     this.selectedPatient = patient;
                     this.viewLoading = true;
                     this.view = null;
+                    this.viewMissing = false;
                     this.appointments = [];
                     this.schedulesByDoctor = {};
                     try {
                         const snap = await window.db.collection('family_views').doc(patient).get();
                         // 病患從未在「家屬檢視」分頁發布過摘要（例如剛核銷完邀請碼，
                         // 病患自己都還沒開過一次 App）——不是錯誤，是誠實的空狀態。
+                        this.viewMissing = !snap.exists;
                         this.view = snap.exists ? snap.data() : {
                             patient, displayName: patient, medications: [], findings: [], ungraded: [],
                             unevaluable: [], medicationCount: 0, alertCount: 0, safetyScore: null,

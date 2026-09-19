@@ -2045,6 +2045,12 @@
                             this.medicationDiscontinuations = map;
                             this.medications = this.allMedications.filter(m => !this.medicationDiscontinuations[m.id]);
                         });
+                        // 真實病歷到這裡才套用完。在此之前 medications 仍是 data() 的
+                        // fallback，若照 watcher 發布，家屬會看到別人的示範用藥。
+                        // 進站時無條件發布一次：只靠 watcher 的話，用藥沒變動就永遠
+                        // 不會寫出 family_views，家屬端除了掛號之外全是空的。
+                        this._familyViewReady = true;
+                        this._maybePublishFamilyView();
                     }
                     // 班表必須等主治醫師確定之後再載入——doctorUsername 有兩個來源
                     //（病歷上的 assignedDoctor、最近一筆進行中的掛號），
@@ -2117,6 +2123,7 @@
                 if (this._linePoll) clearInterval(this._linePoll);
                 if (this._familyTimer) clearInterval(this._familyTimer);
                 if (this._familyPoll) clearInterval(this._familyPoll);
+                if (this._familyPublishTimer) clearTimeout(this._familyPublishTimer);
                 this.destroyCharts();
             },
             methods: {
@@ -2260,6 +2267,10 @@
                     this.familyError = '';
                     try {
                         this.familyConsents = await DbService.getMyFamilyConsents(this._username);
+                        // 家屬剛核銷完邀請碼（輪詢到新的有效授權）時，病患的用藥
+                        // 通常沒有變動，watcher 不會觸發——這裡補發一次，家屬才不會
+                        // 一打開就看到空白。
+                        this._maybePublishFamilyView();
                     } catch (e) {
                         console.error('家屬授權清單讀取失敗：', e);
                         this.familyError = '家屬授權清單讀取失敗，畫面顯示可能不是最新狀態。';
@@ -2374,16 +2385,23 @@
                 // firestore.rules 家屬檢視一節的說明）。只在至少有一位「目前
                 // 有效」的家屬時才發布，沒有家屬的病患不需要每次用藥變動
                 // 都跟著寫一次 family_views。
+                //
+                // 以短暫延遲合併連續觸發：進站時 patient_data 與停藥紀錄兩份監聽
+                // 各自回來，不合併的話同一秒會寫兩三次，且中間那次可能含已停用的藥。
                 _maybePublishFamilyView() {
-                    if (!this._username) return;
+                    if (!this._username || !this._familyViewReady) return;
                     const now = Date.now();
                     const hasActive = this.familyConsents.some(c =>
                         !c.revokedAt && c.expiresAt && c.expiresAt.toMillis() > now);
                     if (!hasActive) return;
-                    DbService.publishFamilyView(this._username, {
-                        profile: this.profile, medications: this.medications,
-                        reminders: this.reminders, adherenceLog: this.adherenceLog
-                    }, this.ddiForMe).catch(e => console.error('家屬檢視自動發布失敗：', e));
+                    if (this._familyPublishTimer) clearTimeout(this._familyPublishTimer);
+                    this._familyPublishTimer = setTimeout(() => {
+                        this._familyPublishTimer = null;
+                        DbService.publishFamilyView(this._username, {
+                            profile: this.profile, medications: this.medications,
+                            reminders: this.reminders, adherenceLog: this.adherenceLog
+                        }, this.ddiForMe).catch(e => console.error('家屬檢視自動發布失敗：', e));
+                    }, 800);
                 },
 
                 async syncToCloud() {
