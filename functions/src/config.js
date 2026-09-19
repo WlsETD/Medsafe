@@ -32,7 +32,7 @@ const LINE_LOGIN_CHANNEL_ID = defineString('LINE_LOGIN_CHANNEL_ID', { default: '
 // window.LIFF_ID，兩邊記的是同一個值，一份給前端 liff.init()，一份給
 // 伺服器組連結，本身都是公開 ID，不是密鑰）。未設定時選單不顯示
 // 「完整藥箱」按鈕，其餘功能不受影響。
-const LIFF_ID = defineString('LIFF_ID', { default: '' });
+const LIFF_ID = defineString('LIFF_ID', { default: '2011556856-q7GxQLhS' });
 
 // 非機密：家屬檢視專用的 LIFF App ID。刻意與 LIFF_ID 分開——家屬看到的
 // 是唯讀摘要頁（family.html），不是病患自己的 patient.html，兩者是不同的
