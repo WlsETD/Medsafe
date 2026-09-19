@@ -242,27 +242,40 @@ async function replyWithTodayCard(token, replyToken, username) {
   try {
     const snap = await admin.firestore().collection('patient_data').doc(username).get();
     const reminders = snap.exists && Array.isArray(snap.data().reminders) ? snap.data().reminders : [];
+
+    // 綁定成功時的快速回覆：包含設定身分證的按鈕
+    const liffId = LIFF_ID.value();
+    const bindingMenuItems = menuItems();
+    if (liffId) {
+      bindingMenuItems.unshift({ label: '📋 設定身分證', uri: 'https://liff.line.me/' + liffId + '?view=profile' });
+    }
+
     if (!reminders.length) {
-      return lineApi.reply(token, replyToken, lineApi.withQuickReply(lineApi.textMessage(welcome), menuItems()));
+      return lineApi.reply(token, replyToken, lineApi.withQuickReply(lineApi.textMessage(welcome), bindingMenuItems));
     }
 
     const day = dayKey();
     const claimed = await claimPushSlot(dailyLockKey(username, day));
     if (!claimed) {
       // 今天已經推過了（例如同一天重新綁定）——不重複附卡，只回文字
-      return lineApi.reply(token, replyToken, lineApi.withQuickReply(lineApi.textMessage(welcome), menuItems()));
+      return lineApi.reply(token, replyToken, lineApi.withQuickReply(lineApi.textMessage(welcome), bindingMenuItems));
     }
 
     const name = (snap.data().profile && snap.data().profile.name) || username;
     const sorted = reminders.slice().sort((a, b) => String(a.time).localeCompare(String(b.time)));
     // quickReply 只在一次回覆的「最後一則」訊息上生效，因此掛在卡片上，不是文字訊息上。
-    const card = lineApi.withQuickReply(flex.dailyReminderCard(name, day, sorted), menuItems());
+    const card = lineApi.withQuickReply(flex.dailyReminderCard(name, day, sorted), bindingMenuItems);
     return lineApi.reply(token, replyToken, [lineApi.textMessage(welcome), card]);
   } catch (e) {
     // 附卡失敗不可讓整個綁定看起來失敗——綁定本身（Firestore 寫入）已經成功了，
     // 只是少了這張錦上添花的卡片，仍要回覆確認訊息。
     logger.error('綁定成功但附卡失敗', { username, error: e.message });
-    return lineApi.reply(token, replyToken, lineApi.withQuickReply(lineApi.textMessage(welcome), menuItems()));
+    const liffId = LIFF_ID.value();
+    const fallbackMenuItems = menuItems();
+    if (liffId) {
+      fallbackMenuItems.unshift({ label: '📋 設定身分證', uri: 'https://liff.line.me/' + liffId + '?view=profile' });
+    }
+    return lineApi.reply(token, replyToken, lineApi.withQuickReply(lineApi.textMessage(welcome), fallbackMenuItems));
   }
 }
 

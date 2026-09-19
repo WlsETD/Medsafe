@@ -374,12 +374,32 @@ exports.lineRegisterPatient = onCall({ region: REGION, secrets: [LINE_CHANNEL_AC
 
   // 綁定成功後推送通知（非計費），並提醒設定身分證
   const token = LINE_CHANNEL_ACCESS_TOKEN.value();
+  const liffId = LIFF_ID.value();
   if (token && lineUserId) {
-    lineApi.push(token, lineUserId, lineApi.textMessage(
-      '綁定成功！\n\n' +
-      '之後每天早上會傳用藥提醒卡給您。\n\n' +
-      '💡 為了保護您的隱私，請在 MedSafe 網頁設定身分證字號，系統才能進行安全檢查。'
-    )).catch(e => {
+    const msg = {
+      type: 'text',
+      text: '綁定成功！\n\n之後每天早上會傳用藥提醒卡給您。'
+    };
+
+    // 如果設定了 LIFF ID，添加設定身份證的按鈕；未設定時只傳文字提醒
+    if (liffId) {
+      msg.quickReply = {
+        items: [
+          {
+            type: 'action',
+            action: {
+              type: 'uri',
+              label: '📋 設定身分證',
+              uri: 'https://liff.line.me/' + liffId + '?view=profile'
+            }
+          }
+        ]
+      };
+    } else {
+      msg.text += '\n\n💡 請在 MedSafe 網頁設定身分證字號進行安全檢查。';
+    }
+
+    lineApi.push(token, lineUserId, msg).catch(e => {
       logger.error('LINE 綁定成功推播失敗', { username, lineUserId, message: e.message });
     });
   }
